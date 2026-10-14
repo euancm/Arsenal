@@ -1,5 +1,5 @@
 # Glock (WIP)
-
+BannerImage.png
 A work-in-progress custom pistol mod for STALKER 2: Heart of Chornobyl.
 
 ## Current Status
