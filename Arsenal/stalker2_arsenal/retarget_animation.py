@@ -7,10 +7,10 @@ from . import map_bones
 oops = bpy.ops.object
 RETARGET_CONSTRAINT_PREFIX = 'Arsenal Retarget '
 RETARGET_BACKUP_COLLECTION = 'Arsenal Retarget Backups'
-RETARGET_BACKUP_ID = 'ARSENAL_retarget_backup_id'
-RETARGET_BACKUP_MARKER = 'ARSENAL_retarget_backup'
-RETARGET_BACKUP_COLLECTION_MARKER = 'ARSENAL_retarget_backup_collection'
-RETARGET_CUSTOM_MAPPING = 'ARSENAL_custom_retarget_mapping'
+RETARGET_BACKUP_ID = 'arsenal_retarget_backup_id'
+RETARGET_BACKUP_MARKER = 'arsenal_retarget_backup'
+RETARGET_BACKUP_COLLECTION_MARKER = 'arsenal_retarget_backup_collection'
+RETARGET_CUSTOM_MAPPING = 'arsenal_custom_retarget_mapping'
 
 
 def find_retarget_backup(rig):
@@ -249,8 +249,12 @@ def bake_retargeted_action(context, source_armature, rig, mapping, source_action
         for frame in range(frame_start, frame_end + 1):
             context.scene.frame_set(frame)
             context.view_layer.update()
-            apply_retargeted_pose(context, source_armature, rig, ordered_mapping)
-            context.view_layer.update()
+            # Assigning pose_bone.matrix is only approximate for bones driven by
+            # constraints/drivers, and the first frame starts from wherever the
+            # previous action ended, so apply twice to converge.
+            for _ in range(2):
+                apply_retargeted_pose(context, source_armature, rig, ordered_mapping)
+                context.view_layer.update()
             insert_retarget_keyframes(rig, ordered_mapping, frame)
     except Exception:
         rig.animation_data.action = None
@@ -264,6 +268,14 @@ def bake_retargeted_action(context, source_armature, rig, mapping, source_action
 def retarget_animation_actions(context, source_armature, rig, mapping,
                                set_anim_length=True,
                                action_names=None):
+    with b_fun.forced_pose_position(source_armature, rig):
+        return _retarget_animation_actions(
+            context, source_armature, rig, mapping, set_anim_length, action_names)
+
+
+def _retarget_animation_actions(context, source_armature, rig, mapping,
+                                set_anim_length=True,
+                                action_names=None):
     had_source_animation = source_armature.animation_data is not None
     source_animation = source_armature.animation_data_create()
     original_source_action = source_animation.action
@@ -359,11 +371,15 @@ def retarget_animation_actions(context, source_armature, rig, mapping,
 
 class RetargetAnimationOperator(bpy.types.Operator):
     """Retarget source actions onto the selected Rigify rig."""
-    bl_idname = 'object.ARSENAL_retarget_animation'
+    bl_idname = 'object.arsenal_retarget_animation'
     bl_label = 'Retarget animation'
     bl_options = {'REGISTER', 'UNDO'}
 
     set_anim_length: bpy.props.BoolProperty(name='Set animation length', default=True)
+    remove_source_actions: bpy.props.BoolProperty(
+        name='Remove original actions',
+        description='Delete the imported source actions once they have been retargeted',
+        default=True)
 
     @classmethod
     def poll(cls, context):
@@ -413,6 +429,20 @@ class RetargetAnimationOperator(bpy.types.Operator):
                 backup_collection.hide_viewport = collection_was_hidden
 
         self.report({'INFO'}, f'Retargeted {len(actions)} actions onto {rig.name}.')
+        if self.remove_source_actions and backup_collection:
+            removed = 0
+            for output in actions:
+                source = bpy.data.actions.get(output.get('arsenal_source_action', ''))
+                if source and source not in actions:
+                    bpy.data.actions.remove(source)
+                    removed += 1
+            self.report({'INFO'}, f'Removed {removed} original source actions.')
+
+        # Outputs keep the source name once it is free, otherwise the rig_ name stays to avoid clashes.
+        for output in actions:
+            source_name = output.get('arsenal_source_action', '')
+            if source_name and not bpy.data.actions.get(source_name):
+                output.name = source_name
         return {'FINISHED'}
 
     def invoke(self, context, event):

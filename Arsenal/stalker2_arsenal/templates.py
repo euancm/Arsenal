@@ -82,7 +82,7 @@ def get_parents(ue_skeleton):
 
 class SaveSkeletonDataOperator(bpy.types.Operator):
     """Save skeleton data to template"""
-    bl_idname = "object.ARSENAL_save_skeleton_data"
+    bl_idname = "object.arsenal_save_skeleton_data"
     bl_label = "Save skeleton template"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -97,7 +97,7 @@ class SaveSkeletonDataOperator(bpy.types.Operator):
             and (context.object.mode == 'OBJECT'))
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
 
         ue_skeleton = context.view_layer.objects.active
         oops.mode_set(mode = 'EDIT')
@@ -115,7 +115,7 @@ class SaveSkeletonDataOperator(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         if has_template(ui.new_template_name):
             return context.window_manager.invoke_confirm(self, event)
         else:
@@ -123,7 +123,7 @@ class SaveSkeletonDataOperator(bpy.types.Operator):
 
 class RemoveSkeletonDataOperator(bpy.types.Operator):
     """Remove skeleton data template"""
-    bl_idname = "object.ARSENAL_remove_skeleton_data"
+    bl_idname = "object.arsenal_remove_skeleton_data"
     bl_label = "Remove skeleton template"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -138,7 +138,7 @@ class RemoveSkeletonDataOperator(bpy.types.Operator):
             and (context.object.mode == 'OBJECT'))
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         remove_template(ui.active_template)
         return {'FINISHED'}
 

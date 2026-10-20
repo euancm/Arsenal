@@ -89,6 +89,8 @@ classes = (
     panel.SetUESceneSettingsOperator,
     mapping_editor.MappingEntry,
     mapping_editor.GenerateMappingGuessOperator,
+    mapping_editor.GenerateWeaponMappingGuessOperator,
+    mapping_editor.SnapWeaponRigOperator,
     mapping_editor.CreateMappingOperator,
     mapping_editor.ARSENAL_PT_BoneMappingsPanel,
     mapping_editor.ARSENAL_IU_Props,
@@ -127,7 +129,7 @@ def register():
     )
     # version = ".".join(str(x) for x in bl_info["version"])
 
-    bpy.types.WindowManager.arsenal_ui = bpy.props.PointerProperty(type = mapping_editor.ARSENAL_IU_Props)
+    bpy.types.Scene.arsenal_ui = bpy.props.PointerProperty(type = mapping_editor.ARSENAL_IU_Props)
     preferences.register_keymaps()
     bpy.types.VIEW3D_MT_edit_mesh_vertices.append(vertex_menu_draw)
     bpy.types.VIEW3D_MT_edit_mesh_context_menu.append(vertext_context_menu_func)
@@ -141,7 +143,7 @@ def unregister():
     bpy.types.VIEW3D_MT_edit_mesh_vertices.remove(vertex_menu_draw)
     bpy.types.VIEW3D_MT_edit_mesh_context_menu.remove(vertext_context_menu_func)
 
-    del bpy.types.WindowManager.arsenal_ui
+    del bpy.types.Scene.arsenal_ui
     preferences.unregister_keymaps()
 
 if __name__ == "__main__":

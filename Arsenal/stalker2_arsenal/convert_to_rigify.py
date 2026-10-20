@@ -5,15 +5,71 @@ import json
 from . import preferences
 from .map_bones import BoneMapping
 from . import bone_functions as b_fun
+from . import generate_metarig
 
 oops = bpy.ops.object
 pops = bpy.ops.pose
 aops = bpy.ops.armature
 RETARGET_BACKUP_COLLECTION = 'Arsenal Retarget Backups'
-RETARGET_BACKUP_ID = 'ARSENAL_retarget_backup_id'
-RETARGET_BACKUP_MARKER = 'ARSENAL_retarget_backup'
-RETARGET_BACKUP_COLLECTION_MARKER = 'ARSENAL_retarget_backup_collection'
-RETARGET_CUSTOM_MAPPING = 'ARSENAL_custom_retarget_mapping'
+RETARGET_BACKUP_ID = 'arsenal_retarget_backup_id'
+RETARGET_BACKUP_MARKER = 'arsenal_retarget_backup'
+RETARGET_BACKUP_COLLECTION_MARKER = 'arsenal_retarget_backup_collection'
+RETARGET_CUSTOM_MAPPING = 'arsenal_custom_retarget_mapping'
+RETARGET_WEAPON_BACKUP_ID = 'arsenal_weapon_backup_id'
+
+
+def find_weapon_armature(context, character_armature, mapping, preferred=None):
+    """Find the user's weapon rig: the picked armature, otherwise a plain armature
+    with a 'Weapon' root bone whose bones are targets of the mapping."""
+    if (preferred and preferred.type == 'ARMATURE' and preferred != character_armature
+            and any(b.name in (mapping.mapping.values() if mapping else ()) for b in preferred.data.bones)):
+        return preferred
+    mapped_targets = set(mapping.mapping.values()) if mapping else None
+    candidates = [
+        obj for obj in context.scene.objects
+        if obj.type == 'ARMATURE'
+        and obj != character_armature
+        and not obj.get(RETARGET_BACKUP_MARKER, False)
+        and not obj.data.get('rig_id')
+        and 'Weapon' in obj.data.bones
+        and (mapped_targets is None or any(bone.name in mapped_targets for bone in obj.data.bones))
+    ]
+    if not candidates:
+        return None
+    return next((obj for obj in candidates if obj.name == 'Weapon'), candidates[0])
+
+
+def snap_weapon_rig_to_socket(context, weapon_rig, source_armature, root_name='Weapon', socket_name='jnt_offset'):
+    """Translate the weapon rig (and every mesh bound to it) so its root bone sits
+    exactly on the source skeleton's weapon socket. Returns the world offset applied."""
+    from mathutils import Matrix
+    root = weapon_rig.data.bones.get(root_name)
+    socket = source_armature.data.bones.get(socket_name)
+    if root is None:
+        raise RuntimeError(f"The weapon rig '{weapon_rig.name}' needs a root bone named '{root_name}'.")
+    if socket is None:
+        raise RuntimeError(f"The source armature '{source_armature.name}' has no '{socket_name}' bone.")
+
+    # Rest-pose positions: the imported objects are animated, so posed values would move.
+    delta = (source_armature.matrix_world @ socket.head_local) - (weapon_rig.matrix_world @ root.head_local)
+
+    def descends_from(obj, ancestor):
+        while obj:
+            if obj == ancestor:
+                return True
+            obj = obj.parent
+        return False
+
+    movers = [weapon_rig] + [
+        obj for obj in bpy.data.objects
+        if obj.type == 'MESH' and not descends_from(obj, weapon_rig)
+        and any(m.type == 'ARMATURE' and m.object == weapon_rig for m in obj.modifiers)
+    ]
+    translation = Matrix.Translation(delta)
+    for obj in movers:
+        obj.matrix_world = translation @ obj.matrix_world
+    context.view_layer.update()
+    return delta
 
 
 def create_retarget_backup(context, source_armature):
@@ -67,9 +123,11 @@ def create_retarget_backup(context, source_armature):
         source_object for source_object in copies
         if source_object.type == 'ARMATURE'
     }
+    backup_objects = set(copies.values())
     bound_meshes = [
         obj for obj in bpy.data.objects
         if obj.type == 'MESH'
+        and obj not in backup_objects
         and any(
             modifier.type == 'ARMATURE' and modifier.object in armature_sources
             for modifier in obj.modifiers
@@ -123,6 +181,76 @@ def parent_importer_camera_to_rig(context, source_armature, rig):
     return True
 
 
+STAR_BONE_TOKENS = ('down', 'right', 'up', 'left')
+HIDDEN_BONE_COLLECTION = 'Hidden Helpers'
+HIDDEN_BONE_NAMES = [
+    'jnt_l_weapon', 'jnt_r_weapon',
+    'jnt_r_knee', 'jnt_l_knee',
+    'jnt_l_leg_bag', 'jnt_r_leg_bag',
+    'jnt_l_hips_bag2', 'jnt_r_hips_bag2',
+    'jnt_f_hips_bag', 'jnt_b_hips_bag',
+    'jnt_b_spine_bag',
+    'neck', 'head',
+    'jnt_l_armor', 'jnt_r_armor',
+    'jnt_l_shoulder_armor', 'jnt_r_shoulder_armor',
+    'jnt_l_elbow', 'jnt_r_elbow',
+    'shoulder.L', 'shoulder.R',
+]
+
+
+def star_bone_names(rig, side):
+    prefix = f'jnt_{side.lower()}_fore_arm_'
+    return [f'{prefix}{token}' for token in STAR_BONE_TOKENS if f'{prefix}{token}' in rig.data.bones]
+
+
+def tidy_generated_rig(context, rig):
+    """Fix wrist star bone parenting, hide helper bones and balance the hand controls."""
+    active_object = context.view_layer.objects.active
+    if active_object and active_object.mode != 'OBJECT':
+        oops.mode_set(mode='OBJECT')
+    oops.select_all(action='DESELECT')
+    rig.select_set(True)
+    context.view_layer.objects.active = rig
+
+    # ORG-hand follows the FK/IK blend, so children of it stay on the hand in both modes.
+    oops.mode_set(mode='EDIT')
+    edit_bones = rig.data.edit_bones
+    for side in ('L', 'R'):
+        hand = edit_bones.get(f'ORG-hand.{side}')
+        if not hand:
+            continue
+        for name in star_bone_names(rig, side):
+            edit_bones[name].parent = hand
+            edit_bones[name].use_connect = False
+    oops.mode_set(mode='OBJECT')
+
+    hidden = rig.data.collections.get(HIDDEN_BONE_COLLECTION)
+    if hidden is None:
+        hidden = rig.data.collections.new(HIDDEN_BONE_COLLECTION)
+    hidden_names = list(HIDDEN_BONE_NAMES) + star_bone_names(rig, 'L') + star_bone_names(rig, 'R')
+    for name in hidden_names:
+        bone = rig.data.bones.get(name)
+        if not bone:
+            continue
+        for collection in list(bone.collections):
+            collection.unassign(bone)
+        hidden.assign(bone)
+    hidden.is_visible = False
+
+    # The source hand bones differ greatly in length, which scales the bone-sized
+    # shapes unevenly. Give both sides the same visual size.
+    for prefix in ('hand_ik', 'hand_fk'):
+        pose_bones = [rig.pose.bones.get(f'{prefix}.{side}') for side in ('L', 'R')]
+        if not all(pose_bones):
+            continue
+        target_length = sum(pose.bone.length for pose in pose_bones) / 2
+        for pose in pose_bones:
+            if pose.bone.length < 1e-9:
+                continue
+            ratio = target_length / pose.bone.length
+            pose.custom_shape_scale_xyz = tuple(value * ratio for value in pose.custom_shape_scale_xyz)
+
+
 def merge_appended_weapon_rig(context, rig, weapon_armature):
     if not weapon_armature or weapon_armature.type != 'ARMATURE' or weapon_armature == rig:
         return False
@@ -137,14 +265,9 @@ def merge_appended_weapon_rig(context, rig, weapon_armature):
     if conflicts:
         raise RuntimeError('Weapon controls conflict with Rigify bones: ' + ', '.join(conflicts))
 
-    source_root_world = weapon_armature.matrix_world @ source_root.matrix_local
-    target_root_world = rig.matrix_world @ target_root.matrix_local
-    source_to_rig = (
-        rig.matrix_world.inverted_safe()
-        @ target_root_world
-        @ source_root_world.inverted_safe()
-        @ weapon_armature.matrix_world
-    )
+    # Keep the controls where they were authored (in world space) so they stay
+    # aligned with the weapon mesh; only the root bone's local frame differs.
+    source_to_rig = rig.matrix_world.inverted_safe() @ weapon_armature.matrix_world
     rotation_transform = source_to_rig.to_3x3()
 
     # Constraint axes and custom shapes are expressed in each bone's local
@@ -183,9 +306,10 @@ def merge_appended_weapon_rig(context, rig, weapon_armature):
             target_bone[key] = source_bone[key]
         weapon_collection.assign(target_bone)
 
-    # The Weapon control is also used as a deform bone by meshes weighted to
-    # the authored root. Rigify's control bone is otherwise non-deforming.
+    # Meshes weighted to the authored root need it to deform; Rigify's control
+    # bone is otherwise non-deforming. Set it on the edit bone so it persists.
     target_root.use_deform = source_root.use_deform = True
+    edit_bones['Weapon'].use_deform = True
 
     for source_bone in source_bones:
         if source_bone.parent:
@@ -193,6 +317,8 @@ def merge_appended_weapon_rig(context, rig, weapon_armature):
             edit_bones[source_bone.name].use_connect = source_bone.use_connect
 
     oops.mode_set(mode='OBJECT')
+    # Bone references taken before edit mode are stale now.
+    target_root = rig.data.bones['Weapon']
 
     for source_bone in source_bones:
         target_bone = rig.data.bones[source_bone.name]
@@ -287,13 +413,18 @@ def copy_weapon_pose_settings(source_pose, target_pose, source_armature, target_
     target_pose.lock_scale = source_pose.lock_scale
     target_pose.custom_shape = source_pose.custom_shape
     if frame_delta is not None:
-        frame_scale = frame_delta.to_scale()
+        # Shape scale is multiplied by bone length while translation is not,
+        # so only the scale needs compensating when the bone length differs.
+        length_ratio = 1.0
+        if source_pose.use_custom_shape_bone_size and target_pose.bone.length > 1e-9:
+            length_ratio = source_pose.bone.length / target_pose.bone.length
         target_pose.custom_shape_scale_xyz = tuple(
-            source_pose.custom_shape_scale_xyz[i] * frame_scale[i] for i in range(3))
-        target_pose.custom_shape_translation = frame_delta.to_3x3() @ source_pose.custom_shape_translation
-        shape_rotation = source_pose.custom_shape_rotation_euler.to_matrix().to_4x4()
-        converted_rotation = frame_delta.to_3x3().to_4x4() @ shape_rotation
-        target_pose.custom_shape_rotation_euler = converted_rotation.to_euler()
+            source_pose.custom_shape_scale_xyz[i] * length_ratio for i in range(3))
+        frame_rotation = frame_delta.to_3x3().normalized()
+        target_pose.custom_shape_translation = frame_delta @ source_pose.custom_shape_translation
+        converted_rotation = frame_rotation @ source_pose.custom_shape_rotation_euler.to_matrix()
+        target_pose.custom_shape_rotation_euler = converted_rotation.to_euler(
+            'XYZ', source_pose.custom_shape_rotation_euler)
     else:
         target_pose.custom_shape_scale_xyz = source_pose.custom_shape_scale_xyz
         target_pose.custom_shape_translation = source_pose.custom_shape_translation.copy()
@@ -430,7 +561,7 @@ def validate_custom_mapping(armature_object, mapping, mapping_name):
 
 class ConvertToRigifyOperator(bpy.types.Operator):
     """Convert character to rigify"""
-    bl_idname = "object.ARSENAL_convert_to_rigify"
+    bl_idname = "object.arsenal_convert_to_rigify"
     bl_label = "Convert UE character to rigify"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -472,14 +603,14 @@ class ConvertToRigifyOperator(bpy.types.Operator):
         mapping_reverse = BoneMapping('uemannequin_rigify', True)
         mapping.rename_armature(armature_object.data)
         oops.mode_set(mode = 'OBJECT')
-        oops.ARSENAL_generate_metarig()
+        oops.arsenal_generate_metarig()
         metarig = context.object
         oops.mode_set(mode = 'OBJECT')
         pops.rigify_generate()
         armature_object.select_set(True)
         mapping_reverse.rename_armature(armature_object.data)
         oops.mode_set(mode = 'OBJECT')
-        oops.ARSENAL_bind_rigify_to_armature()
+        oops.arsenal_bind_rigify_to_armature()
         
         objs = bpy.data.objects
 
@@ -498,7 +629,7 @@ class ConvertToRigifyOperator(bpy.types.Operator):
 
 class ConvertToRigifyByMappingOperator(bpy.types.Operator):
     """Convert character to rigify"""
-    bl_idname = "object.ARSENAL_convert_to_rigify_by_mapping"
+    bl_idname = "object.arsenal_convert_to_rigify_by_mapping"
     bl_label = "Convert character to rigify by mapping"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -514,8 +645,13 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
 
     def execute(self, context):
         armature_object = context.object
-        ui = context.window_manager.arsenal_ui
-        mapping = BoneMapping(ui.active_mapping, False)
+        ui = context.scene.arsenal_ui
+        mapping_data = [
+            [entry.bone_from, entry.bone_to]
+            for entry in ui.mapping_entries
+            if entry.bone_from and entry.bone_to
+        ]
+        mapping = BoneMapping(ui.active_mapping, False, data=mapping_data)
         mapping_error = validate_custom_mapping(armature_object, mapping, ui.active_mapping)
         if mapping_error:
             self.report({'ERROR'}, mapping_error)
@@ -526,8 +662,12 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
             self.report({'ERROR'}, 'The armature must have a child mesh to convert.')
             return {'CANCELLED'}
 
-        appended_weapon = context.scene.objects.get('Weapon')
-        if appended_weapon and appended_weapon.type == 'ARMATURE':
+        appended_weapon = find_weapon_armature(
+            context, armature_object, mapping, preferred=ui.weapon_rig)
+        if appended_weapon:
+            if 'Weapon' not in appended_weapon.data.bones:
+                self.report({'ERROR'}, f"The weapon rig '{appended_weapon.name}' needs a root bone named 'Weapon'.")
+                return {'CANCELLED'}
             if mapping.get_name('jnt_offset', safe=False) != 'Weapon':
                 self.report({'ERROR'}, "Map source bone 'jnt_offset' to target 'Weapon' before converting the appended weapon rig.")
                 return {'CANCELLED'}
@@ -558,7 +698,20 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
                 )
                 return {'CANCELLED'}
 
+        with b_fun.forced_pose_position(armature_object, appended_weapon):
+            if appended_weapon:
+                try:
+                    delta = snap_weapon_rig_to_socket(context, appended_weapon, armature_object)
+                except RuntimeError as error:
+                    self.report({'ERROR'}, str(error))
+                    return {'CANCELLED'}
+                self.report({'INFO'}, 'Moved weapon rig by ({:.3f}, {:.3f}, {:.3f}) to match jnt_offset'.format(*delta))
+            return self.convert(context, armature_object, mapping, mesh_objects, appended_weapon)
+
+    def convert(self, context, armature_object, mapping, mesh_objects, appended_weapon):
         backup_id = create_retarget_backup(context, armature_object)
+        weapon_backup_id = (
+            create_retarget_backup(context, appended_weapon) if appended_weapon else None)
         parent = armature_object.parent
         mesh_object = mesh_objects[0]
         if parent:
@@ -570,17 +723,31 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
             parent.select_set(False)
         mesh_object.select_set(False)
 
+        # Renaming bones rewrites the F-curve paths of the action assigned to
+        # the armature. The backup keeps the animation, so detach it here to
+        # leave every source action untouched.
+        if armature_object.animation_data:
+            armature_object.animation_data_clear()
+
         # mapping_reverse = BoneMapping(ui.active_mapping, True)
         mapping.rename_armature(armature_object.data)
 
         oops.mode_set(mode = 'OBJECT')
-        oops.ARSENAL_generate_metarig()
+        generate_metarig.WEAPON_BONE_NAMES_OVERRIDE = (
+            [bone.name for bone in appended_weapon.data.bones if bone.name != 'Weapon']
+            if appended_weapon else [])
+        try:
+            oops.arsenal_generate_metarig()
+        finally:
+            generate_metarig.WEAPON_BONE_NAMES_OVERRIDE = None
         metarig = context.object
         oops.mode_set(mode = 'OBJECT')
         pops.rigify_generate()
         rig = context.object
         rig[RETARGET_BACKUP_ID] = backup_id
-        if appended_weapon and appended_weapon.type == 'ARMATURE':
+        rig.data.pose_position = 'POSE'
+        if appended_weapon:
+            rig[RETARGET_WEAPON_BACKUP_ID] = weapon_backup_id
             try:
                 merge_appended_weapon_rig(context, rig, appended_weapon)
             except Exception as error:
@@ -595,7 +762,7 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
         rig.select_set(False)
         armature_object.select_set(True)
         context.view_layer.objects.active = armature_object
-        aops.ARSENAL_add_prefix(prefix = 'DEF-')
+        aops.arsenal_add_prefix(prefix = 'DEF-')
         armature_object.select_set(False)
         context.view_layer.objects.active = mesh_object
         mesh_object.select_set(True)
@@ -613,5 +780,5 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
 
         mesh_object.select_set(False)
         b_fun.prepare_rig(rig)
-
+        tidy_generated_rig(context, rig)
         return {'FINISHED'}

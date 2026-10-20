@@ -73,7 +73,7 @@ Now you have a rigify character.
 
 ## STALKER 2 appended weapon rig
 
-For the STALKER 2 workflow, an authored weapon rig can be appended as a separate armature object named `Weapon` before conversion. In **Mapping Setup**, keep the character guesses and add source-to-target entries for the weapon controls. For the supplied Step C weapon rig, the entries are:
+For the STALKER 2 workflow, an authored weapon rig (any object name, with a root bone named `Weapon`) can be appended as a separate armature object before conversion. The rig is only merged when its bones have mapping entries. In **Mapping Setup**, keep the character guesses and add source-to-target entries for the weapon controls. For the supplied Step C weapon rig, the entries are:
 
 | Source bone | Target bone |
 | --- | --- |
@@ -85,4 +85,15 @@ For the STALKER 2 workflow, an authored weapon rig can be appended as a separate
 | `jnt_bullet_shell` | `Shell` |
 | `jnt_bullet` | `Bullet` |
 
-Then run **Convert Character by Mapping**. The converter requires every non-root bone in the appended `Weapon` armature to have a mapping to a bone on the character skeleton. It reuses the mapped `Weapon` root generated from `jnt_offset`, merges the appended child controls into the generated Rigify armature, retains their custom shapes and constraints, and rebinds the `UDP` mesh's Armature modifier. Retargeting reads the saved weapon mappings from the generated rig and bakes those controls with the character and camera actions.
+Then run **Convert Character by Mapping**. The converter requires every non-root bone in the appended `Weapon` armature to have a mapping to a bone on the character skeleton. It reuses the mapped `Weapon` root generated from `jnt_offset`, merges the appended child controls into the generated Rigify armature, retains their custom shapes and constraints, and rebinds the `UDP` mesh's Armature modifier. The original weapon rig and mesh are kept in the hidden **Arsenal Retarget Backups** collection, like the source armature. Retargeting reads the saved weapon mappings from the generated rig and bakes those controls with the character and camera actions.
+
+
+## Generated rig tidying
+
+- The eight forearm "star" bones (`jnt_*_fore_arm_*`) are parented to `ORG-hand.L/R` so they follow the hand in both FK and IK.
+- Helper bones (star, knee, bag, armor, elbow, shoulder, neck, head, weapon-joint bones) are moved to a hidden **Hidden Helpers** bone collection. They can still be keyed.
+- `hand_ik`/`hand_fk` custom shapes on both sides are scaled to the same visual size.
+
+## Weapon rig placement
+
+The weapon rig's root bone must be named `Weapon`. You do not need to place the rig by hand: **Snap weapon rig to jnt_offset** (Mapping panel), and **Convert Character by Mapping** automatically, translate the rig and its bound meshes so the `Weapon` bone sits exactly on the character's `jnt_offset`. Only translation is applied, so author the rig in the weapon's native ZoneKit orientation and scale.

@@ -5,5 +5,4 @@ __pycache__/
 
 # Local extracted game assets and imported Blender test scenes
 /Arsenal/Source FBX Files/
-/Arsenal/Stalker 2 Step Imported Weapon Model and Mapping set.blend
-/Arsenal/UDP Rig.blend
+/Arsenal/*.blend

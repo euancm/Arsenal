@@ -4,7 +4,7 @@ from . import bone_functions as b_fun
 
 class SwapBonesWeightsOperator(bpy.types.Operator):
     """Swap bones weights"""
-    bl_idname = "armature.ARSENAL_swap_bones_weights"
+    bl_idname = "armature.arsenal_swap_bones_weights"
     bl_label = "Swap bones weights"
     bl_options = {'REGISTER', 'UNDO'}
 

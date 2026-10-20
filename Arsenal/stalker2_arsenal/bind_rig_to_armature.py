@@ -247,7 +247,7 @@ def set_preserve_volume(object):
 
 class BindRigifyToArmatureOperator(bpy.types.Operator):
     """Select an armature and a rigify rig. Operator will copy the armature to the rig and binds them"""
-    bl_idname = "object.ARSENAL_bind_rigify_to_armature"
+    bl_idname = "object.arsenal_bind_rigify_to_armature"
     bl_label = "Bind rigify rig to armature"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -284,7 +284,7 @@ class BindRigifyToArmatureOperator(bpy.types.Operator):
             c.select_set(False)
             #set_preserve_volume(c)
 
-        aops.ARSENAL_fix_twist_constraints()
+        aops.arsenal_fix_twist_constraints()
         oops.mode_set(mode = 'POSE')
 
 
@@ -305,7 +305,7 @@ class BindRigifyToArmatureOperator(bpy.types.Operator):
 
 class FixTwistBonesOperator(bpy.types.Operator):
     """Add twist bones fix"""
-    bl_idname = "armature.ARSENAL_fix_twist_bones"
+    bl_idname = "armature.arsenal_fix_twist_bones"
     bl_label = "Fix twist bones"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -325,7 +325,7 @@ class FixTwistBonesOperator(bpy.types.Operator):
 
 class UnfixTwistBonesOperator(bpy.types.Operator):
     """Remove twist bones fix"""
-    bl_idname = "armature.ARSENAL_unfix_twist_bones"
+    bl_idname = "armature.arsenal_unfix_twist_bones"
     bl_label = "Unfix twist bones"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -346,7 +346,7 @@ class UnfixTwistBonesOperator(bpy.types.Operator):
 
 class FixTwistConstraintsOperator(bpy.types.Operator):
     """Fix twist constraints"""
-    bl_idname = "armature.ARSENAL_fix_twist_constraints"
+    bl_idname = "armature.arsenal_fix_twist_constraints"
     bl_label = "Fix twist constraints"
     bl_options = {'REGISTER', 'UNDO'}
 

@@ -3,7 +3,7 @@ import bpy
 
 class SetUESceneSettingsOperator(bpy.types.Operator):
     """Set UE scene settings"""
-    bl_idname = "object.ARSENAL_set_ue_scene_settings"
+    bl_idname = "object.arsenal_set_ue_scene_settings"
     bl_label = "Set UE settings"
     bl_options = {'REGISTER', 'UNDO'}
     #
@@ -38,11 +38,11 @@ class ARSENAL_PT_AnimationPanel(bpy.types.Panel):
 
     def draw(self, context):
         col = self.layout.column()
-        col.operator("anim.ARSENAL_add_keyframe", text = 'Add keyframe')
+        col.operator("anim.arsenal_add_keyframe", text = 'Add keyframe')
         col.operator("pose.constraints_clear", text = 'Clear constraints')
         col.operator("nla.bake")
         col.separator()
-        col.operator("anim.ARSENAL_bake_animation", text = "Bake animation")
+        col.operator("anim.arsenal_bake_animation", text = "Bake animation")
         col.operator_context = 'INVOKE_DEFAULT'
 
 
@@ -59,33 +59,33 @@ class ARSENAL_PT_MainPanel(bpy.types.Panel):
 
     def draw_object(self, col, context):
         col.label(text='Rig generation')
-        col.operator('object.ARSENAL_convert_to_rigify_by_mapping', text='Convert Character by Mapping')
+        col.operator('object.arsenal_convert_to_rigify_by_mapping', text='Convert Character by Mapping')
         col.separator()
         col.label(text='Animation')
-        col.operator('object.ARSENAL_retarget_animation', text='Retarget Animation')
+        col.operator('object.arsenal_retarget_animation', text='Retarget Animation')
 
     def draw_edit(self, col, context):
         col.label(text="Armature editing operators:")
         row = col.row()
-        row.operator("armature.ARSENAL_arrange_bones")
+        row.operator("armature.arsenal_arrange_bones")
 
         row = col.row()
-        row.operator("armature.ARSENAL_clear_empty_bones")
+        row.operator("armature.arsenal_clear_empty_bones")
 
         row = col.row()
-        row.operator("armature.ARSENAL_swap_bones_weights")
+        row.operator("armature.arsenal_swap_bones_weights")
 
         row = col.row()
-        row.operator("armature.ARSENAL_merge_bones_with_vgroups")
+        row.operator("armature.arsenal_merge_bones_with_vgroups")
 
     def draw_pose(self, col, context):
         col.label(text="Armature editing operators:")
 
         row = col.row()
-        row.operator("armature.ARSENAL_swap_bones_weights")
+        row.operator("armature.arsenal_swap_bones_weights")
 
         row = col.row()
-        row.operator("armature.ARSENAL_merge_bones_with_vgroups")
+        row.operator("armature.arsenal_merge_bones_with_vgroups")
 
     def draw(self, context):
         layout = self.layout

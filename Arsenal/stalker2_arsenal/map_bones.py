@@ -40,8 +40,9 @@ def remove_mapping(mapping, anim = False):
 class BoneMapping(object):
     """Map bones names from different rigs"""
 
-    def __init__(self, name, reverse):
-        data = load_mapping(name)
+    def __init__(self, name, reverse, data=None):
+        if data is None:
+            data = load_mapping(name)
         mapping = {}
         for key, value in data:
             if reverse:

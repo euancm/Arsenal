@@ -13,7 +13,7 @@ Blender 5.2.2 is the minimum supported version. See the [development plan](../PL
 Use the **STALKER 2** tab in the 3D View sidebar:
 
 1. **Import Assets**: choose the STALKER 2 folder containing `Animations/Player` and `Animations/Weapons`, create the base skeleton, then scan and import matching animation pairs.
-2. **Mapping Setup**: generate a source-to-Rigify mapping, fill any blank source entries, and add mappings for an appended `Weapon` armature when present; edits save automatically.
+2. **Mapping Setup**: generate a source-to-Rigify mapping, fill any blank source entries, and add mappings for an appended `Weapon` armature when present; the mapping is stored in the .blend file (and saved as a JSON preset) so it survives closing and reopening Blender.
 3. **Rig & Retarget**: convert the character by mapping and retarget the imported actions onto the character, weapon, and camera controls. Conversion merges an appended `Weapon` rig and keeps a hidden source backup for future retargeting.
 4. **Animation Tools**: bake or edit animation as needed.
 

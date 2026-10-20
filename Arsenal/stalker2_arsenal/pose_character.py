@@ -54,7 +54,7 @@ bones_to_pose = ['spine_fk','spine_fk.001','spine_fk.002','spine_fk.003','neck',
 ]
 class PoseCharacterOperator(bpy.types.Operator):
     """Pose character to mannequin pose"""
-    bl_idname = "pose.ARSENAL_pose_character"
+    bl_idname = "pose.arsenal_pose_character"
     bl_label = "Pose character to mannequin pose"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -107,7 +107,7 @@ class PoseCharacterOperator(bpy.types.Operator):
 
 class ApplyPoseOperator(bpy.types.Operator):
     """Apply pose as rest including meshes"""
-    bl_idname = "pose.ARSENAL_apply_pose"
+    bl_idname = "pose.arsenal_apply_pose"
     bl_label = "Apply pose"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -151,7 +151,7 @@ class ApplyPoseOperator(bpy.types.Operator):
 
 class SavePoseOperator(bpy.types.Operator):
     """Save pose"""
-    bl_idname = "pose.ARSENAL_save_pose"
+    bl_idname = "pose.arsenal_save_pose"
     bl_label = "Save pose"
     bl_options = {'REGISTER', 'UNDO'}
 

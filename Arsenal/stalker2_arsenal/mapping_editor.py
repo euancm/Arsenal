@@ -4,6 +4,7 @@ from . import preferences
 import os
 
 from . import map_bones, templates
+from . import bone_functions as b_fun
 
 oops = bpy.ops.object
 
@@ -19,7 +20,7 @@ def save_mapping_entries(ui):
 
 
 def update_mapping_entry(_self, context):
-    ui = context.window_manager.arsenal_ui
+    ui = context.scene.arsenal_ui
     save_mapping_entries(ui)
 
 
@@ -61,7 +62,7 @@ def get_bone_type(name):
     return None
 
 def get_bone_index(name):
-    res = re.findall('(\d+)', name)
+    res = re.findall(r'(\d+)', name)
     if not res:
         return None
     return int(res[-1])
@@ -191,7 +192,7 @@ def build_mapping_guesses(source_names, target_names):
 
 class GenerateMappingGuessOperator(bpy.types.Operator):
     """Generate a best-guess mapping from the active armature."""
-    bl_idname = "object.ARSENAL_generate_mapping_guess"
+    bl_idname = "object.arsenal_generate_mapping_guess"
     bl_label = "Guess mapping from armature"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -213,15 +214,19 @@ class GenerateMappingGuessOperator(bpy.types.Operator):
             [bone.name for bone in armature.bones], target_names)
         source_by_target = {target: source for source, target in guesses.items()}
 
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         ui.edit_mapping = True
-        base_name = re.sub(r'[^A-Za-z0-9_-]+', '_', context.object.name).strip('_').lower()
-        base_name = (base_name or 'armature') + '_to_rigify'
-        mapping_name = base_name
-        suffix = 2
-        while map_bones.has_mapping(mapping_name):
-            mapping_name = f'{base_name}_{suffix}'
-            suffix += 1
+        if ui.active_mapping and map_bones.has_mapping(ui.active_mapping):
+            # Repeating the guess rebuilds the current mapping instead of piling up new presets.
+            mapping_name = ui.active_mapping
+        else:
+            base_name = re.sub(r'[^A-Za-z0-9_-]+', '_', context.object.name).strip('_').lower()
+            base_name = (base_name or 'armature') + '_to_rigify'
+            mapping_name = base_name
+            suffix = 2
+            while map_bones.has_mapping(mapping_name):
+                mapping_name = f'{base_name}_{suffix}'
+                suffix += 1
 
         ui.mapping_entries.clear()
         ui.loading_mapping = True
@@ -249,9 +254,157 @@ class GenerateMappingGuessOperator(bpy.types.Operator):
         return {'FINISHED'}
 
 
+WEAPON_TOKEN_SYNONYMS = {
+    'shutter': 'slide', 'titing': '', 'tilting': '', 'tilt': '', 'offset': 'weapon',
+    'mag': 'magazine', 'clip': 'magazine', 'casing': 'shell', 'cartridge': 'bullet',
+}
+WEAPON_IGNORED_TOKENS = {'jnt', 'joint', 'bone', 'ctrl', 'control'}
+
+
+def weapon_name_tokens(name):
+    name = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', name)
+    tokens = []
+    for token in re.findall(r'[a-z]+|\d+', name.lower()):
+        if token in WEAPON_IGNORED_TOKENS:
+            continue
+        token = WEAPON_TOKEN_SYNONYMS.get(token, token)
+        if token:
+            tokens.append(token)
+    return set(tokens)
+
+
+def build_weapon_guesses(source_names, weapon_names):
+    """Greedily pair weapon-rig bones with the best-matching source bones."""
+    source_tokens = {name: weapon_name_tokens(name) for name in source_names}
+    scored = []
+    for weapon_name in weapon_names:
+        weapon_tokens = weapon_name_tokens(weapon_name)
+        if not weapon_tokens:
+            continue
+        for source_name, tokens in source_tokens.items():
+            overlap = weapon_tokens & tokens
+            if overlap:
+                scored.append((len(overlap) / len(weapon_tokens | tokens), weapon_name, source_name))
+    scored.sort(key=lambda item: (-item[0], item[1], item[2]))
+
+    guesses = {}
+    used_sources = set()
+    for _score, weapon_name, source_name in scored:
+        if weapon_name in guesses or source_name in used_sources:
+            continue
+        guesses[weapon_name] = source_name
+        used_sources.add(source_name)
+    return guesses
+
+
+def find_weapon_rig(context, ui, exclude=None):
+    """The picked weapon rig, otherwise an armature with a root bone called 'Weapon'."""
+    picked = ui.weapon_rig
+    if picked and picked.type == 'ARMATURE' and picked != exclude:
+        return picked
+    from . import convert_to_rigify
+    return convert_to_rigify.find_weapon_armature(context, exclude, None)
+
+
+class SnapWeaponRigOperator(bpy.types.Operator):
+    """Move the weapon rig and its meshes so the 'Weapon' root bone sits on the character's jnt_offset."""
+    bl_idname = "object.arsenal_snap_weapon_rig"
+    bl_label = "Snap weapon rig to jnt_offset"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.space_data and context.space_data.type == 'VIEW_3D'
+
+    def execute(self, context):
+        from . import convert_to_rigify
+        ui = context.scene.arsenal_ui
+        weapon = find_weapon_rig(context, ui)
+        if weapon is None:
+            self.report({'ERROR'}, "No weapon rig found. Pick one, or use an armature with a root bone named 'Weapon'.")
+            return {'CANCELLED'}
+        source = context.object if context.object and context.object.type == 'ARMATURE' else None
+        if source is None or source == weapon or source.get('arsenal_retarget_backup', False):
+            source = next((
+                obj for obj in context.scene.objects
+                if obj.type == 'ARMATURE' and obj != weapon
+                and obj.get('stalker2_base_skeleton', False)
+            ), None)
+        if source is None:
+            self.report({'ERROR'}, 'Select the character armature first.')
+            return {'CANCELLED'}
+        try:
+            with b_fun.forced_pose_position(source, weapon):
+                delta = convert_to_rigify.snap_weapon_rig_to_socket(context, weapon, source)
+        except RuntimeError as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
+        self.report({'INFO'}, 'Moved weapon rig by ({:.3f}, {:.3f}, {:.3f})'.format(*delta))
+        return {'FINISHED'}
+
+
+class GenerateWeaponMappingGuessOperator(bpy.types.Operator):
+    """Add mapping entries pairing the weapon rig's bones with the character skeleton's weapon bones."""
+    bl_idname = "object.arsenal_generate_weapon_mapping_guess"
+    bl_label = "Guess weapon mapping from armature"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.space_data and context.space_data.type == 'VIEW_3D'
+
+    def execute(self, context):
+        ui = context.scene.arsenal_ui
+        weapon = find_weapon_rig(context, ui)
+        if weapon is None:
+            self.report({'ERROR'}, "No weapon rig found. Pick one, or use an armature with a root bone named 'Weapon'.")
+            return {'CANCELLED'}
+
+        source = context.object if context.object and context.object.type == 'ARMATURE' else None
+        if source is None or source == weapon or source.get('arsenal_retarget_backup', False):
+            source = next((
+                obj for obj in context.scene.objects
+                if obj.type == 'ARMATURE' and obj != weapon
+                and obj.get('stalker2_base_skeleton', False)
+            ), None)
+        if source is None:
+            self.report({'ERROR'}, 'Select the character armature first.')
+            return {'CANCELLED'}
+
+        weapon_names = [bone.name for bone in weapon.data.bones]
+        used_sources = {
+            entry.bone_from for entry in ui.mapping_entries
+            if entry.bone_from and entry.bone_to not in weapon_names
+        }
+        candidates = [bone.name for bone in source.data.bones if bone.name not in used_sources]
+        guesses = build_weapon_guesses(candidates, weapon_names)
+
+        ui.edit_mapping = True
+        existing = {entry.bone_to: entry for entry in ui.mapping_entries if entry.bone_to}
+        ui.loading_mapping = True
+        try:
+            for weapon_name in weapon_names:
+                entry = existing.get(weapon_name)
+                if entry is None:
+                    entry = ui.mapping_entries.add()
+                    entry.bone_to = weapon_name
+                if weapon_name in guesses:
+                    entry.bone_from = guesses[weapon_name]
+        finally:
+            ui.loading_mapping = False
+        save_mapping_entries(ui)
+
+        self.report(
+            {'INFO'},
+            f"Guessed {len(guesses)} of {len(weapon_names)} weapon bones from '{weapon.name}'. "
+            "Fill in any blank source entries."
+        )
+        return {'FINISHED'}
+
+
 class CreateMappingOperator(bpy.types.Operator):
     """Select two armatures. And set relations between bones."""
-    bl_idname = "object.ARSENAL_create_mapping"
+    bl_idname = "object.arsenal_create_mapping"
     bl_label = "Create mapping"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -276,7 +429,7 @@ class CreateMappingOperator(bpy.types.Operator):
             active_names, other_names = other_names, active_names
             guesses = reverse_guesses
 
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         ui.edit_mapping = True
         ui.new_mapping_name = 'new_mapping_name'
         mapping_entries = ui.mapping_entries
@@ -294,14 +447,14 @@ class CreateMappingOperator(bpy.types.Operator):
 
 class MappingRemoveEntryOperator(bpy.types.Operator):
     """Remove entry"""
-    bl_idname = "object.ARSENAL_mapping_remove_entry"
+    bl_idname = "object.arsenal_mapping_remove_entry"
     bl_label = "Remove entry"
     # bl_options = {'REGISTER', 'UNDO'}
 
     index: bpy.props.IntProperty()
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         mapping_entries = ui.mapping_entries
         mapping_entries.remove(self.index)
         save_mapping_entries(ui)
@@ -310,26 +463,26 @@ class MappingRemoveEntryOperator(bpy.types.Operator):
 
 class MappingAddEntryOperator(bpy.types.Operator):
     """Add entry"""
-    bl_idname = "object.ARSENAL_mapping_add_entry"
+    bl_idname = "object.arsenal_mapping_add_entry"
     bl_label = "Add entry"
     # bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         mapping_entries = ui.mapping_entries
         mapping_entries.add()
         return {'FINISHED'}
 
 class SaveMappingOperator(bpy.types.Operator):
     """Save mapping"""
-    bl_idname = "object.ARSENAL_save_mapping"
+    bl_idname = "object.arsenal_save_mapping"
     bl_label = "Owerwrite mapping?"
     # bl_options = {'REGISTER', 'UNDO'}
 
     # name: bpy.props.StringProperty()
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         mapping_entries = ui.mapping_entries
         data = [
             [entry.bone_from, entry.bone_to]
@@ -341,7 +494,7 @@ class SaveMappingOperator(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         if map_bones.has_mapping(ui.new_mapping_name):
             return context.window_manager.invoke_confirm(self, event)
         else:
@@ -349,14 +502,14 @@ class SaveMappingOperator(bpy.types.Operator):
 
 class RemoveMappingOperator(bpy.types.Operator):
     """Remove mapping"""
-    bl_idname = "object.ARSENAL_remove_mapping"
+    bl_idname = "object.arsenal_remove_mapping"
     bl_label = "Remove mapping?"
     # bl_options = {'REGISTER', 'UNDO'}
 
     # name: bpy.props.StringProperty()
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         map_bones.remove_mapping(ui.active_mapping)
         ui.reset_active_mapping()
         return {'FINISHED'}
@@ -367,7 +520,7 @@ class RemoveMappingOperator(bpy.types.Operator):
 
 class RenameArmatureOperator(bpy.types.Operator):
     """Rename armature by mapping"""
-    bl_idname = "armature.ARSENAL_rename_armature"
+    bl_idname = "armature.arsenal_rename_armature"
     bl_label = "Rename armature"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -377,14 +530,14 @@ class RenameArmatureOperator(bpy.types.Operator):
             and context.view_layer.objects.active)
 
     def execute(self, context):
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
         mapping = map_bones.BoneMapping(ui.active_mapping, ui.rename_reverse)
         mapping.rename_armature(context.object.data)
         return {'FINISHED'}
 
 class AddPrefixOperator(bpy.types.Operator):
     """Add prefix"""
-    bl_idname = "armature.ARSENAL_add_prefix"
+    bl_idname = "armature.arsenal_add_prefix"
     bl_label = "Add prefix"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -403,7 +556,7 @@ class AddPrefixOperator(bpy.types.Operator):
 
 class RemovePrefixOperator(bpy.types.Operator):
     """Remove prefix"""
-    bl_idname = "armature.ARSENAL_remove_prefix"
+    bl_idname = "armature.arsenal_remove_prefix"
     bl_label = "Remove prefix"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -425,14 +578,6 @@ class RemovePrefixOperator(bpy.types.Operator):
 
 class ARSENAL_IU_Props(bpy.types.PropertyGroup):
 
-
-    def update_edit_mapping(self, value):
-        if value:
-            self.load_active_mapping()
-            self.new_mapping_name = self.active_mapping
-
-    def update_active_mapping(self, value):
-        self.update_edit_mapping(self.edit_mapping)
 
     def load_active_mapping(self):
         data = map_bones.load_mapping(self.active_mapping)
@@ -462,18 +607,16 @@ class ARSENAL_IU_Props(bpy.types.PropertyGroup):
     def reset_active_mapping(self):
         self.active_mapping = map_bones.get_mappings(self, None)[0][0]
 
-    active_mapping: bpy.props.EnumProperty(
-        name = "Mapping",
-        description = "Saved mappings",
-        items = map_bones.get_mappings,
-        update = update_active_mapping,
-        default = None
-        )
+    # Stored on the scene so the mapping travels with the .blend file.
+    active_mapping: bpy.props.StringProperty(name = "Mapping")
 
-    edit_mapping: bpy.props.BoolProperty(
-        name = "Edit mapping",
-        default = False,
-        update = update_edit_mapping
+    edit_mapping: bpy.props.BoolProperty(name = "Edit mapping", default = False)
+
+    weapon_rig: bpy.props.PointerProperty(
+        name = "Weapon rig",
+        description = "Weapon armature to map. Leave empty to use an armature with a root bone named 'Weapon'",
+        type = bpy.types.Object,
+        poll = lambda self, obj: obj.type == 'ARMATURE' and not obj.data.get('rig_id')
         )
 
     new_mapping_name: bpy.props.StringProperty()
@@ -518,19 +661,23 @@ class ARSENAL_PT_BoneMappingsPanel(bpy.types.Panel):
             subcol = row.column()
             subcol.prop(e, 'bone_to',  text = '')
             subcol = row.column()
-            prop = subcol.operator('object.ARSENAL_mapping_remove_entry', icon = 'X', text = '')
+            prop = subcol.operator('object.arsenal_mapping_remove_entry', icon = 'X', text = '')
             prop.index = i
 
             i += 1
-        col.operator('object.ARSENAL_mapping_add_entry')
+        col.operator('object.arsenal_mapping_add_entry')
 
     def draw(self, context):
 
         layout = self.layout
         col = layout.column()
-        ui = context.window_manager.arsenal_ui
+        ui = context.scene.arsenal_ui
 
+        col.operator("object.arsenal_generate_mapping_guess", text='Guess mapping from armature')
+        col.separator()
+        col.prop(ui, 'weapon_rig')
+        col.operator("object.arsenal_generate_weapon_mapping_guess", text='Guess weapon mapping from armature')
+        col.operator("object.arsenal_snap_weapon_rig", text='Snap weapon rig to jnt_offset')
         if ui.edit_mapping:
+            col.separator()
             self.draw_mapping(col, ui)
-        else:
-            col.operator("object.ARSENAL_generate_mapping_guess", text='Guess mapping from armature')

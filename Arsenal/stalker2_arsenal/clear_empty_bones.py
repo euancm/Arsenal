@@ -19,7 +19,7 @@ def is_vgroup_empty(object, vg_name, check_vertices, delete_if_empty):
 
 class ClearEmptyBonesOperator(bpy.types.Operator):
     """Clear empty bones"""
-    bl_idname = "armature.ARSENAL_clear_empty_bones"
+    bl_idname = "armature.arsenal_clear_empty_bones"
     bl_label = "Clear empty bones"
     bl_options = {'REGISTER', 'UNDO'}
 

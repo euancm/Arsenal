@@ -1,9 +1,29 @@
 import math
 import bpy
 import re
+import contextlib
 
 oops = bpy.ops.object
 pops = bpy.ops.pose
+
+
+@contextlib.contextmanager
+def forced_pose_position(*objects):
+    """Evaluate armatures in Pose Position, restoring any 'Rest Position' on exit."""
+    saved = []
+    for obj in objects:
+        if obj is not None and obj.type == 'ARMATURE' and obj.data.pose_position != 'POSE':
+            saved.append((obj, obj.data.pose_position))
+            obj.data.pose_position = 'POSE'
+    try:
+        yield
+    finally:
+        for obj, position in saved:
+            try:
+                obj.data.pose_position = position
+            except ReferenceError:
+                pass
+
 
 def set_array_indices(array, indices):
     for i in range(len(array)):

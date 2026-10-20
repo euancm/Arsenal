@@ -6,11 +6,11 @@ Select the animated source armature and the generated Rigify rig, then run **Ret
 
 **Convert char by mapping** keeps a hidden copy of the original armature and model in the `Arsenal Retarget Backups` collection. To retarget again later, select only the generated Rigify rig and run **Retarget animation**; the operator finds and temporarily reveals its saved source automatically. You can also select a source armature and rig together to retarget a different source manually.
 
-Each source action is baked onto the Rigify controls as a separate action named `rig_<source action>`. For example, `reload` and `reload_tactical` become `rig_reload` and `rig_reload_tactical`. In Blender, an Action is assigned to the rig object; within the Action Editor, its channels are grouped by Rigify control bone. The source actions and the source armature's active action are preserved. Temporary helper bones and constraints are removed after baking.
+Each source action is baked onto the Rigify controls as a separate action with the same name as the source action (e.g. `reload`, `reload_tactical`). In Blender, an Action is assigned to the rig object; within the Action Editor, its channels are grouped by Rigify control bone. The original source actions are removed once baked (if they are kept, the baked ones get a `rig_` prefix). Temporary helper bones and constraints are removed after baking.
 
 Only bones animated by the source action produce motion on their mapped controls. For example, a reload clip that animates only the upper body will leave the spine and leg controls static.
 
-After retargeting, select the Rigify rig and choose the desired `rig_*` action in the Action Editor. **Set animation length** updates the scene range to cover the retargeted actions.
+After retargeting, select the Rigify rig and choose the desired action in the Action Editor. **Set animation length** updates the scene range to cover the retargeted actions.
 
 The built-in animation mapping targets UE mannequin bones and Rigify FK controls, plus `jnt_offset` to `Weapon` and `jnt_camera` to `Camera`. Custom weapon sub-control mappings are not currently available.
 

@@ -9,7 +9,7 @@ objOps = bpy.ops.object
 
 class AddKeyFrameOperator(bpy.types.Operator):
     """Add keyframe to retargeted animation"""
-    bl_idname = "anim.ARSENAL_add_keyframe"
+    bl_idname = "anim.arsenal_add_keyframe"
     bl_label = "add keyframe"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -31,7 +31,7 @@ class AddKeyFrameOperator(bpy.types.Operator):
 
 class BakeAnimationOperator(bpy.types.Operator):
     """Bake whole animation before export"""
-    bl_idname = "anim.ARSENAL_bake_animation"
+    bl_idname = "anim.arsenal_bake_animation"
     bl_label = "Bake animation for deform bones"
     bl_options = {'REGISTER', 'UNDO'}
 

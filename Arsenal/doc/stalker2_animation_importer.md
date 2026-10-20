@@ -35,8 +35,8 @@ It identifies files by filename stem, not by directory name:
 
 | Side | Prefix | Example | Pair key |
 | --- | --- | --- | --- |
-| Character | `AS_fp_udp_` | `AS_fp_udp_reload.FBX` | `reload` |
-| Weapon | `AS_udp_fp_` | `AS_udp_fp_reload.FBX` | `reload` |
+| Character | `AS_fp_<name>_` | `AS_fp_udp_reload.FBX` | `reload` |
+| Weapon | `AS_<name>_fp_` | `AS_udp_fp_reload.FBX` | `reload` |
 
 Matching is case-insensitive. Suffixes are compared after `casefold()`, and the character-side spelling is used for the generated action name. Matching suffixes present on both sides form pairs. A suffix with more than one file on either side is ambiguous and skipped. A suffix found on only one side is reported and skipped.
 
@@ -157,9 +157,12 @@ For automated tests, run Blender with `--background --factory-startup --python-e
 
 ## Known Limitations
 
-- Only the `udp` first-person filename prefixes are recognized.
+- Enter the weapon name in the **Weapon name** field first; files are matched as `AS_fp_<name>_*` and `AS_<name>_fp_*`.
 - The base builder uses the idle pair and assumes its character rig includes `jnt_camera`.
 - The generated rig is a same-name skeleton join, not a general skeleton merge or retargeting system.
 - Shared animated bones are resolved by source order, with the character source taking precedence.
 - There is no import-selected UI, weapon mesh import, attachment setup, material setup, or export workflow.
 - Blender 5.2.2 is the minimum supported and verified runtime.
+
+
+Note: weapon-rig root motion (`jnt_offset`) is now baked in world space so aim poses (`idle_aim`, `aim_to_idle`, `idle_to_aim`) align. Re-import animations imported with older versions.

@@ -10,7 +10,7 @@ aops = bpy.ops.armature
 
 class ResetRigifyOperator(bpy.types.Operator):
     """Remove one click rig skeleton from the rigify rig"""
-    bl_idname = "object.ARSENAL_reset_rigify"
+    bl_idname = "object.arsenal_reset_rigify"
     bl_label = "Reset rigify"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -59,7 +59,7 @@ class ResetRigifyOperator(bpy.types.Operator):
 
 class ApplyScaleRigifyOperator(bpy.types.Operator):
     """Applys scale to rigify rig"""
-    bl_idname = "object.ARSENAL_apply_scale_rigify"
+    bl_idname = "object.arsenal_apply_scale_rigify"
     bl_label = "Apply scale to rigify"
     bl_options = {'REGISTER', 'UNDO'}
 

@@ -54,7 +54,7 @@ def count_spine_len(rig):
 
 class AddUnrealSkeletonOperator(bpy.types.Operator):
     """Add unreal skeleton to rigify rig"""
-    bl_idname = "object.ARSENAL_add_unreal_skeleton"
+    bl_idname = "object.arsenal_add_unreal_skeleton"
     bl_label = "Add unreal skeleton to rig"
     bl_options = {'REGISTER', 'UNDO'}
 

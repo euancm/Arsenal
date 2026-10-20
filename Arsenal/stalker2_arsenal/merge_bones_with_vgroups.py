@@ -24,7 +24,7 @@ def merge_vgroups(object, vg_from, vg_to):
 
 class MergeBonesOperator(bpy.types.Operator):
     """Merge bones"""
-    bl_idname = "armature.ARSENAL_merge_bones_with_vgroups"
+    bl_idname = "armature.arsenal_merge_bones_with_vgroups"
     bl_label = "Merge bones with vertex groups"
     bl_options = {'REGISTER', 'UNDO'}
 

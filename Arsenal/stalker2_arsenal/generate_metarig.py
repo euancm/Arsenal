@@ -139,6 +139,8 @@ def create_tentakle(spine_arr, source_armature, object, layer = 0):
     return bones, rigify_parameters
 
 EX_BONES = []
+# Set by the converter so a weapon rig with any object name is recognised.
+WEAPON_BONE_NAMES_OVERRIDE = None
 
 def create_bone_chain(spine_arr, source_armature, object, layer = 0):
     # print(spine_arr)
@@ -550,7 +552,7 @@ def detect_bone_chains(bones):
 
 class GenerateMetarigOperator(bpy.types.Operator):
     """Select an armature. Operator will create new metarig from the armature."""
-    bl_idname = "object.ARSENAL_generate_metarig"
+    bl_idname = "object.arsenal_generate_metarig"
     bl_label = "Generate metarig from armature"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -580,7 +582,8 @@ class GenerateMetarigOperator(bpy.types.Operator):
             if appended_weapon and appended_weapon.type == 'ARMATURE'
             else []
         )
-
+        if WEAPON_BONE_NAMES_OVERRIDE is not None:
+            appended_weapon_bone_names = list(WEAPON_BONE_NAMES_OVERRIDE)
 
         # save_axises(source_armature)
 

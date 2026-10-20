@@ -36,7 +36,7 @@ _Stalker_2/weapons/pistol/p_udp
 
 You can go to these folders, put "udp" in the search bar and "checkout" the relevant files (remember to create a new mod first), then use Asset Actions > Bulk Export.
 This will maintain the expected folder structure.
-(note right now it's only set up for the UDP pistol)
+(the add-on works with any weapon: enter its name, e.g. UDP, AK74 or Malyuk, in the importer panel)
 
 ## Workflow
 

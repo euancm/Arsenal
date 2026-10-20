@@ -15,8 +15,15 @@ import re
 import bpy
 
 
-PLAYER_PREFIX = "AS_fp_udp_"
-WEAPON_PREFIX = "AS_udp_fp_"
+DEFAULT_WEAPON_NAME = "UDP"
+
+
+def _prefixes(weapon_name):
+    name = (weapon_name or "").strip()
+    if not name:
+        raise ValueError("Enter the weapon name (for example UDP, AK74 or Malyuk) first")
+    return f"AS_fp_{name}_", f"AS_{name}_fp_"
+
 ACTION_MARKER = "stalker2_animation_importer"
 BASE_MARKER = "stalker2_base_skeleton"
 BONE_PATH_PATTERN = re.compile(r'pose\.bones\["((?:[^"\\]|\\.)+)"\]')
@@ -37,7 +44,8 @@ def _collect_animations(folder, prefix):
     return found
 
 
-def _scan_library(root):
+def _scan_library(root, weapon_name):
+    player_prefix, weapon_prefix = _prefixes(weapon_name)
     animations_folder = root
     player_folder = os.path.join(animations_folder, "Player")
     weapon_folder = os.path.join(animations_folder, "Weapons")
@@ -48,8 +56,8 @@ def _scan_library(root):
     if not os.path.isdir(player_folder) or not os.path.isdir(weapon_folder):
         raise FileNotFoundError("Select the STALKER2 folder or its Animations folder, containing Player and Weapons")
 
-    player = _collect_animations(player_folder, PLAYER_PREFIX)
-    weapon = _collect_animations(weapon_folder, WEAPON_PREFIX)
+    player = _collect_animations(player_folder, player_prefix)
+    weapon = _collect_animations(weapon_folder, weapon_prefix)
     ambiguous = {key for key, paths in player.items() if len(paths) != 1}
     ambiguous.update(key for key, paths in weapon.items() if len(paths) != 1)
 
@@ -145,15 +153,16 @@ def _create_camera(armature):
     return camera
 
 
-def _create_base_skeleton(context, root):
+def _create_base_skeleton(context, root, weapon_name):
     existing_armatures = [obj for obj in context.scene.objects if obj.type == "ARMATURE"]
     if existing_armatures:
         raise RuntimeError("Base skeleton setup requires a blank scene with no armatures")
 
-    pairs, _, _, _ = _scan_library(root)
+    pairs, _, _, _ = _scan_library(root, weapon_name)
     idle_pair = next((pair for pair in pairs if pair[0].casefold() == "idle"), None)
     if idle_pair is None:
-        raise RuntimeError("Could not find the matching AS_fp_udp_idle.FBX and AS_udp_fp_idle.FBX files")
+        player_prefix, weapon_prefix = _prefixes(weapon_name)
+        raise RuntimeError(f"Could not find the matching {player_prefix}idle.FBX and {weapon_prefix}idle.FBX files")
 
     initial_objects = list(context.scene.objects)
     imported_objects = []
@@ -331,6 +340,15 @@ def _copy_bone_transforms(master, sources):
     if not claimed:
         raise RuntimeError("No animated bones matched the master armature")
 
+    # The weapon armature object is itself animated (it follows jnt_weapon), so its
+    # root bone (jnt_offset) must be copied in world space; local values lose that motion.
+    world_space = set()
+    for source, action in sources[1:]:
+        for name in _animated_bones(action, source, master):
+            if source.data.bones[name].parent is None:
+                claimed[name] = source
+                world_space.add(name)
+
     constraints = []
     try:
         for name, source in claimed.items():
@@ -338,8 +356,9 @@ def _copy_bone_transforms(master, sources):
             constraint.name = "STALKER 2 animation transfer"
             constraint.target = source
             constraint.subtarget = name
-            constraint.owner_space = "LOCAL"
-            constraint.target_space = "LOCAL"
+            space = "WORLD" if name in world_space else "LOCAL"
+            constraint.owner_space = space
+            constraint.target_space = space
             constraints.append((master.pose.bones[name], constraint))
     except Exception:
         _remove_constraints(constraints)
@@ -397,6 +416,7 @@ def _import_pair(context, master, pair):
     prior_mode = master.mode if master == prior_active else "OBJECT"
     baked_action = None
     baked_action_completed = False
+    original_scale = master.scale.copy()
 
     try:
         player_objects, player_actions, player_rig, player_action = _import_fbx(player_path)
@@ -407,6 +427,11 @@ def _import_pair(context, master, pair):
             master,
             ((player_rig, player_action), (weapon_rig, weapon_action)),
         )
+        # World-space copies need the master to share the imported objects' scale
+        # (the FBX importer scales objects by the scene unit scale). Baked values
+        # are armature-space, so this does not affect the result.
+        master.scale = weapon_rig.matrix_world.to_scale()
+        context.view_layer.update()
 
         if master.animation_data is None:
             master.animation_data_create()
@@ -435,6 +460,7 @@ def _import_pair(context, master, pair):
         baked_action_completed = True
         return baked_action
     finally:
+        master.scale = original_scale
         _remove_constraints(constraints)
         if animation_data_existed and master.animation_data is not None:
             master.animation_data.action = old_master_action
@@ -462,8 +488,13 @@ def _import_pair(context, master, pair):
 
 
 class STALKER2_AnimationImporterProperties(bpy.types.PropertyGroup):
+    weapon_name: bpy.props.StringProperty(
+        name="Weapon Name",
+        description="Weapon name as used in the exported file names, e.g. UDP, AK74 or Malyuk (AS_fp_<name>_*.FBX)",
+        default=DEFAULT_WEAPON_NAME,
+    )
     animation_root: bpy.props.StringProperty(name="Animation Root", subtype="DIR_PATH")
-    scan_summary: bpy.props.StringProperty(name="Scan", default="Choose the STALKER 2 root folder and scan.")
+    scan_summary: bpy.props.StringProperty(name="Scan", default="Enter the weapon name, choose the STALKER 2 folder and scan.")
 
 
 class STALKER2_OT_create_base_skeleton(bpy.types.Operator):
@@ -476,7 +507,7 @@ class STALKER2_OT_create_base_skeleton(bpy.types.Operator):
         settings = context.scene.stalker2_animation_importer
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
-            armature = _create_base_skeleton(context, root)
+            armature = _create_base_skeleton(context, root, settings.weapon_name)
         except Exception as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
@@ -494,8 +525,8 @@ class STALKER2_OT_scan_animations(bpy.types.Operator):
         settings = context.scene.stalker2_animation_importer
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
-            pairs, player_only, weapon_only, ambiguous = _scan_library(root)
-        except (OSError, TypeError) as error:
+            pairs, player_only, weapon_only, ambiguous = _scan_library(root, settings.weapon_name)
+        except (OSError, TypeError, ValueError) as error:
             settings.scan_summary = str(error)
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
@@ -520,8 +551,8 @@ class STALKER2_OT_import_animations(bpy.types.Operator):
 
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
-            pairs, player_only, weapon_only, ambiguous = _scan_library(root)
-        except (OSError, TypeError) as error:
+            pairs, player_only, weapon_only, ambiguous = _scan_library(root, settings.weapon_name)
+        except (OSError, TypeError, ValueError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         settings.scan_summary = _scan_summary(pairs, player_only, weapon_only, ambiguous)
@@ -563,6 +594,7 @@ class STALKER2_PT_animation_importer(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         settings = context.scene.stalker2_animation_importer
+        layout.prop(settings, "weapon_name")
         layout.prop(settings, "animation_root")
         layout.operator("stalker2.create_base_skeleton", icon="ARMATURE_DATA")
         layout.operator("stalker2.scan_animations", icon="FILE_FOLDER")
