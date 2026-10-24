@@ -308,10 +308,15 @@ def get_finger_axis(armature, finger, suffix):
 
     return axis
 
+def finger_layer(suffix):
+    # Fingers.L and Fingers.R are collections 5 and 6; their detail collections are 7 and 8
+    return 5 if suffix == 'L' else 6
+
+
 def create_thumb(suffix, source_object, object, palm_coord, palm_normal):
     source_armature = source_object.data
     spine = ['thumb.01.' + suffix, 'thumb.02.' + suffix, 'thumb.03.' + suffix]
-    bones = create_bone_chain(spine, source_armature, object, layer = 5)
+    bones = create_bone_chain(spine, source_armature, object, layer = finger_layer(suffix))
     if not bones:
         return
     if suffix == 'R':
@@ -323,14 +328,14 @@ def create_thumb(suffix, source_object, object, palm_coord, palm_normal):
         vec = -z_axis.cross(bone.vector)
         b_fun.align_bone_x_axis(bone, vec)
 
-    params = save_rigify_type('thumb.01.' + suffix, 'limbs.super_finger', 6, 6)
+    params = save_rigify_type('thumb.01.' + suffix, 'limbs.super_finger', finger_layer(suffix) + 2, finger_layer(suffix) + 2)
     params['primary_rotation_axis'] = 'X'
 
 
 def create_finger(name, suffix, source_object, object, palm_coord, palm_normal):
     source_armature = source_object.data
     spine = [name + '.01.' + suffix, name + '.02.' + suffix, name + '.03.' + suffix]
-    bones = create_bone_chain(spine, source_armature, object, layer = 5)
+    bones = create_bone_chain(spine, source_armature, object, layer = finger_layer(suffix))
     if not bones:
         return
     if suffix == 'R':
@@ -341,7 +346,7 @@ def create_finger(name, suffix, source_object, object, palm_coord, palm_normal):
         vec = -z_axis.cross(bone.vector)
         b_fun.align_bone_x_axis(bone, vec)
 
-    params = save_rigify_type(name + '.01.' + suffix, 'limbs.super_finger', 6, 6)
+    params = save_rigify_type(name + '.01.' + suffix, 'limbs.super_finger', finger_layer(suffix) + 2, finger_layer(suffix) + 2)
     params['primary_rotation_axis'] = 'X'
 
 scene_scale = {
@@ -438,7 +443,7 @@ def create_palm_bones(suffix, source_armature, object):
             continue
 
         palm_bone = target_armature.edit_bones.new(name)
-        b_fun.assign_bone_to_layer(target_armature, palm_bone, 5)
+        b_fun.assign_bone_to_layer(target_armature, palm_bone, finger_layer(suffix))
         palm_bone.head = source_bone.head_local
         palm_bone.tail = source_bone.tail_local
         palm_bone.parent = target_armature.edit_bones.get(f'hand.{suffix}')
@@ -489,7 +494,7 @@ def create_weapon_master(source_armature, object, appended_weapon_bone_names=())
     weapon_bone.align_roll(source_bone.z_axis)
     weapon_bone.use_connect = False
     weapon_bone.parent = armature.edit_bones.get('root')
-    b_fun.assign_bone_to_layer(armature, weapon_bone, 19)
+    b_fun.assign_bone_to_layer(armature, weapon_bone, 21)
     saved_rigify_types['Weapon'] = {'rigify_type': 'basic.super_copy'}
     EX_BONES.append(source_bone.name)
     EX_BONES.extend(
@@ -511,7 +516,7 @@ def create_camera_control(source_armature, object):
     camera_bone.align_roll(source_bone.z_axis)
     camera_bone.use_connect = False
     camera_bone.parent = armature.edit_bones.get('root')
-    b_fun.assign_bone_to_layer(armature, camera_bone, 20)
+    b_fun.assign_bone_to_layer(armature, camera_bone, 22)
     saved_rigify_types['Camera'] = {'rigify_type': 'basic.super_copy'}
     EX_BONES.append(source_bone.name)
     return True
@@ -628,7 +633,7 @@ class GenerateMetarigOperator(bpy.types.Operator):
                 b_fun.align_bone_x_axis(bone, Vector((-1, 0, 0)))
 
             co, no = compute_palm(source_armature, 'L')
-            create_arm('L', source_armature, context.object, no, layer = 7)
+            create_arm('L', source_armature, context.object, no, layer = 9)
             create_palm_bones('L', source_armature, context.object)
 
             create_thumb('L', source_object, context.object, co, no)
@@ -639,7 +644,7 @@ class GenerateMetarigOperator(bpy.types.Operator):
             create_finger('f_pinky', 'L', source_object, context.object, co, no)
 
             co, no = compute_palm(source_armature, 'R')
-            create_arm('R', source_armature, context.object, no, layer = 10)
+            create_arm('R', source_armature, context.object, no, layer = 12)
             create_palm_bones('R', source_armature, context.object)
 
             create_thumb('R', source_object, context.object, co, no)
@@ -648,8 +653,8 @@ class GenerateMetarigOperator(bpy.types.Operator):
             create_finger('f_ring', 'R', source_object, context.object, co, no)
             create_finger('f_pinky', 'R', source_object, context.object, co, no)
 
-            create_leg('L', source_object, context.object, layer = 13)
-            create_leg('R', source_object, context.object, layer = 16)
+            create_leg('L', source_object, context.object, layer = 15)
+            create_leg('R', source_object, context.object, layer = 18)
         except Exception as e:
             self.report({'ERROR'}, e.args[0])
             return {'FINISHED'}
@@ -676,9 +681,9 @@ class GenerateMetarigOperator(bpy.types.Operator):
                 create_tentakle(c, source_armature, context.object, layer = 3 )
 
         if hasattr(context.object.data, 'layers'):
-            b_fun.set_array_indices(context.object.data.layers, [0, 3, 5, 7, 10, 13, 16])
+            b_fun.set_array_indices(context.object.data.layers, [0, 3, 5, 6, 9, 12, 15, 18])
         else:
-            visible_collections = {0, 3, 5, 7, 10, 13, 16}
+            visible_collections = {0, 3, 5, 6, 9, 12, 15, 18}
             for index, collection in enumerate(context.object.data.collections_all):
                 collection.is_visible = index in visible_collections
         oops.mode_set(mode = 'POSE')
@@ -698,8 +703,10 @@ def create_layers(arm):
             ('Face (Secondary)', 2, 3),
             ('Torso', 3, 3),
             ('Torso (Tweak)', 4, 4),
-            ('Fingers', 5, 6),
-            ('Fingers (Detail)', 6, 5),
+            ('Fingers.L', 5, 6),
+            ('Fingers.R', 5, 6),
+            ('Fingers.L (Detail)', 6, 5),
+            ('Fingers.R (Detail)', 6, 5),
             ('Arm.L (IK)', 7, 2),
             ('Arm.L (FK)', 8, 5),
             ('Arm.L (Tweak)', 9, 4),

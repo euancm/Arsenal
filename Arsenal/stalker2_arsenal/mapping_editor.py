@@ -289,6 +289,11 @@ def build_weapon_guesses(source_names, weapon_names):
 
     guesses = {}
     used_sources = set()
+    # Rigs built by Import Rigged Weapon keep the donor's names, so identical names always pair.
+    for weapon_name in weapon_names:
+        if weapon_name in source_tokens:
+            guesses[weapon_name] = weapon_name
+            used_sources.add(weapon_name)
     for _score, weapon_name, source_name in scored:
         if weapon_name in guesses or source_name in used_sources:
             continue
@@ -640,11 +645,16 @@ class ARSENAL_PT_BoneMappingsPanel(bpy.types.Panel):
     """
     Addon panel
     """
-    bl_label = '2. Mapping Setup'
+    bl_label = '3. Mapping Setup'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'STALKER 2'
-    bl_order = 1
+    bl_order = 2
+
+    @classmethod
+    def poll(cls, context):
+        # Mappings are generated automatically, so the editor is hidden.
+        return False
 
     def draw_mapping(self, col, ui):
         header = col.row()
@@ -673,11 +683,5 @@ class ARSENAL_PT_BoneMappingsPanel(bpy.types.Panel):
         col = layout.column()
         ui = context.scene.arsenal_ui
 
-        col.operator("object.arsenal_generate_mapping_guess", text='Guess mapping from armature')
-        col.separator()
-        col.prop(ui, 'weapon_rig')
-        col.operator("object.arsenal_generate_weapon_mapping_guess", text='Guess weapon mapping from armature')
-        col.operator("object.arsenal_snap_weapon_rig", text='Snap weapon rig to jnt_offset')
         if ui.edit_mapping:
-            col.separator()
             self.draw_mapping(col, ui)

@@ -15,10 +15,6 @@ if "bpy" in locals():
     importlib.reload(preferences)
     importlib.reload(weight_paint_toggle)
     importlib.reload(place_bone_to_vertex)
-    importlib.reload(merge_bones_with_vgroups)
-    importlib.reload(clear_empty_bones)
-    importlib.reload(arrange_bones)
-    importlib.reload(swap_bones_weights)
     importlib.reload(generate_metarig)
     importlib.reload(bind_rig_to_armature)
     importlib.reload(convert_to_rigify)
@@ -31,15 +27,19 @@ if "bpy" in locals():
     importlib.reload(templates)
     importlib.reload(animation)
     importlib.reload(stalker2_animation_importer)
-
+    importlib.reload(import_weapon)
+    importlib.reload(export_skeleton)
+    importlib.reload(export_static_mesh)
+    importlib.reload(export_animation)
+    importlib.reload(export_unreal)
+    importlib.reload(weapon_presets)
+    importlib.reload(weapon_cfg)
+    importlib.reload(debug_report)
+    importlib.reload(setup_panel)
 else:
     from . import preferences
     from . import weight_paint_toggle
     from . import place_bone_to_vertex
-    from . import merge_bones_with_vgroups
-    from . import clear_empty_bones
-    from . import arrange_bones
-    from . import swap_bones_weights
     from . import generate_metarig
     from . import bind_rig_to_armature
     from . import convert_to_rigify
@@ -52,23 +52,31 @@ else:
     from . import templates
     from . import animation
     from . import stalker2_animation_importer
-
+    from . import import_weapon
+    from . import export_skeleton
+    from . import export_static_mesh
+    from . import export_animation
+    from . import export_unreal
+    from . import weapon_presets
+    from . import weapon_cfg
+    from . import debug_report
+    from . import setup_panel
 import bpy
 
 classes = (
     stalker2_animation_importer.STALKER2_AnimationImporterProperties,
+    *setup_panel.CLASSES,
+    *import_weapon.CLASSES,
+    stalker2_animation_importer.STALKER2_PT_animation_importer_help,
     stalker2_animation_importer.STALKER2_OT_create_base_skeleton,
     stalker2_animation_importer.STALKER2_OT_scan_animations,
     stalker2_animation_importer.STALKER2_OT_import_animations,
+    stalker2_animation_importer.STALKER2_OT_import_weapon,
     stalker2_animation_importer.STALKER2_PT_animation_importer,
     # preferences.RigToolsPreferences,
     # preferences.BoilerplatePreferencesAddKeymapOperator,
     weight_paint_toggle.WeightPaintToggleOperator,
     place_bone_to_vertex.PlaceBoneToVertexOperator,
-    merge_bones_with_vgroups.MergeBonesOperator,
-    clear_empty_bones.ClearEmptyBonesOperator,
-    arrange_bones.ArrangeBonesOperator,
-    swap_bones_weights.SwapBonesWeightsOperator,
     generate_metarig.GenerateMetarigOperator,
     bind_rig_to_armature.BindRigifyToArmatureOperator,
     bind_rig_to_armature.FixTwistBonesOperator,
@@ -104,15 +112,19 @@ classes = (
     pose_character.PoseCharacterOperator,
     pose_character.ApplyPoseOperator,
     pose_character.SavePoseOperator,
-
+    *export_animation.CLASSES,
+    *export_unreal.CLASSES,
+    *weapon_cfg.CLASSES,
+    *debug_report.CLASSES,
 )
 
 def vertex_menu_draw(self, context):
     layout = self.layout
-    if PlaceBoneToVertexOperator.poll(context):
+    operator = place_bone_to_vertex.PlaceBoneToVertexOperator
+    if operator.poll(context):
         layout.separator()
         layout.operator_context = "INVOKE_DEFAULT"
-        layout.operator(PlaceBoneToVertexOperator.bl_idname, text = PlaceBoneToVertexOperator.bl_label)
+        layout.operator(operator.bl_idname, text = operator.bl_label)
 
 def vertext_context_menu_func(self, context):
     if tuple(context.scene.tool_settings.mesh_select_mode) != (True, False, False):
@@ -127,7 +139,9 @@ def register():
     bpy.types.Scene.stalker2_animation_importer = bpy.props.PointerProperty(
         type = stalker2_animation_importer.STALKER2_AnimationImporterProperties
     )
-    # version = ".".join(str(x) for x in bl_info["version"])
+    bpy.types.Scene.arsenal_export = bpy.props.PointerProperty(type = export_animation.ARSENAL_ExportProps)
+    bpy.types.Scene.arsenal_cfg = bpy.props.PointerProperty(type = weapon_cfg.ARSENAL_WeaponCfg)
+    bpy.types.Scene.arsenal_setup = bpy.props.PointerProperty(type = setup_panel.ARSENAL_SetupProps)
 
     bpy.types.Scene.arsenal_ui = bpy.props.PointerProperty(type = mapping_editor.ARSENAL_IU_Props)
     preferences.register_keymaps()
@@ -136,7 +150,9 @@ def register():
 
 def unregister():
     del bpy.types.Scene.stalker2_animation_importer
-
+    del bpy.types.Scene.arsenal_export
+    del bpy.types.Scene.arsenal_cfg
+    del bpy.types.Scene.arsenal_setup
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 

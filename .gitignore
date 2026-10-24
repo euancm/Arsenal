@@ -6,3 +6,5 @@ __pycache__/
 # Local extracted game assets and imported Blender test scenes
 /Arsenal/Source FBX Files/
 /Arsenal/*.blend
+survey_output/
+/Content/*

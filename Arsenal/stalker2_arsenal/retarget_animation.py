@@ -135,6 +135,34 @@ def action_slot_curves(action, slot):
     return curves
 
 
+CLEAN_THRESHOLD = 0.001
+
+
+def clean_action(action, slot, threshold=CLEAN_THRESHOLD):
+    """Drop keyframes that sit within the threshold of both neighbours, like Clean Keyframes.
+    First and last keys are kept so the action length is unchanged. Returns the number removed."""
+    removed = 0
+    for fcurve in action_slot_curves(action, slot):
+        points = fcurve.keyframe_points
+        count = len(points)
+        if count < 3:
+            continue
+        values = [point.co[1] for point in points]
+        redundant = []
+        previous = values[0]
+        for index in range(1, count - 1):
+            if abs(values[index] - previous) <= threshold and abs(values[index] - values[index + 1]) <= threshold:
+                redundant.append(index)
+            else:
+                previous = values[index]
+        for index in reversed(redundant):
+            points.remove(points[index], fast=True)
+        if redundant:
+            fcurve.update()
+            removed += len(redundant)
+    return removed
+
+
 def collect_source_actions(source_armature, mapping, action_names=None):
     mapped_source_names = {source_name for _, source_name, _ in mapping}
     source_actions = []
@@ -323,6 +351,7 @@ def _retarget_animation_actions(context, source_armature, rig, mapping,
                 context, source_armature, rig, mapping, source_action,
                 slot, frame_start, frame_end)
             output_actions.append(action)
+            clean_action(action, action_slot)
             baked_actions[source_action] = (action, action_slot)
 
         desired_action = baked_actions.get(original_source_action)

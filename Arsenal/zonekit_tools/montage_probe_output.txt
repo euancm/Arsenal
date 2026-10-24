@@ -1,0 +1,49 @@
+/MouseMod: 46 montages, 71 sequences
+  OK    duplicate /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/AttachMag/MG_fp_mousegun_mag_base_attach: <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeMontage.ZZ_ProbeMontage' (0x00000568A344F500) Class 'AnimMontage'>
+  OK    duplicate /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Additive/AS_fp_mousegun_idle_add: <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeSeqA.ZZ_ProbeSeqA' (0x0000056A2F1ABA00) Class 'AnimSequence'>
+  OK    duplicate /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Additive/AS_fp_mousegun_idle_aim_add: <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeSeqB.ZZ_ProbeSeqB' (0x0000056AAFE0DE00) Class 'AnimSequence'>
+scratch montage copy of /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/AttachMag/MG_fp_mousegun_mag_base_attach; test sequences /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Additive/AS_fp_mousegun_idle_add and /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Additive/AS_fp_mousegun_idle_aim_add
+1. Montage properties
+  class AnimMontage; attributes: blend_mode_in, blend_mode_out, blend_profile_in, blend_profile_out, create_slot_animation_as_dynamic_montage_with_blend_settings, get_anim_pose_at_frame, get_anim_pose_at_time, get_blend_in_args, get_blend_out_args, get_default_blend_in_time, get_default_blend_out_time, get_first_anim_reference, get_num_sections, get_section_index, get_section_name, is_valid_additive_slot, is_valid_section_name
+  FAIL  get_editor_property("slot_anim_tracks"): Exception: AnimMontage: Failed to find property 'slot_anim_tracks' for attribute 'slot_anim_tracks' on 'AnimMontage'
+  FAIL  get_editor_property("composite_sections"): Exception: AnimMontage: Failed to find property 'composite_sections' for attribute 'composite_sections' on 'AnimMontage'
+  FAIL  get_editor_property("notifies"): Exception: AnimMontage: Property 'Notifies' for attribute 'notifies' on 'AnimMontage' is protected and cannot be read
+  OK    get_editor_property("blend_in"): <Struct 'AlphaBlend' (0x00000568A344F6F8) {}>
+  OK    get_editor_property("blend_out"): <Struct 'AlphaBlend' (0x00000568A344F730) {}>
+  OK    get_editor_property("sequence_length"): 3.5333333015441895
+  OK    get_editor_property("rate_scale"): 1.0
+  OK    get_first_anim_reference(): <Object '/Game/_STALKER2/Animations/Player/AnimSequences/pt/udp/AttachMag/AS_fp_udp_mag_base_attach.AS_fp_udp_mag_base_attach' (0x0000056C11AA0000) Class 'AnimSequence'>
+2. export_text / import_text on the montage
+  montage has export_text: False
+  montage has import_text: False
+  montage has copy_properties_for_unrelated_objects: False
+  unreal.EditorAssetLibrary text-like functions: 
+  unreal.ObjectTools-like classes: ReimportTextureFactory
+3. AnimMontageFactory
+  unreal.AnimMontageFactory exists: True
+  factory attributes: source_animation, target_skeleton
+  OK    factory.set_editor_property("source_animation"): None
+  OK    create_asset(ZZ_ProbeFromFactory): <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeFromFactory.ZZ_ProbeFromFactory' (0x00000568A3445080) Class 'AnimMontage'>
+  OK    new montage first anim reference: <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeSeqA.ZZ_ProbeSeqA' (0x0000056A2F1ABA00) Class 'AnimSequence'>
+  FAIL  new montage slot_anim_tracks readable: Exception: AnimMontage: Failed to find property 'slot_anim_tracks' for attribute 'slot_anim_tracks' on 'AnimMontage'
+4. consolidate_asset_duplicates
+  signature help: X.consolidate_asset_duplicates(asset) -> bool
+GSC{
+
+Args:
+    asset (Object): 
+
+Returns:
+    bool:
+  OK    montage references before: <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeSeqA.ZZ_ProbeSeqA' (0x0000056A2F1ABA00) Class 'AnimSequence'>
+  FAIL  consolidate_asset_duplicates(new, [old]): TypeError: consolidate_asset_duplicates() takes at most 1 argument (2 given)
+  OK    montage references after: <Object '/MouseMod/ZZ_ArsenalProbe/ZZ_ProbeSeqA.ZZ_ProbeSeqA' (0x0000056A2F1ABA00) Class 'AnimSequence'>
+  reference changed to the new sequence: False
+5. Other candidates in the unreal module
+  AnimMontage, AnimMontageFactory, AnimNotify_GSCPlayMontageNotify, AnimNotify_GSCPlayMontageNotifyWindow, AnimNotify_PlayMontageNotify, AnimNotify_PlayMontageNotifyWindow, MontageBlendMode, MontageBlendSettings, MontageDatabaseComponent, MontageNotifyTickType, MontagePlayReturnType, MontageSection, OnAllMontageInstancesEndedMCDelegate, OnMontageBlendedInEndedMCDelegate, OnMontageBlendingOutStartedMCDelegate, OnMontageEndedMCDelegate, OnMontagePlayDelegate, OnMontageStartedMCDelegate, OnSingleMontageEnded, PlayMontageAnimNotifyDelegate, PlayMontageCallbackProxy, PoseSearchDatabaseAnimMontage, PoseSearchDatabaseAnimMontageEx
+  AssetTools: find_soft_references_to_object, migrate_packages
+  AnimationLibrary-like classes: AnimationLibrary
+  unreal.AnimationLibrary: acquire_editor_element_handle, add_animation_notify_event, add_animation_notify_event_object, add_animation_notify_state_event, add_animation_notify_state_event_object, add_animation_notify_track, add_animation_sync_marker, add_curve, add_float_curve_key, add_float_curve_keys, add_meta_data, add_meta_data_object, add_node_asset_override, add_transformation_curve_key, add_transformation_curve_keys, add_vector_curve_key, add_vector_curve_keys, add_virtual_bone, call_method, cast, contains_meta_data_of_class, copy_anim_notifies_from_sequence, copy_animation_curve_names_to_skeleton, does_bone_name_exist, does_curve_exist, evaluate_bone_timecode_and_slate_attributes_at_time, evaluate_root_bone_timecode_attributes_at_time, evaluate_root_bone_timecode_subframe_attribute_at_time, extract_root_track_transform, finalize_bone_animation, find_bone_path_to_root, get_additive_animation_type, get_additive_base_pose_type, get_anim_notify_event_duration, get_anim_notify_event_trigger_time, get_animation_curve_names, get_animation_graphs, get_animation_interpolation_type, get_animation_notify_event_names, get_animation_notify_events, get_animation_notify_events_for_track, get_animation_notify_track_names, get_animation_sync_markers, get_animation_sync_markers_for_track, get_animation_track_names, get_bone_compression_settings, get_bone_pose_for_frame, get_bone_pose_for_time, get_bone_poses_for_frame, get_bone_poses_for_time, get_class, get_curve_compression_settings, get_default_object, get_editor_property, get_float_keys, get_float_value_at_time, get_fname, get_frame_at_time, get_full_name, get_meta_data, get_meta_data_of_class, get_montage_slot_names, get_name, get_nodes_of_class, get_num_frames, get_num_keys, get_outer, get_outermost, get_package, get_path_name, get_rate_scale, get_raw_track_data, get_raw_track_position_data, get_raw_track_rotation_data, get_raw_track_scale_data, get_root_motion_lock_type, get_sequence_length, get_time_at_frame, get_transformation_keys, get_typed_outer, get_unique_marker_names, get_variable_frame_stripping_settings, get_vector_keys, get_world, is_editor_property_overridden, is_package_external, is_root_motion_enabled, is_root_motion_lock_forced, is_valid_anim_notify_track_name, is_valid_animation_sync_marker_name, is_valid_raw_animation_track_name, is_valid_time, modify, remove_all_animation_notify_tracks, remove_all_animation_sync_markers, remove_all_bone_animation, remove_all_curve_data, remove_all_meta_data, remove_all_virtual_bones, remove_animation_notify_events_by_name, remove_animation_notify_events_by_track, remove_animation_notify_track, remove_animation_sync_markers_by_name, remove_animation_sync_markers_by_track, remove_bone_animation, remove_curve, remove_meta_data, remove_meta_data_of_class, remove_virtual_bone, remove_virtual_bones, rename, replace_anim_notifies, replace_anim_notify_states, reset_editor_property, set_additive_animation_type, set_additive_base_pose_type, set_animation_interpolation_type, set_bone_compression_settings, set_curve_compression_settings, set_editor_properties, set_editor_property, set_is_root_motion_lock_forced, set_rate_scale, set_root_motion_enabled, set_root_motion_lock_type, set_variable_frame_stripping_settings, static_class
+  classes mentioning Mod and Anim: 
+Cleaning up scratch assets
+  OK    delete scratch folder: True

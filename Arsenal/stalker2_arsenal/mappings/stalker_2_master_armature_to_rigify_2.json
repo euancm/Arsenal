@@ -268,27 +268,43 @@
     "Weapon"
   ],
   [
+    "jnt_magazine_tab",
+    "jnt_magazine_tab"
+  ],
+  [
     "jnt_shutter",
-    "Slide"
+    "jnt_shutter"
+  ],
+  [
+    "jnt_safety",
+    "jnt_safety"
   ],
   [
     "jnt_trigger",
-    "Trigger"
+    "jnt_trigger"
   ],
   [
     "jnt_titing_barrel",
-    "Barrel"
+    "jnt_titing_barrel"
   ],
   [
     "jnt_magazine",
-    "Magazine"
-  ],
-  [
-    "jnt_bullet_shell",
-    "Shell"
+    "jnt_magazine"
   ],
   [
     "jnt_bullet",
-    "Bullet"
+    "jnt_bullet"
+  ],
+  [
+    "jnt_bullet_shell",
+    "jnt_bullet_shell"
+  ],
+  [
+    "jnt_hummer",
+    "jnt_hummer"
+  ],
+  [
+    "jnt_lock",
+    "jnt_lock"
   ]
 ]

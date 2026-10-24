@@ -137,7 +137,17 @@ Check character and finger motion; weapon, magazine, slide, and trigger controls
 
 Small: one helper (`snap_weapon_rig_to_socket`), one operator and button, one call from the conversion operator, plus the warnings above. Update `doc/converting_to_rigify.md` and the README: authors should create the weapon rig in the new weapon's native ZoneKit frame, with its root bone named `Weapon`.
 
-### 7. Export edited animations back to STALKER 2 FBX files (planned, not started)
+### 7. Export edited animations back to STALKER 2 FBX files (implemented)
+
+**Status: implemented in `export_animation.py`.** The text below is the original plan, kept for reference. Differences in the final design:
+
+- Metadata and legacy-rebuild stages were not needed: each export freshly imports the template FBX pair from the library (the same-named pair, else `idle`, or a per-action override) and keeps its skeleton and unmapped-bone animation.
+- Mapped bones are reverse-retargeted from the evaluated rig. Limb controls (`*_fk` thigh, shin, foot, upper arm, forearm, hand) are read from their `ORG-` bones so IK edits are exported; everything else is read from the control. Reading `ORG-` for the spine breaks the result.
+- `rot` mappings only transfer rotation (as in the forward retarget); location and scale come from the template, so a rig with different proportions never changes the game skeleton.
+- Weapon file: the object transform follows `jnt_weapon`; `jnt_offset` and mapped weapon bones come from the rig; the duplicate `jnt_l_hand`/`jnt_r_hand` copy the player's hands.
+- Blender exporter settings that reproduce the originals: `armature_nodetype='ROOT'`, `global_scale=0.01`, `apply_unit_scale`, `FBX_SCALE_NONE`, forward `Y`, up `Z`, bone axes `Y`/`X`, no leaf bones, keys shifted to start at time 0. Scene unit scale is set to 1.0 during export and restored.
+- The new weapon name replaces the old one in folder names and file prefixes; Validate prints the target paths and refuses to write into the library.
+- Verified: unedited round trip within 0.001 cm for FK limbs and the weapon file; a lengthened new action (77 to 115 frames) with a folder override exports correctly. Known differences: `idle_aim` exports the aim-compensated weapon position (about 1.7 cm from the original FBX), and the old frame-1 retarget bug shows in actions retargeted before the fix. The weapon FBX keeps the original root node name (`jnt_wpn_udp`). ZoneKit acceptance still needs to be tested by the user.
 
 **Goal.** After editing the retargeted actions on the Rigify rig, produce one player FBX and one weapon FBX per action, named and structured like the originals (`AS_fp_<weapon>_<action>.FBX` and `AS_<weapon>_fp_<action>.FBX`), carrying the **original STALKER 2 skeletons** (bone names, hierarchy, units, axes) so ZoneKit can import them onto the game skeletons.
 
@@ -262,3 +272,109 @@ Yes
 - Retarget at least the reload workflow so character, weapon, and camera controls are editable in the resulting action.
 - Preserve source frame ranges and avoid missing keys, double transforms, and exploding transforms.
 - Keep the imported source backup available for later retargeting.
+
+
+
+
+Unreal Import process:
+Options
+A. Unreal Python import script (recommended)
+
+Add an export step that writes a small import_<weapon>.py, which you run once from the editor's Python console.
+It uses unreal.AssetImportTask and FbxImportUI to:
+import Animations\Player\... with the skeleton preset to SK_Stalker;
+import Animations\Weapons\... with the skeleton preset to SK_<Weapon>;
+import the AnimMesh and world meshes with the default settings;
+skip assets that already exist, or reimport them if you choose.
+
+We'll go with option A
+
+
+The skeleton question
+The weapon skeleton (SK_E9Gen7) is needed before the weapon animations can be imported.
+
+Needs checking: does it come from importing a skeletal mesh, or an existing SK_ asset like UDP's? If the weapon animation FBX can create its own skeleton, the script can do that too. I'd inspect the UDP assets in the editor to confirm.
+
+The skeletal mesh should actually be the very first step in the process - currently I manually rig the weapon, but it's possible to automate this completely.
+
+TODO:
+
+Process: Import SK_UDP (any mesh imported this way should be discarded)
+Import all "AnimMesh" files
+Move "AnimMesh" files to the relevant place (their origin -> matching bone)
+Automatically place custom bone shapes in the most relevant position
+I've created a library of custom bone shapes in a blend file called "Custom Bone Shape Library.blend"
+Currently it has only shapes relevant to a pistol but I will expand it in the future.
+
+
+Textures and materials
+Textures: the script could import PNGs with the right sRGB and normal-map flags, and name them to the game's convention.
+Materials: creating material instances from a parent such as MI_pm_base is possible through Python. It needs a mapping from material slot name to texture set. Blender already has slot names and image names, so the add-on could write a materials.json at export time and the script could read it.
+This is the biggest unknown, so it should be a second phase.
+Proposed phases
+Texture and material export from Blender into the output folder, with a manifest.json listing every file and its role.
+Import script generation for the animations and meshes.
+A skeleton and slot-matching pass, once I know how skeletons are set up.
+Material instance creation from the manifest.
+A docs page, "Importing into ZoneKit", with a one-line console command.
+
+Questions
+How does SK_E9Gen7 get created? From a skeletal mesh import, or by copying SK_udp?
+We will create it as the first step, see above.
+Which parent material do the weapon material instances use?
+MI_PBR_Weapons
+Where in the project should the assets be placed (the /Game/_Stalker_2/... tree, or your mod's own folder)?
+The assets should go directly into the mod folder.
+Is running a Python console command acceptable, or would you rather have a button or editor menu entry?
+A python command is good for now.
+
+
+1. What should the user have after the button is pressed? e.g. a ready weapon armature in Blender with bone shapes, AnimMesh parts parented to bones, and an exportable SK_<weapon> skeletal mesh FBX for Unreal.
+
+
+That's exactly correct.
+
+The user should input the Weapon Name, and the input for "Animation Root:" should be changed to "Exported Files:", and the user should select the folder that contains an exported "_STALKER2" and "_Stalker_2" folder.
+From there, the addon should find the AnimMesh/SM_wpn_*.FBX files and the SK_*.FBX file to use to build the rig.
+
+
+
+2. Where are SK_UDP (or another donor weapon's skeletal mesh FBX) and its AnimMesh FBXs kept? Which donor weapons should be offered (UDP only, PM, others)?
+
+For testing, all the files necessary should be available in the "Source FBX Files" folder
+Test with the UDP, but it should work with any weapon the user chooses by typing in the Weapon Name box.
+
+3. Should the rig always keep the donor's exact bone names and hierarchy (needed for the animations to match), with the user only moving or adding bones? Can extra bones be added, and should missing ones be an error?
+As far as possible they should keep the donors bone names, as this will make the "Guess Weapon mapping from armature" step obsolete.
+
+4. How are shapes in Custom Bone Shape Library.blend named, and how do they map to bones (by bone name, or a table you will supply)? What should happen to bones with no shape?
+Each shape is named customboneshape_shape, for example, customboneshape_slide
+They should map to bones as appropriately as possible based on their name, and the custom shapes should be scaled, translated and rotated to match the overall shape of the mesh they are applying to.
+Bones with no appropriate shape can stay as the blender default.
+Weapon bones should be coloured red so they are easier to see.
+
+5. Should the add-on also export a skeletal mesh FBX (rig plus a small dummy mesh, or the weapon mesh) so the Unreal script can create SK_<weapon>? Is the skeletal mesh meant to hold the real weapon mesh or be discarded as with SK_UDP?
+On export, the skeletal mesh should also be created.
+The skeletal mesh will only hold an armature and does not need any polygonal details.
+
+6. Origin-at-bone is the rule. Should the add-on then let the user replace each part with their own geometry, or are the donor parts only a visual guide to be deleted?
+Yes, once imported the user will be able to edit or replace parts as they wish. For example, they may want to import a shotgun model, then shorten the barrel and edit the animations.
+Alternatively, they may want to replace a model entirely.
+So the imported geometry should not be discarded, and may or may not be replaced by the user.
+
+
+7. Anything else
+Any other constraints, e.g. where the button lives in the UI or whether it must work before the animation import.
+
+This should be the first step in the process.
+The order goes
+
+1. User types weapon name
+2. User selects folder containing exported files
+3. "Import Rigged Weapon"
+4. Create Base Skeleton
+and from there the normal process.
+
+
+
+This feature replaces the manually created weapon rig that I have been appending from another file.

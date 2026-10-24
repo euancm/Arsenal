@@ -86,6 +86,17 @@ def show_all_layers(rig):
     return
 
 def show_layers(rig, animation_ready):
+    if not hasattr(rig.data, 'layers') and 'Fingers.L' in rig.data.collections_all:
+        # Generated rigs list their collections in Rigify's order, so go by name.
+        animation_layers = {'Face', 'Torso', 'Fingers.L', 'Fingers.R', 'Arm.L (IK)', 'Arm.R (IK)',
+                            'Leg.L (IK)', 'Leg.R (IK)', 'Weapon', 'Camera', 'Root'}
+        helper_layers = {'DEF', 'MCH', 'ORG', 'Hidden Helpers'}
+        for collection in rig.data.collections_all:
+            if animation_ready:
+                collection.is_visible = collection.name in animation_layers
+            else:
+                collection.is_visible = collection.name not in helper_layers
+        return
     visible_layers = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20, 28]
     if animation_ready:
         visible_layers = [0, 3, 5, 7, 10, 13, 16, 19, 20, 28]

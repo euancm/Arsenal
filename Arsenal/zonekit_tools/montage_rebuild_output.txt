@@ -1,0 +1,72 @@
+montage /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Reload/OneHand/MG_fp_mousegun_reload_increased_one_hand; replacement sequence /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Shoot/AS_fp_mousegun_shoot
+-- original (mod copy): /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Reload/OneHand/MG_fp_mousegun_reload_increased_one_hand.MG_fp_mousegun_reload_increased_one_hand
+  OK    slot names: ['MainActionSlot']
+  OK    sections: ['Default']
+  OK    sequence_length: 3.133333444595337
+  OK    skeleton: '/Game/_STALKER2/SkeletalMeshes/SK_stalker_Skeleton.SK_stalker_Skeleton'
+  OK    rate_scale: 1.0
+  OK    blend_in: "<Struct 'AlphaBlend' (0x0000056A2E49FA78) {}>"
+  OK    blend_out: "<Struct 'AlphaBlend' (0x0000056A2E49FAB0) {}>"
+  OK    first anim reference: '/Game/_STALKER2/Animations/Player/AnimSequences/pt/udp/Reload/OneHand/AS_fp_udp_reload_increased_one_hand.AS_fp_udp_reload_increased_one_hand'
+  OK    notify track names: ['1', '2', '3', 'MAE']
+  OK    notify events: [<Struct 'AnimNotifyEvent' (0x0000056AEE243800) {trigger_weight_threshold: 0.000010, notify_name: "MotionAudioEnveloper", notify: None, notify_state_class: "/Script/Stalker2.AnimNotifyState_MotionAudioEnveloper'/MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Reload/OneHand/MG_fp_mousegun_reload_increased_one_hand.MG_fp_mousegun_reload_increased_one_hand:AnimNotifyState_MotionAudioEnveloper_0'", montage_tick_type: Queued, notify_trigger_chance: 1.000000, not
+  event attributes: assign, can_be_filtered_via_request, cast, copy, export_text, get_editor_property, import_text, montage_tick_type, notify, notify_filter_lod, notify_filter_type, notify_name, notify_state_class, notify_trigger_chance, set_editor_properties, set_editor_property, static_struct, to_tuple, trigger_on_dedicated_server, trigger_on_follower, trigger_weight_threshold
+  FAIL  event: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  event: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  event: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  event: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  event: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  event: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  montage attributes: add_asset_user_data_of_class, add_transform_attribute, get_anim_pose_at_frame, get_anim_pose_at_time, get_asset_user_data_of_class, get_blend_in_args, get_blend_out_args, get_class, get_default_blend_in_time, get_default_blend_out_time, get_default_object, get_editor_property, get_first_anim_reference, get_fname, get_full_name, get_group_name, get_name, get_num_sections, get_outer, get_outermost, get_package, get_path_name, get_play_length, get_section_index, get_section_name, get_skeleton, get_typed_outer, get_world, set_editor_properties, set_editor_property, set_preview_skeletal_mesh
+original plays /Game/_STALKER2/Animations/Player/AnimSequences/pt/udp/Reload/OneHand/AS_fp_udp_reload_increased_one_hand.AS_fp_udp_reload_increased_one_hand
+A. Factory rebuild
+  OK    set target_skeleton: None
+  OK    create_asset: <Object '/MouseMod/ZZ_ArsenalProbe2/ZZ_Rebuilt.ZZ_Rebuilt' (0x0000056932331C00) Class 'AnimMontage'>
+-- rebuilt: /MouseMod/ZZ_ArsenalProbe2/ZZ_Rebuilt.ZZ_Rebuilt
+  OK    slot names: ['DefaultSlot']
+  OK    sections: ['Default']
+  OK    sequence_length: 0.13333334028720856
+  OK    skeleton: '/Game/_STALKER2/SkeletalMeshes/SK_stalker_Skeleton.SK_stalker_Skeleton'
+  OK    rate_scale: 1.0
+  OK    blend_in: "<Struct 'AlphaBlend' (0x0000056932331DF8) {}>"
+  OK    blend_out: "<Struct 'AlphaBlend' (0x0000056932331E30) {}>"
+  OK    first anim reference: '/MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Shoot/AS_fp_mousegun_shoot.AS_fp_mousegun_shoot'
+  OK    notify track names: ['1']
+  OK    notify events: []
+  montage attributes: add_asset_user_data_of_class, add_transform_attribute, get_anim_pose_at_frame, get_anim_pose_at_time, get_asset_user_data_of_class, get_blend_in_args, get_blend_out_args, get_class, get_default_blend_in_time, get_default_blend_out_time, get_default_object, get_editor_property, get_first_anim_reference, get_fname, get_full_name, get_group_name, get_name, get_num_sections, get_outer, get_outermost, get_package, get_path_name, get_play_length, get_section_index, get_section_name, get_skeleton, get_typed_outer, get_world, set_editor_properties, set_editor_property, set_preview_skeletal_mesh
+-- compare original vs rebuilt
+  DIFFERS slots: original ['MainActionSlot'] | rebuilt ['DefaultSlot']
+  same    sections: original ['Default'] | rebuilt ['Default']
+  DIFFERS length: original 3.133333444595337 | rebuilt 0.13333334028720856
+  same    skeleton: original '/Game/_STALKER2/SkeletalMeshes/SK_stalker_Skeleton.SK_stalker_Skeleton' | rebuilt '/Game/_STALKER2/SkeletalMeshes/SK_stalker_Skeleton.SK_stalker_Skeleton'
+  same    rate: original 1.0 | rebuilt 1.0
+  DIFFERS blend_in: original "<Struct 'AlphaBlend' (0x0000056A2E49FA78) {}>" | rebuilt "<Struct 'AlphaBlend' (0x0000056932331DF8) {}>"
+  DIFFERS blend_out: original "<Struct 'AlphaBlend' (0x0000056A2E49FAB0) {}>" | rebuilt "<Struct 'AlphaBlend' (0x0000056932331E30) {}>"
+  DIFFERS first: original '/Game/_STALKER2/Animations/Player/AnimSequences/pt/udp/Reload/OneHand/AS_fp_udp_reload_increased_one_hand.AS_fp_udp_reload_increased_one_hand' | rebuilt '/MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Shoot/AS_fp_mousegun_shoot.AS_fp_mousegun_shoot'
+  DIFFERS tracks: original ['1', '2', '3', 'MAE'] | rebuilt ['1']
+  DIFFERS events: original 6 | rebuilt 0
+B. Copying what the factory dropped
+  OK    add notify track 1: None
+  OK    add notify track 2: None
+  OK    add notify track 3: None
+  OK    add notify track MAE: None
+  FAIL  add_animation_notify_event_object: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  add_animation_notify_event_object: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  FAIL  add_animation_notify_event_object: Exception: AnimNotifyEvent: Failed to find property 'display_time' for attribute 'display_time' on 'AnimNotifyEvent'
+  OK    copy_anim_notifies_from_sequence(original, rebuilt): None
+  OK    events after copy: 1
+  OK    set blend_in: None
+  OK    set blend_out: None
+  OK    set rate_scale: None
+  FAIL  set slot_name: Exception: AnimMontage: Failed to find property 'slot_name' for attribute 'slot_name' on 'AnimMontage'
+  FAIL  set slot_names: Exception: AnimMontage: Failed to find property 'slot_names' for attribute 'slot_names' on 'AnimMontage'
+  FAIL  set composite_sections: Exception: AnimMontage: Failed to find property 'composite_sections' for attribute 'composite_sections' on 'AnimMontage'
+  FAIL  set sections: Exception: AnimMontage: Failed to find property 'sections' for attribute 'sections' on 'AnimMontage'
+  OK    save rebuilt: True
+C. Dynamic montage with the original slot name, saved as an asset
+  FAIL  create_slot_animation_as_dynamic_montage_with_blend_settings: AttributeError: 'AnimSequence' object has no attribute 'create_slot_animation_as_dynamic_montage_with_blend_settings'
+D. Duplicate then replace_anim notifies helpers and slot setters
+  AnimationLibrary set_/replace_ names: replace_anim_notifies, replace_anim_notify_states, set_additive_animation_type, set_additive_base_pose_type, set_animation_interpolation_type, set_bone_compression_settings, set_curve_compression_settings, set_editor_properties, set_editor_property, set_is_root_motion_lock_forced, set_rate_scale, set_root_motion_enabled, set_root_motion_lock_type, set_variable_frame_stripping_settings
+  unreal classes mentioning slot: AnimGraphNode_Slot, AnimNode_Slot, AnsverSlotPaddingType, AttachSelectorSlot, AttachSlotState, BackgroundBlurSlot, BlockSlot, BorderSlot, ButtonSlot, CampaignSlotButton, CampaignSlotsSubView, CanvasPanelSlot, CharacterStatSlot, CommonVisibilitySwitcherSlot, CustomGridSlot, CustomSimplifiedGridSlot, EntryPointSlotButton, EquipmentItemSlot, EquipmentSlot, EquipmentSlots, FireTypeSlotSettings, FireTypeSlotType, GameViewportWidgetSlot, GridSlot, HorizontalBoxSlot, InteractableItemSlotBaseWidget, InventoryEquipmentSlot, ItemSelectorEquipSlot, ItemSelectorSlot, ItemSelectorSlotBase, ItemSelectorSlotStateType, ItemSelectorWeaponSlot, ItemSlotBaseWidget, ItemSlotState, LayerSlotType, LoadGuardSlot, MeshGeneratorBodySlotEditor, MeshGeneratorMaterialSlotEditor, NamedSlot, NavigationSlotInterface
+Cleaning up scratch assets
+  OK    delete scratch folder: True

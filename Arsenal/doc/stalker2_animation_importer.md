@@ -13,12 +13,13 @@ Developer documentation for the importer module integrated into Stalker 2 Arsena
 ## Installation and Quick Start
 
 1. In Blender, install and enable **Stalker 2 Arsenal** from Preferences. The importer is included.
-2. Start from a new Blender scene. The base-skeleton operation requires that the scene contain no armatures.
-3. In **3D View > Sidebar > STALKER 2 > 1. Import Assets**, set **Animation Root** to either the `_STALKER2` directory or its `Animations` subdirectory.
-4. Click **Create Base Skeleton**. This imports the character and weapon idle FBXs, joins their rigs, retains the character mesh, and creates the camera.
-5. Click **Scan Animations** to see the number of matching pairs and any unmatched or ambiguous suffixes.
-6. Click **Import All** to build one action per matching pair.
-7. Save the `.blend` file after reviewing the generated actions and scene.
+2. Start from a new Blender scene. The base-skeleton operation requires that the scene contain no armatures other than an imported weapon rig.
+3. In **3D View > Sidebar > STALKER 2 > 1. Set Up**, choose the template, enter your weapon name, the ZoneKit mod name and a working folder, then run the generated ZoneKit setup script (see the README). That fills **Exported Files** (`<working folder>/ZoneKit Export`, the folder containing `_STALKER2` and `_Stalker_2`), the template animation name (for example `udp`, or `viper` for the SMG) and the template mesh name (`vip` for the SMG; empty when it matches the animation name).
+4. Click **Import Weapon** in panel 2. One click runs the whole setup: it imports `SK_<mesh name>.FBX` and the `AnimMesh/SM_*_<mesh name>_SM_*.FBX` parts (placed, weighted to their bones, joined into one mesh named after the donor; rename it to your new weapon, with bone shapes and red colours applied), creates the base skeleton and camera, imports every matching animation pair, guesses the character and weapon mappings and converts the character to a Rigify rig. Replace or edit the mesh and bones as needed.
+5. Retarget the animations from panel 3. Keyframes are cleaned automatically afterwards.
+6. Save the `.blend` file after reviewing the generated actions and scene.
+
+The individual operators (Import Rigged Weapon, Create Base Skeleton, Scan Animations, Import All, the guess buttons) still exist but are no longer shown in the panel. Fingers are in separate `Fingers.L` / `Fingers.R` bone collections (plus Detail collections).
 
 The tested workspace produced a 120-bone armature, one retained character mesh, one camera, and 32 animation actions. The supplied library also has four unmatched animations.
 
@@ -166,3 +167,18 @@ For automated tests, run Blender with `--background --factory-startup --python-e
 
 
 Note: weapon-rig root motion (`jnt_offset`) is now baked in world space so aim poses (`idle_aim`, `aim_to_idle`, `idle_to_aim`) align. Re-import animations imported with older versions.
+
+### Bone shapes
+
+Each weapon bone is given the library shape whose name words all appear in the bone name; the most specific shape wins (`jnt_magazine_tab` gets `customboneshape_pistol_magazinerelease`, not the plain magazine). Shapes are read from `stalker2_arsenal/shapes/weapon_bone_shapes.blend`: to add one, save a mesh named `customboneshape_<words>` into that file (class words like `pistol` are optional matches). Bones with no matching shape keep the default.
+
+
+## Attachments, sockets and textures
+
+The ZoneKit setup script also exports the magazine, silencer and laser meshes for the chosen template, the weapon's sockets (`weapon_sockets.json`) and the textures of every exported mesh's materials (`Textures/` and `materials.json`). Import Weapon brings the attachments in weighted to `jnt_magazine` (magazines) or the `Weapon` bone, with an Armature modifier, skips collision (`UCX_`) meshes and lower LODs, positions silencers and lasers at their socket when the socket file is present, and builds each material's image nodes from `materials.json`. Nanite meshes are exported with Nanite temporarily off so the full-detail mesh is written rather than the reduced fallback.
+
+Meshes import with smooth shading and their original hard edges (kept as Sharp Edge marks; the FBX custom normals are dropped so the mesh stays editable). If the FBX carries none, the edges on UV island boundaries are marked sharp. Textures named `rain` are skipped; an `RMA` texture goes through a Split Colour node (red to Roughness, green to Metallic). Import Weapon also fills the Magazines list (Detect Magazines); silencers, lasers and other accessories are never detected as magazines.
+
+All magazine meshes (default, increased/big/twin; full and empty) are exported from ZoneKit and imported; Detect Magazines names the standard one Default and the others Increased/Twin/Drum. Normal Map nodes are set to the DirectX convention.
+
+Montages: the ZoneKit setup script repoints the mod's montage copies to the renamed sequences with consolidate_assets (montage slot data cannot be edited from Python, and a montage rebuilt with AnimMontageFactory loses its slot name, notifies and length). Set repoint_montages to false in the script config to skip it.

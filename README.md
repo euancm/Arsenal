@@ -6,6 +6,10 @@ Based on and originally developed from: https://github.com/artempoletsky/blender
 This project began as a modified version of the original project and has since evolved to focus on STALKER 2 weapon import/export and animation workflows in Blender.
 Credit to [Artem Poletsky](https://github.com/artempoletsky) for the foundation on which this project was built. See [NOTICE.md](NOTICE.md).
 
+Further credits:
+- [tnebes/stalker2mods](https://github.com/tnebes/stalker2mods) - the modding guide behind the weapon config tooltips and CFG export.
+- [sdwvit/S2Mods](https://github.com/sdwvit/S2Mods/blob/master/.claude/skills/eng-localization/SKILL.md) - the localisation reference (text SIDs and the mod text asset format) behind the weapon name and description feature.
+
 This project is intended to be a solution to automatically import stalker 2 weapons from the Stalker 2 Zonekit into blender, making them simpler to work with a standard animation rig, allowing tweaks, replacements and other mods to be put together more simply. It will also allow automatic compilation of all the finished files needed to implement a custom weapon.
 
 ## Custom Pistol
@@ -27,27 +31,63 @@ See the [add-on guide](Arsenal/doc/arsenal.md) and the [development plan](Arsena
 
 ## Exporting your own source assets
 
-The extracted FBX files are not distributed with this repository (they belong to gsc).
+The extracted FBX files are not distributed with this repository (they belong to gsc). The add-on's setup script exports them from your own ZoneKit install.
 
-In ZoneKit, weapons are stored in two places. Animations are in:
-_STALKER2/Animations/Player/AnimSequences/pt/udp
-and models, textures etc. are stored in:
-_Stalker_2/weapons/pistol/p_udp
+In ZoneKit, weapons are stored in two places. Animations are in `_STALKER2/Animations/...` (for example `Player/AnimSequences/pt/udp` and `Weapons/pt/udp`), and models and textures in `_Stalker_2/weapons/pistol/p_udp`. Not every weapon names its animations and meshes alike (the SMG is `viper` for animations but `vip` for meshes), so the add-on has a separate name for each.
 
-You can go to these folders, put "udp" in the search bar and "checkout" the relevant files (remember to create a new mod first), then use Asset Actions > Bulk Export.
-This will maintain the expected folder structure.
-(the add-on works with any weapon: enter its name, e.g. UDP, AK74 or Malyuk, in the importer panel)
+[survey_template_assets.py](Arsenal/zonekit_tools/survey_template_assets.py) lists every file a template weapon uses and what the add-on does with it. Run it in ZoneKit (paste its path into the Python bar); the results go to `Arsenal/zonekit_tools/survey_output`, which is git-ignored.
 
 ## Workflow
 
-In blender, use the **STALKER 2** tab in the 3D View sidebar:
+### 1. Set up (Blender and ZoneKit)
 
-1. **Import Assets**: choose the exported  STALKER 2 folder containing `Animations/Player` and `Animations/Weapons`, create the base skeleton, then scan and import matching animation pairs.
-2. **Mapping Setup**: generate a source-to-Rigify mapping, fill any blank source entries, and add mappings for an appended `Weapon` armature when present.
-3. **Rig & Retarget**: convert the character by mapping and retarget the imported actions onto the character, weapon, and camera controls. Conversion merges an appended `Weapon` rig and keeps a hidden source backup for future retargeting.
-4. **Animation Tools**: bake or edit animation as needed.
+Start with a new, empty Blender file and press N in the 3D view to open the **STALKER 2** tab.
 
+1. In panel **1. Set Up**, choose the **Template**: the base game weapon your weapon starts from (pistol, SMG, rifle, shotgun or sniper). This also fills the weapon's stats and selects which files are exported.
+2. Enter your **Weapon Name** (e.g. `Cool Pistol`), the **Mod Name** (the name of your mod in ZoneKit, which must already exist) and a **Working Folder**. The add-on uses `<working folder>/ZoneKit Export` for the ZoneKit export and `<working folder>/Blender Export` for what it exports later.
+3. Press **Create ZoneKit Setup Script**. The path of the script is copied to your clipboard.
+4. In ZoneKit, make sure your mod is the selected one, paste the path into the Python bar and run it. The script:
+   - exports the template's first-person animations, its skeletal mesh and its animated static mesh parts to the ZoneKit Export folder;
+   - checks out the assets that stay in ZoneKit (montages, animation collection, anim blueprint, skeleton, skeletal mesh and the animation sequences) into your mod;
+   - renames them all to your weapon name with the asset rename function, like Batch Rename;
+   - writes `zonekit_setup_<weapon>_report.txt` to the ZoneKit Export folder. Check it for warnings, especially "still references the template asset".
 
+   Tick **Dry Run** first if you only want the report. The script has not been tested on every template yet, so try it on a scratch mod.
+
+### 2. Import into Blender
+
+1. Press **Import Weapon** in panel **2. Import Weapon**, then go and make a brew. It takes a little while (a minute or two), and Blender will look frozen, but it's working. It does all of this for you:
+   - imports the weapon skeleton and all its static mesh parts, then places them, weights them to the right bones and joins them into one mesh
+   - gives the weapon bones red colours and custom bone shapes
+   - imports the headless character and all the matching animations (animation pairs with no character -> weapon match are additive animations, so those get skipped)
+   - maps everything onto a standard Rigify rig, which is a really common setup in Blender with loads of tutorials out there
+   - sets up the first person camera
+
+   When it's done the character will be in his starting A pose, surrounded by rig controls. The status line under the button tells you how it went.
+2. Press **Retarget Animation** in panel 3. This one is slow (about 5 minutes on my PC) as it does a lot of work to get a faithful result. Keyframes are cleaned up automatically afterwards.
+
+Once it's finished the character will jump into an action pose. Press 0 on the numpad for an FPS view that matches the game. From here you can go into pose mode, play the animations and make whatever changes you like. The fingers are split into left and right bone collections to make life easier when both hands are close together.
+
+### 3. Make your weapon
+
+Edit, replace or add to the weapon mesh however you like (importing, appending or copy-pasting a new model all work), and tweak the animations as needed (panel 4).
+
+A few things to know:
+- Rename the main weapon mesh from the template mesh name (e.g. `udp`) to your new weapon's name.
+- Extra parts that need to swap in-game, like `magazine_full` and `magazine_empty`, should be separate objects with the same armature modifier. Each one is exported as its own static mesh, named after the object.
+- The skeleton exported to Unreal keeps the original bones, so extra bones you add won't be exported.
+
+### 4. Export
+
+Use panel 5, **Export**:
+
+1. Check the **Mod Name** and **Output Folder** (both are set from panel 1).
+3. Press **Refresh**, then tick the animations you want to export. **Validate** will check them for problems.
+4. Press **Export All**. This writes the animations, the static meshes (one per weapon part, plus an unsplit world model) and the skeletal mesh into a mirrored ZoneKit folder structure. It also writes an Unreal import script and the weapon CFG files.
+
+See [exporting animations](Arsenal/doc/exporting_animations.md) for the details.
+
+The Unreal side (importing back into ZoneKit) is still a work in progress.
 
 ## License
 

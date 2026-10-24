@@ -11,7 +11,7 @@ bl_info = {
 import math
 import os
 import re
-
+import textwrap
 import bpy
 
 
@@ -46,15 +46,27 @@ def _collect_animations(folder, prefix):
 
 def _scan_library(root, weapon_name):
     player_prefix, weapon_prefix = _prefixes(weapon_name)
-    animations_folder = root
-    player_folder = os.path.join(animations_folder, "Player")
-    weapon_folder = os.path.join(animations_folder, "Weapons")
-    if not os.path.isdir(player_folder) or not os.path.isdir(weapon_folder):
-        animations_folder = os.path.join(root, "Animations")
+    player_folder = weapon_folder = None
+    # The exported-files folder holds _STALKER2; older setups pointed at _STALKER2 or Animations.
+    for animations_folder in (
+            root,
+            os.path.join(root, "Animations"),
+            os.path.join(root, "_STALKER2", "Animations")):
         player_folder = os.path.join(animations_folder, "Player")
         weapon_folder = os.path.join(animations_folder, "Weapons")
-    if not os.path.isdir(player_folder) or not os.path.isdir(weapon_folder):
-        raise FileNotFoundError("Select the STALKER2 folder or its Animations folder, containing Player and Weapons")
+        if os.path.isdir(player_folder) and os.path.isdir(weapon_folder):
+            break
+    else:
+        player_folder = weapon_folder = None
+        # Fall back to searching below the chosen folder (for example one level above the export).
+        for directory, folders, _files in os.walk(root):
+            lowered = {f.casefold(): f for f in folders}
+            if 'player' in lowered and 'weapons' in lowered and os.path.basename(directory).casefold() == 'animations':
+                player_folder = os.path.join(directory, lowered['player'])
+                weapon_folder = os.path.join(directory, lowered['weapons'])
+                break
+        if not player_folder:
+            raise FileNotFoundError("Select the Exported Files folder, containing the _STALKER2 and _Stalker_2 folders")
 
     player = _collect_animations(player_folder, player_prefix)
     weapon = _collect_animations(weapon_folder, weapon_prefix)
@@ -153,10 +165,19 @@ def _create_camera(armature):
     return camera
 
 
+def _is_lower_lod(name):
+    """True for LOD1 and above of an exported mesh (SK_stalker_LOD1); only the full-detail mesh is wanted."""
+    found = re.search(r"_LOD(\d+)(?:\.\d+)?$", name, re.IGNORECASE)
+    return bool(found) and int(found.group(1)) > 0
+
+
 def _create_base_skeleton(context, root, weapon_name):
-    existing_armatures = [obj for obj in context.scene.objects if obj.type == "ARMATURE"]
+    existing_armatures = [
+        obj for obj in context.scene.objects
+        if obj.type == "ARMATURE" and not obj.get("arsenal_weapon_rig", False)
+    ]
     if existing_armatures:
-        raise RuntimeError("Base skeleton setup requires a blank scene with no armatures")
+        raise RuntimeError("Base skeleton setup requires a scene with no armatures other than the imported weapon rig")
 
     pairs, _, _, _ = _scan_library(root, weapon_name)
     idle_pair = next((pair for pair in pairs if pair[0].casefold() == "idle"), None)
@@ -174,7 +195,7 @@ def _create_base_skeleton(context, root, weapon_name):
         player_objects, player_actions, player_rig, _ = _import_fbx(player_path)
         imported_objects.extend(player_objects)
         imported_actions.extend(player_actions)
-        character_meshes = [obj for obj in player_objects if obj.type == "MESH"]
+        character_meshes = [obj for obj in player_objects if obj.type == "MESH" and not _is_lower_lod(obj.name)]
         weapon_objects, weapon_actions, weapon_rig, _ = _import_fbx(weapon_path)
         imported_objects.extend(weapon_objects)
         imported_actions.extend(weapon_actions)
@@ -198,6 +219,8 @@ def _create_base_skeleton(context, root, weapon_name):
             mesh.scale = (1.0, 1.0, 1.0)
         _reset_pose(armature)
         armature[BASE_MARKER] = True
+        from . import import_weapon
+        import_weapon.add_missing_weapon_bones(context, armature)
 
         _remove_imported(
             [obj for obj in imported_objects if obj != armature and obj not in character_meshes],
@@ -257,6 +280,9 @@ def _animated_bones(action, source_armature, master):
 def _import_fbx(filepath):
     existing_objects = {obj.as_pointer() for obj in bpy.data.objects}
     existing_actions = {action.as_pointer() for action in bpy.data.actions}
+    units = bpy.context.scene.unit_settings
+    saved_scale = units.scale_length
+    units.scale_length = 1.0
     try:
         bpy.ops.import_scene.fbx(
             filepath=filepath,
@@ -268,6 +294,8 @@ def _import_fbx(filepath):
         actions = [action for action in bpy.data.actions if action.as_pointer() not in existing_actions]
         _remove_imported(objects, actions)
         raise
+    finally:
+        units.scale_length = saved_scale
     objects = [obj for obj in bpy.data.objects if obj.as_pointer() not in existing_objects]
     actions = [action for action in bpy.data.actions if action.as_pointer() not in existing_actions]
     armatures = [
@@ -290,7 +318,7 @@ def _put_action_on_nla(armature, action):
     strip.action_frame_start = action.frame_range[0]
     strip.action_frame_end = action.frame_range[1]
     strip.blend_type = "REPLACE"
-    strip.extrapolation = "NOTHING"
+    strip.extrapolation = "HOLD_FORWARD"
     return max(1, math.ceil(1 + action.frame_range[1] - action.frame_range[0]))
 
 
@@ -489,12 +517,21 @@ def _import_pair(context, master, pair):
 
 class STALKER2_AnimationImporterProperties(bpy.types.PropertyGroup):
     weapon_name: bpy.props.StringProperty(
-        name="Weapon Name",
-        description="Weapon name as used in the exported file names, e.g. UDP, AK74 or Malyuk (AS_fp_<name>_*.FBX)",
+        name="Template Animation Name",
+        description="The template weapon's name in its animation files, e.g. udp, viper or ak74 (AS_fp_<name>_*.FBX)",
         default=DEFAULT_WEAPON_NAME,
     )
-    animation_root: bpy.props.StringProperty(name="Animation Root", subtype="DIR_PATH")
-    scan_summary: bpy.props.StringProperty(name="Scan", default="Enter the weapon name, choose the STALKER 2 folder and scan.")
+    mesh_name: bpy.props.StringProperty(
+        name="Template Mesh Name",
+        description="The template weapon's name in its skeletal and static mesh files (SK_<name>.FBX), "
+                    "e.g. vip for the SMG. Leave empty when it is the same as the animation name",
+    )
+    animation_root: bpy.props.StringProperty(
+        name="Exported Files",
+        description="Folder containing the exported _STALKER2 and _Stalker_2 folders",
+        subtype="DIR_PATH",
+    )
+    scan_summary: bpy.props.StringProperty(name="Scan", default="Enter the weapon name, choose the exported files folder and scan.")
 
 
 class STALKER2_OT_create_base_skeleton(bpy.types.Operator):
@@ -583,28 +620,122 @@ class STALKER2_OT_import_animations(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class STALKER2_OT_import_weapon(bpy.types.Operator):
+    bl_idname = "stalker2.import_weapon"
+    bl_label = "Import Weapon"
+    bl_description = ("Import the weapon rig and meshes, the character skeleton and every animation, map the bones "
+                      "and convert the character to Rigify, ready for retargeting")
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        settings = context.scene.stalker2_animation_importer
+        ui = context.scene.arsenal_ui
+        from . import import_weapon
+
+        def fail(step, error):
+            settings.scan_summary = f"Failed at: {step}"
+            self.report({"ERROR"}, f"{step}: {error}")
+            return {"CANCELLED"}
+
+        def step(label, operator):
+            result = operator()
+            if "FINISHED" not in result:
+                raise RuntimeError("see the console or the report log for details")
+            return result
+
+        from . import setup_panel
+        setup_panel.apply_template_defaults(context.scene, context.scene.arsenal_cfg.setup_template)
+
+        root = bpy.path.abspath(settings.animation_root).strip()
+        name = settings.weapon_name.strip()
+        if not name or not root:
+            self.report({"ERROR"}, "Enter the weapon name and choose the exported files folder first.")
+            return {"CANCELLED"}
+        if any(obj.type == "ARMATURE" and (obj.get(import_weapon.RIG_MARKER) or obj.get(BASE_MARKER))
+               for obj in context.scene.objects):
+            self.report({"ERROR"}, "A weapon has already been imported into this scene. Start from a new scene.")
+            return {"CANCELLED"}
+
+        current = "Import weapon rig"
+        try:
+            import_weapon.import_rigged_weapon(context, root, import_weapon.donor_mesh_name(settings))
+
+            current = "Create base skeleton"
+            master = _create_base_skeleton(context, root, name)
+
+            current = "Import animations"
+            step(current, bpy.ops.stalker2.import_animations)
+
+            current = "Map character bones"
+            _select_only_object(context, master)
+            step(current, bpy.ops.object.arsenal_generate_mapping_guess)
+            _select_only_object(context, master)
+            step(current, bpy.ops.object.arsenal_generate_weapon_mapping_guess)
+
+            current = "Convert to Rigify"
+            _select_only_object(context, master)
+            step(current, bpy.ops.object.arsenal_convert_to_rigify_by_mapping)
+        except Exception as error:
+            return fail(current, error)
+
+        settings.scan_summary = "Imported. Edit the weapon, then retarget the animations."
+        self.report({"INFO"}, "Weapon imported and converted. Select the rig and click Retarget Animation.")
+        return {"FINISHED"}
+
+
+def _select_only_object(context, obj):
+    for other in context.view_layer.objects:
+        other.select_set(False)
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+
+
+STEPS = (
+    'Fill in the details below: working folder, ZoneKit mod name, your weapon name and the template.',
+    'Press "Create ZoneKit Setup Script". The script path is copied to your clipboard.',
+    'In ZoneKit, make sure your mod is selected, then paste the path into the Python bar and run it. '
+    'It exports the template weapon\'s files, checks the assets that stay in ZoneKit out into your mod and '
+    'renames them to your weapon name. Check the report it writes to the ZoneKit Export folder.',
+    'Back in Blender, press Import Weapon in the next panel.',
+)
+
+
+def draw_wrapped(layout, text, width=40):
+    column = layout.column(align=True)
+    column.scale_y = 0.8
+    for line in textwrap.wrap(text, width):
+        column.label(text=line)
+
+
+class STALKER2_PT_animation_importer_help(bpy.types.Panel):
+    bl_label = "Instructions"
+    bl_idname = "STALKER2_PT_animation_importer_help"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "STALKER 2"
+    bl_parent_id = "ARSENAL_PT_SetupPanel"
+
+    def draw(self, context):
+        for number, step in enumerate(STEPS, 1):
+            draw_wrapped(self.layout, f'{number}. {step}')
+            self.layout.separator(factor=0.3)
+
+
 class STALKER2_PT_animation_importer(bpy.types.Panel):
-    bl_label = "1. Import Assets"
+    bl_label = "2. Import Weapon"
     bl_idname = "STALKER2_PT_animation_importer"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "STALKER 2"
-    bl_order = 0
+    bl_order = 1
 
     def draw(self, context):
         layout = self.layout
         settings = context.scene.stalker2_animation_importer
-        layout.prop(settings, "weapon_name")
-        layout.prop(settings, "animation_root")
-        layout.operator("stalker2.create_base_skeleton", icon="ARMATURE_DATA")
-        layout.operator("stalker2.scan_animations", icon="FILE_FOLDER")
+        if not settings.animation_root.strip():
+            layout.label(text="Set the working folder in 1. Set Up first.", icon="INFO")
+        layout.operator("stalker2.import_weapon", icon="IMPORT")
         layout.label(text=settings.scan_summary)
-        row = layout.row()
-        row.enabled = any(
-            obj.type == "ARMATURE" and obj.get(BASE_MARKER, False)
-            for obj in context.scene.objects
-        )
-        row.operator("stalker2.import_animations", icon="ACTION")
 
 
 CLASSES = (
@@ -612,7 +743,9 @@ CLASSES = (
     STALKER2_OT_create_base_skeleton,
     STALKER2_OT_scan_animations,
     STALKER2_OT_import_animations,
+    STALKER2_OT_import_weapon,
     STALKER2_PT_animation_importer,
+    STALKER2_PT_animation_importer_help,
 )
 
 

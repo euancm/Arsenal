@@ -21,11 +21,11 @@ class ARSENAL_PT_AnimationPanel(bpy.types.Panel):
     """
     Animation panel
     """
-    bl_label = '4. Animation Tools'
+    bl_label = 'Animation Tools'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'STALKER 2'
-    bl_order = 3
+    bl_order = 6
 
     @classmethod
     def poll(cls, context):
@@ -51,41 +51,14 @@ class ARSENAL_PT_MainPanel(bpy.types.Panel):
     """
     Addon panel
     """
-    bl_label = '3. Rig & Retarget'
+    bl_label = '3. Retarget'
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'STALKER 2'
-    bl_order = 2
+    bl_order = 3
 
     def draw_object(self, col, context):
-        col.label(text='Rig generation')
-        col.operator('object.arsenal_convert_to_rigify_by_mapping', text='Convert Character by Mapping')
-        col.separator()
-        col.label(text='Animation')
         col.operator('object.arsenal_retarget_animation', text='Retarget Animation')
-
-    def draw_edit(self, col, context):
-        col.label(text="Armature editing operators:")
-        row = col.row()
-        row.operator("armature.arsenal_arrange_bones")
-
-        row = col.row()
-        row.operator("armature.arsenal_clear_empty_bones")
-
-        row = col.row()
-        row.operator("armature.arsenal_swap_bones_weights")
-
-        row = col.row()
-        row.operator("armature.arsenal_merge_bones_with_vgroups")
-
-    def draw_pose(self, col, context):
-        col.label(text="Armature editing operators:")
-
-        row = col.row()
-        row.operator("armature.arsenal_swap_bones_weights")
-
-        row = col.row()
-        row.operator("armature.arsenal_merge_bones_with_vgroups")
 
     def draw(self, context):
         layout = self.layout
@@ -93,10 +66,5 @@ class ARSENAL_PT_MainPanel(bpy.types.Panel):
         if not context.object:
             return
 
-        mode = context.object.mode
-        if mode == 'OBJECT':
+        if context.object.mode == 'OBJECT':
             self.draw_object(col, context)
-        elif mode == 'EDIT':
-            self.draw_edit(col, context)
-        elif mode == 'POSE':
-            self.draw_pose(col, context)

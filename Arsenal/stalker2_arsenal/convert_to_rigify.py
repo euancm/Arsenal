@@ -431,6 +431,7 @@ def copy_weapon_pose_settings(source_pose, target_pose, source_armature, target_
         target_pose.custom_shape_rotation_euler = source_pose.custom_shape_rotation_euler.copy()
     target_pose.use_custom_shape_bone_size = source_pose.use_custom_shape_bone_size
     target_pose.color.palette = source_pose.color.palette
+    target_pose.bone.color.palette = source_pose.bone.color.palette
     if source_pose.custom_shape_transform:
         target_pose.custom_shape_transform = target_armature.pose.bones.get(
             source_pose.custom_shape_transform.name)
