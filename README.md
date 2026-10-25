@@ -12,13 +12,19 @@ Further credits:
 
 This project is intended to be a solution to automatically import stalker 2 weapons from the Stalker 2 Zonekit into blender, making them simpler to work with a standard animation rig, allowing tweaks, replacements and other mods to be put together more simply. It will also allow automatic compilation of all the finished files needed to implement a custom weapon.
 
+## AI
+
+Almost all of the code has been written by AI, specifically the github copilot sidebar in visual studio code.
+To be honest, I'm more interested in modelling and texturing than software development, although I suppose AI is going to take that over soon too.
+
+
 ## Custom Pistol
 
 ![A screenshot of the Blender interface showing the custom pistol](BannerImage.png)
 
 The custom pistol mod is the testbed for development of the Arsenal blender addon.
 
-You should be able to copy this project into YourStalker2ZoneKitInstallation\Stalker2\Mods then open zonekit and click "Package Mod" successfully.
+You should be able to copy this project into YourStalker2ZoneKitInstallation\Stalker2\Mods then open zonekit and click "Package Mod" successfully. (once everything works properly - right now, you can package it but it won't work)
 
 
 ## Arsenal

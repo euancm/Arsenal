@@ -350,7 +350,13 @@ def build_context(context):
         magazine['socket'] = bone_joints[max(bones, key=bones.get)] if bones else 'jnt_magazine'
 
     animation_dir = animation_folder(context.scene, export, output_root, mount)
+    anim_name = animation_export.weapon_name(context.scene)
+    # The weapon class folder ("pt", "ar", ...) is the parent of the weapon's own animation folder.
+    weapon_class = animation_dir.rstrip('/').split('/')[-2]
+    skeletal_mesh = (f"SkeletalMesh'{mount}/_STALKER2/SkeletalMeshes/weapons/{weapon_class}/{anim_name}/"
+                     f"SK_{anim_name}.SK_{anim_name}'")
     return {
+        'skeletal_mesh': skeletal_mesh,
         'export': export, 'cfg': cfg, 'mod': mod_name(export), 'mount': mount, 'output_root': output_root,
         'weapon_id': weapon_id, 'sid': sid, 'player_sid': f'{sid}_Player', 'mesh_name': mesh_name,
         'mesh_folder': mesh_folder, 'world_mesh': mesh_path(mesh_folder, f'SM_{mesh_name}'),
@@ -382,6 +388,8 @@ def weapon_prototypes(info):
     writer.line(f'SID = {info["sid"]}')
     if cfg.localization_sid.strip():
         writer.line(f'LocalizationSID = {cfg.localization_sid.strip()}')
+    # Without this the weapon inherits the template's skeletal mesh and the mod's own SK_ asset is never used.
+    writer.line(f'MeshPrototypeSID = Gun{info["weapon_id"]}_Skeletal')
     writer.line(f'MeshInWorldPrototypeSID = Gun{info["weapon_id"]}_StaticMesh')
     writer.line()
     writer.line('//Base stats')
@@ -441,6 +449,12 @@ def mesh_prototypes(info):
         entry(f'{mag_sid}Empty', magazine['empty_path'])
         entry(f'{mag_sid}Full', magazine['full_path'])
     entry(f'Gun{info["weapon_id"]}_StaticMesh', info['world_mesh'])
+    skeletal = f'Gun{info["weapon_id"]}_Skeletal'
+    writer.begin(skeletal, '{refurl=@BaseGame/MeshPrototypes.cfg;refkey=[0]}')
+    writer.line(f'SID = {skeletal}')
+    writer.line(f'MeshPath = {info["skeletal_mesh"]}')
+    writer.line('MeshType = EMeshSubType::Skeletal')
+    writer.end()
     return writer.text()
 
 

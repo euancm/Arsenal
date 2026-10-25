@@ -12,8 +12,10 @@ import json
 import os
 import re
 import sys
+import types
 
 CONFIG = None
+PATCHER_SOURCE = None
 
 try:
     import unreal
@@ -447,45 +449,121 @@ def run_rename(items):
     return len(data)
 
 
-def repoint_to_copies(plan, config):
-    """Make the mod's montages (and anything else in the mod) play the renamed copies instead of the /Game
-    template sequences. Montage slot data is not editable from Python, but consolidate_assets rewrites every
-    reference to the template asset, which keeps the montage's slot, notifies and sections intact."""
-    library = unreal.EditorAssetLibrary
+def load_patcher():
+    """The uasset patcher: embedded in this script by the add-on, or imported next to it when run offline."""
+    if PATCHER_SOURCE:
+        module = types.ModuleType('uasset_patch')
+        exec(compile(PATCHER_SOURCE, 'uasset_patch', 'exec'), module.__dict__)
+        return module
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import uasset_patch
+    return uasset_patch
+
+
+REFERENCE_KINDS = ('sequences', 'additive', 'montages', 'collections', 'anim_blueprints', 'skeletal_meshes')
+
+
+def montage_name_mapping(plan):
+    """{old name: new name} for the name-table strings that spell a copied template asset (sequence, montage,
+    collection, AnimBP, skeletal mesh): its /Game package path, its pre-rename mod path, and its bare asset name.
+    Skeletons are left out: every copy keeps using the template skeleton, which the mod's skeletal mesh already
+    uses. Ambiguous bare names are left out."""
     selection = plan['selection']
-    wanted = set(selection['sequences']) | set(selection['additive']) | set(selection['montages'])
-    swapped = failed = 0
+    wanted = {package for key in REFERENCE_KINDS for package in selection[key]}
+    mapping = {}
+    leaves = {}
+    for package, source, target in plan['copies']:
+        if package not in wanted:
+            continue
+        mapping[package] = target
+        mapping[source] = target
+        old_leaf, new_leaf = package.rsplit('/', 1)[1], target.rsplit('/', 1)[1]
+        leaves.setdefault(old_leaf, set()).add(new_leaf)
+    for old_leaf, new_leaves in leaves.items():
+        if len(new_leaves) == 1 and old_leaf not in new_leaves:
+            mapping[old_leaf] = next(iter(new_leaves))
+        elif len(new_leaves) > 1:
+            warn(f'{old_leaf} would be renamed to several names; left alone: {sorted(new_leaves)}')
+    mapping.pop('', None)
+    return {old: new for old, new in mapping.items() if old != new}
+
+
+def mod_file(package, mod):
+    folder = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()), 'Mods', mod, 'Content')
+    return os.path.join(folder, *package[len(mod) + 2:].split('/')) + '.uasset'
+
+
+def reload_packages(assets):
+    mode = getattr(unreal.ReloadPackagesInteractionMode, 'ASSUME_POSITIVE')
+    return unreal.EditorLoadingAndSavingUtils.reload_packages([asset.get_package() for asset in assets], mode)
+
+
+def patch_references(plan, config):
+    """Point every copied asset at the other copies instead of the /Game originals, by rewriting names in the
+    mod's own .uasset headers.
+
+    Copies made with checkout/duplicate keep referencing the template: a montage still plays the template's
+    sequences, the AnimCollection lists the template's montages and the AnimBP loads the template's collection, so
+    none of the weapon's new animations are ever used. Python cannot edit montage slot data and consolidate_assets
+    on /Game assets crashes ZoneKit, but all of these references live in the import table, so renaming them on
+    disk keeps slots, sections, notifies and graphs exactly as they were. The mod's files only; /Game is never
+    touched. Originals are kept in <export folder>/reference_backups."""
+    library = unreal.EditorAssetLibrary
+    patcher = load_patcher()
+    mapping = montage_name_mapping(plan)
+    backups = os.path.join(config['export_dir'], 'reference_backups')
+    wanted = {package for key in REFERENCE_KINDS for package in plan['selection'][key]}
+    patched, failed, unchanged = [], 0, 0
     for package, _source, target in plan['copies']:
         if package not in wanted:
             continue
-        keep = library.load_asset(target)
-        old = library.load_asset(package)
-        if keep is None or old is None:
-            warn(f'Cannot repoint {package} to {target}: one of them did not load')
+        path = mod_file(target, config['mod'])
+        try:
+            if not patcher.patch_file(path, mapping, write=False):
+                unchanged += 1
+                continue
+        except (patcher.PatchError, OSError) as error:
+            failed += 1
+            warn(f'Cannot patch {target}: {error}')
+            continue
+        asset = library.load_asset(target)
+        if asset is None:
+            warn(f'Cannot load {target} to patch it')
             failed += 1
             continue
         try:
-            if library.consolidate_assets(keep, [old]):
-                swapped += 1
-            else:
-                failed += 1
-                warn(f'consolidate_assets did not replace {package}')
-        except Exception as error:
+            # A loaded package keeps its file open; a forced save releases it before the file is rewritten.
+            library.save_loaded_asset(asset, False)
+            patcher.patch_file(path, mapping, backup_dir=backups)
+            patched.append(asset)
+        except (patcher.PatchError, OSError) as error:
             failed += 1
-            warn(f'Could not repoint {package} to {target}: {error}')
+            warn(f'Could not patch {target}: {error}')
+    if patched:
+        try:
+            reload_packages(patched)
+        except Exception as error:
+            failed += len(patched)
+            warn(f'Patched {len(patched)} files but could not reload them ({error}). Close and reopen ZoneKit '
+                 'so they load from disk, and do not save them before then.')
+    log(f'Repointed {len(patched)} copied assets at the renamed copies ({unchanged} needed nothing, {failed} failed)')
+    return failed
+
+
+def check_montages(plan, config):
+    """Mod montages that still play a /Game template animation after patching."""
+    library = unreal.EditorAssetLibrary
     stale = 0
     for package, _source, target in plan['copies']:
-        if package not in selection['montages']:
+        if package not in plan['selection']['montages']:
             continue
         montage = library.load_asset(target)
         reference = montage.get_first_anim_reference() if montage else None
         if reference is not None and reference.get_path_name().startswith(GAME + '/'):
             stale += 1
             warn(f'{target} still plays the template animation {reference.get_name()}')
-    library.save_directory(f'/{config["mod"]}', only_if_is_dirty=True, recursive=True)
-    log(f'Repointed references for {swapped} assets ({failed} failed); {stale} montages still play a template animation')
+    log(f'{stale} montages still play a template animation' if stale else 'All montages play mod animations')
     return stale
-
 
 def tidy_redirectors(items, registry, mod):
     library = unreal.EditorAssetLibrary
@@ -588,8 +666,9 @@ def main():
         log(f'{len(items)} assets are in the mod; renaming to "{config["weapon"]}"')
         count = run_rename(items)
         log(f'Renamed {count} assets')
-        if config.get('repoint_montages', True):
-            repoint_to_copies(plan, config)
+        if config.get('patch_references', True):
+            patch_references(plan, config)
+        check_montages(plan, config)
         removed = tidy_redirectors(items, registry, config['mod'])
         problems = check_references(items, registry, config)
         if removed:

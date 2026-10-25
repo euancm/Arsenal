@@ -85,10 +85,10 @@ def path_warnings(info, cfg_paths):
                 warnings.append(f'{name}: "{asset_path}.{asset_name}" has a different object name than its asset.')
             if weapon != 'udp' and 'udp' in asset_path.casefold():
                 warnings.append(f'{name}: path "{asset_path}" still contains the template name "udp".')
-            if kind == 'StaticMesh':
+            if kind in ('StaticMesh', 'SkeletalMesh'):
                 relative = asset_path[len(mount) + 1:]
                 if _find_file(output_root, relative + '.FBX') is None:
-                    warnings.append(f'{name}: StaticMesh "{asset_path}" has no exported FBX ({relative}.FBX).')
+                    warnings.append(f'{name}: {kind} "{asset_path}" has no exported FBX ({relative}.FBX).')
 
     mod_folder = os.path.join(output_root, 'GameLite', 'ModGameData')
     if os.path.isdir(mod_folder) and info['mod'] not in os.listdir(mod_folder):

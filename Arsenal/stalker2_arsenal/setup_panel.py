@@ -146,6 +146,8 @@ def write_setup_script(context):
     with open(os.path.join(os.path.dirname(__file__), SETUP_TEMPLATE_NAME), encoding='utf-8') as handle:
         script = handle.read()
     script = script.replace('CONFIG = None', f'CONFIG = {config!r}', 1)
+    with open(os.path.join(os.path.dirname(__file__), 'uasset_patch.py'), encoding='utf-8') as handle:
+        script = script.replace('PATCHER_SOURCE = None', f'PATCHER_SOURCE = {handle.read()!r}', 1)
     path = os.path.join(working, f'zonekit_setup_{config["weapon"]}.py')
     with open(path, 'w', encoding='utf-8') as handle:
         handle.write(script)
