@@ -31,7 +31,7 @@ You should be able to copy this project into YourStalker2ZoneKitInstallation\Sta
 
 Arsenal is a Blender add-on that combines the STALKER 2 animation importer with mapping, Rigify conversion, and retargeting tools. Install the packaged add-on from Blender Preferences:
 
-Requires Blender 5.2.2 or newer. The packaged add-on is not published yet; for now, load it from source with [dev_load_addon.py](Arsenal/dev_load_addon.py).
+Requires Blender 5.2.2 or newer. The packaged add-on is not published yet; for now, load it from source with [dev_load_addon.py](Arsenal/dev_load_addon.py): in Blender's Text Editor use **Text > Open** on that file, then **Run Script**. Run it again after editing the code to reload. It disables an installed zip copy of the add-on so the two don't clash.
 
 See the [add-on guide](Arsenal/doc/arsenal.md) and the [development plan](Arsenal/PLAN.md) for details.
 
