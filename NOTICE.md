@@ -11,5 +11,4 @@ foundations.
 The upstream repository did not include a licence file when this project was
 created. The MIT licence in [LICENSE](LICENSE) applies to the original work in
 this repository only and does not grant any rights to Artem Poletsky's code
-beyond those he has granted himself. Permission has been/should be confirmed
-with the original author before the add-on is distributed.
+beyond those he has granted himself.
