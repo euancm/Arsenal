@@ -39,29 +39,40 @@ def export_weapon_skeleton(context):
     active = context.view_layer.objects.active
     selected = [obj for obj in scene.objects if obj.select_get()]
     objects = import_weapon._import(donor_path)
+    displaced = None
     try:
         rigs = [obj for obj in objects if obj.type == 'ARMATURE']
         if len(rigs) != 1:
             raise RuntimeError(f'Expected one armature in {os.path.basename(donor_path)}')
+        # Unreal treats nodes above the armature as bones. Drop the FBX mesh wrapper but keep its transform.
+        world = rigs[0].matrix_world.copy()
+        rigs[0].parent = None
+        rigs[0].matrix_world = world
+        # The armature is the root bone; keep the donor name without Blender's collision suffix.
+        root_name = re.sub(r'\.\d{3}$', '', rigs[0].name)
+        if rigs[0].name != root_name:
+            other = bpy.data.objects.get(root_name)
+            if other is not None:
+                other.name = root_name + '.arsenal_export'
+                displaced = (other, root_name)
+            rigs[0].name = root_name
         for obj in objects:
             if obj.type == 'ARMATURE':
-                obj.name = obj.data.name = re.sub(r'(?i)^(jnt_wpn_).+$', lambda m: m.group(1) + new_name, obj.name)
-            elif obj.type == 'MESH':
+                continue
+            if obj.type == 'MESH':
                 obj.name = obj.data.name = f'SK_{new_name}_mesh'
-            else:
-                obj.name = f'SK_{new_name}'
 
         os.makedirs(os.path.dirname(target), exist_ok=True)
         partial = os.path.splitext(target)[0] + '.partial.fbx'
         for obj in scene.objects:
-            obj.select_set(obj in objects)
+            obj.select_set(obj in objects and obj.type in {'ARMATURE', 'MESH'})
         context.view_layer.objects.active = rigs[0]
         scene.unit_settings.scale_length = 1.0
         try:
             bpy.ops.export_scene.fbx(
                 filepath=partial,
                 use_selection=True,
-                object_types={'EMPTY', 'ARMATURE', 'MESH'},
+                object_types={'ARMATURE', 'MESH'},
                 mesh_smooth_type='FACE',
                 bake_anim=False,
                 add_leaf_bones=False,
@@ -83,6 +94,8 @@ def export_weapon_skeleton(context):
         scene.unit_settings.scale_length = saved_scale
         from . import stalker2_animation_importer as importer
         importer._remove_imported(objects, [])
+        if displaced is not None:
+            displaced[0].name = displaced[1]
         for obj in scene.objects:
             obj.select_set(obj in selected)
         context.view_layer.objects.active = active

@@ -38,6 +38,6 @@ Export All writes `Localization/<Mod>-<Weapon>-localization.json`, with `sid_ite
 
 ## Notes
 
-- The AnimBP asset itself is not created. Duplicate UDP's AnimBP in Unreal and set its skeleton to your weapon skeleton.
+- The AnimBP is copied, renamed and repointed by the ZoneKit setup script; you do not create it by hand.
 - The name SID is left out unless you set one, so the in-game name is inherited from UDP.
-- Not yet tested in-game.
+- Verified in game with the pistol template: the weapon loads with its CFG stats, takes normal and extended magazines, fires and reloads.

@@ -24,6 +24,27 @@ def _prefixes(weapon_name):
         raise ValueError("Enter the weapon name (for example UDP, AK74 or Malyuk) first")
     return f"AS_fp_{name}_", f"AS_{name}_fp_"
 
+
+def _player_prefixes(weapon_name):
+    """Offset aim clips use a second player prefix: AS_FP_Player_Udp_IdleToOffsetAim_01."""
+    player_prefix, _ = _prefixes(weapon_name)
+    return player_prefix, f"AS_FP_Player_{weapon_name.strip()}_"
+
+
+# A clip with only one half (the weapon's idle_boltlock, the player's offset aim) is paired with the other
+# side's idle, which is what the game plays alongside it. The stand-in is never exported.
+STAND_IN_SUFFIX = "idle"
+
+
+def stand_in_half(pair):
+    """'player' or 'weapon' when that half of a scanned pair is an idle stand-in, otherwise None."""
+    suffix, player_path, weapon_path = pair
+    ending = "_" + suffix.casefold()
+    for kind, path in (("player", player_path), ("weapon", weapon_path)):
+        if not os.path.splitext(os.path.basename(path))[0].casefold().endswith(ending):
+            return kind
+    return None
+
 ACTION_MARKER = "stalker2_animation_importer"
 BASE_MARKER = "stalker2_base_skeleton"
 BONE_PATH_PATTERN = re.compile(r'pose\.bones\["((?:[^"\\]|\\.)+)"\]')
@@ -68,7 +89,10 @@ def _scan_library(root, weapon_name):
         if not player_folder:
             raise FileNotFoundError("Select the Exported Files folder, containing the _STALKER2 and _Stalker_2 folders")
 
-    player = _collect_animations(player_folder, player_prefix)
+    player = {}
+    for prefix in _player_prefixes(weapon_name):
+        for key, found in _collect_animations(player_folder, prefix).items():
+            player.setdefault(key, []).extend(found)
     weapon = _collect_animations(weapon_folder, weapon_prefix)
     ambiguous = {key for key, paths in player.items() if len(paths) != 1}
     ambiguous.update(key for key, paths in weapon.items() if len(paths) != 1)
@@ -81,8 +105,23 @@ def _scan_library(root, weapon_name):
         _, weapon_path = weapon[key][0]
         pairs.append((suffix, player_path, weapon_path))
 
-    player_only = sorted(key for key in player.keys() - weapon.keys())
-    weapon_only = sorted(key for key in weapon.keys() - player.keys())
+    def stand_in(side):
+        found = side.get(STAND_IN_SUFFIX)
+        return found[0][1] if found and STAND_IN_SUFFIX not in ambiguous else None
+
+    # The *_add idles are not clips of their own: the ZoneKit import rebuilds them from the idle.
+    player_only, weapon_only = [], []
+    for key in sorted(player.keys() - weapon.keys() - ambiguous):
+        if key.endswith("_add") or not stand_in(weapon):
+            player_only.append(key)
+        else:
+            pairs.append((player[key][0][0], player[key][0][1], stand_in(weapon)))
+    for key in sorted(weapon.keys() - player.keys() - ambiguous):
+        if key.endswith("_add") or not stand_in(player):
+            weapon_only.append(key)
+        else:
+            pairs.append((weapon[key][0][0], stand_in(player), weapon[key][0][1]))
+    pairs.sort(key=lambda pair: pair[0].casefold())
     ambiguous_names = sorted(ambiguous)
     return pairs, player_only, weapon_only, ambiguous_names
 
@@ -429,7 +468,51 @@ def _existing_action_can_be_replaced(name):
     return action
 
 
+def _reveal(context, obj):
+    """Make obj evaluated by the depsgraph; returns an undo callable.
+
+    After conversion the master is kept in a hidden backup collection. A hidden object is
+    not evaluated, so a visual-keyed bake onto it records a stale pose instead of the clip.
+    """
+    restore = []
+
+    def walk(layer_collection):
+        for child in layer_collection.children:
+            if obj.name in child.collection.all_objects:
+                restore.append((child, "exclude", child.exclude))
+                restore.append((child, "hide_viewport", child.hide_viewport))
+                restore.append((child.collection, "hide_viewport", child.collection.hide_viewport))
+                child.exclude = False
+                child.hide_viewport = False
+                child.collection.hide_viewport = False
+                walk(child)
+
+    walk(context.view_layer.layer_collection)
+    restore.append((obj, "hide_viewport", obj.hide_viewport))
+    obj.hide_viewport = False
+    hidden = obj.hide_get()
+    obj.hide_set(False)
+    context.view_layer.update()
+
+    def undo():
+        if bpy.data.objects.get(obj.name) is obj:
+            obj.hide_set(hidden)
+        for owner, attribute, value in reversed(restore):
+            setattr(owner, attribute, value)
+        context.view_layer.update()
+
+    return undo
+
+
 def _import_pair(context, master, pair):
+    unreveal = _reveal(context, master)
+    try:
+        return _import_pair_visible(context, master, pair)
+    finally:
+        unreveal()
+
+
+def _import_pair_visible(context, master, pair):
     suffix, player_path, weapon_path = pair
     old_action = _existing_action_can_be_replaced(suffix)
     player_objects = player_actions = weapon_objects = weapon_actions = []
@@ -473,7 +556,8 @@ def _import_pair(context, master, pair):
             bpy.ops.object.mode_set(mode="OBJECT")
         bpy.ops.object.mode_set(mode="POSE")
 
-        frame_end = max(player_end, weapon_end)
+        # A stand-in idle runs for as long as the clip it accompanies.
+        frame_end = {"player": weapon_end, "weapon": player_end}.get(stand_in_half(pair), max(player_end, weapon_end))
         result = bpy.ops.nla.bake(**_bake_parameters(1, frame_end))
         if "FINISHED" not in result or master.animation_data is None or master.animation_data.action is None:
             raise RuntimeError("Bake Action did not produce an action")
@@ -690,6 +774,104 @@ def _select_only_object(context, obj):
     context.view_layer.objects.active = obj
 
 
+def _present_clip_names(rig):
+    """Clip keys this blend already has, as plain or retargeted (rig_) actions."""
+    names = set()
+    for action in bpy.data.actions:
+        for name in (action.name, action.get("arsenal_source_action", "")):
+            if name:
+                names.add(name.casefold())
+                if name.casefold().startswith("rig_"):
+                    names.add(name[4:].casefold())
+    return names
+
+
+def import_new_animations(context, rig, backup, root, weapon_name):
+    """Import and retarget the library's clips that this converted blend does not have yet.
+
+    Returns (retargeted action names, failures). Existing actions, edited or not, are left alone.
+    """
+    from . import retarget_animation
+
+    pairs, _player_only, _weapon_only, _ambiguous = _scan_library(root, weapon_name)
+    present = _present_clip_names(rig)
+    wanted = [pair for pair in pairs if pair[0].casefold() not in present]
+    if not wanted:
+        return [], []
+
+    failures = []
+    sources = []
+    for pair in wanted:
+        try:
+            sources.append(_import_pair(context, backup, pair))
+        except Exception as error:
+            failures.append((pair[0], str(error)))
+    if not sources:
+        return [], failures
+
+    prior_action = rig.animation_data.action if rig.animation_data else None
+    prior_slot = rig.animation_data.action_slot if rig.animation_data else None
+    source_names = [source.name for source in sources]
+    unreveal = _reveal(context, backup)
+    try:
+        mapping, _missing = retarget_animation.resolve_animation_mapping(backup, rig)
+        if not mapping:
+            raise RuntimeError("No animation bone mappings matched the source skeleton and Rigify rig")
+        outputs = retarget_animation.retarget_animation_actions(
+            context, backup, rig, mapping, set_anim_length=False, action_names=source_names)
+    finally:
+        unreveal()
+        if rig.animation_data is not None:
+            rig.animation_data.action = prior_action
+            if prior_action is not None:
+                rig.animation_data.action_slot = prior_slot
+
+    for source in sources:
+        bpy.data.actions.remove(source)
+    names = []
+    for output in outputs:
+        source_name = output.get("arsenal_source_action", "")
+        if source_name and not bpy.data.actions.get(source_name):
+            output.name = source_name
+        names.append(output.name)
+    return names, failures
+
+
+class STALKER2_OT_import_new_animations(bpy.types.Operator):
+    bl_idname = "stalker2.import_new_animations"
+    bl_label = "Import New Animations"
+    bl_description = ("Import and retarget the clips in the exported files folder that this blend does not have "
+                      "yet (for example after a newer setup exported more of them). Existing actions are not changed")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    def execute(self, context):
+        from . import export_animation
+        settings = context.scene.stalker2_animation_importer
+        rig, backup = export_animation.find_export_rig(context)
+        if rig is None:
+            self.report({"ERROR"}, "No converted weapon rig found. Use Import Weapon first.")
+            return {"CANCELLED"}
+        root = bpy.path.abspath(settings.animation_root).strip()
+        try:
+            names, failures = import_new_animations(context, rig, backup, root, settings.weapon_name)
+        except Exception as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        for suffix, error in failures:
+            self.report({"WARNING"}, f"Failed {suffix}: {error}")
+        if not names and not failures:
+            settings.scan_summary = "No new animations found."
+        else:
+            settings.scan_summary = f"Added {len(names)} animations."
+            if names:
+                self.report({"INFO"}, f"Added {len(names)} animations: {', '.join(sorted(names))}")
+        return {"FINISHED"}
+
+
 STEPS = (
     'Fill in the details below: working folder, ZoneKit mod name, your weapon name and the template.',
     'Press "Create ZoneKit Setup Script". The script path is copied to your clipboard.',
@@ -735,6 +917,7 @@ class STALKER2_PT_animation_importer(bpy.types.Panel):
         if not settings.animation_root.strip():
             layout.label(text="Set the working folder in 1. Set Up first.", icon="INFO")
         layout.operator("stalker2.import_weapon", icon="IMPORT")
+        layout.operator("stalker2.import_new_animations", icon="ADD")
         layout.label(text=settings.scan_summary)
 
 
@@ -744,6 +927,7 @@ CLASSES = (
     STALKER2_OT_scan_animations,
     STALKER2_OT_import_animations,
     STALKER2_OT_import_weapon,
+    STALKER2_OT_import_new_animations,
     STALKER2_PT_animation_importer,
     STALKER2_PT_animation_importer_help,
 )

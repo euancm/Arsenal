@@ -66,6 +66,21 @@ def set_def_bones_deform(rig, value):
             b.use_deform = value
 
 
+def upper_arm_twist_sources(rig):
+    """(DEF bone, ORG bone) pairs whose upper-arm deform segment still copies Rigify's twist-free tweak.
+
+    The game's jnt_l_arm / jnt_r_arm carry the arm's full twist; Rigify's first deform segment
+    removes it, so retargeted clips would differ from vanilla by up to 60 degrees of hidden twist."""
+    pairs = []
+    for side in 'LR':
+        name, target = f'DEF-upper_arm.{side}', f'ORG-upper_arm.{side}'
+        pose = rig.pose.bones.get(name)
+        if (pose and target in rig.pose.bones and pose.constraints
+                and pose.constraints[0].type == 'COPY_TRANSFORMS' and pose.constraints[0].subtarget != target):
+            pairs.append((name, target))
+    return pairs
+
+
 def rename_v_group(object, name, new_name):
     v_group = object.vertex_groups.get(name)
     # print(v_group)
@@ -128,6 +143,42 @@ ik_controls = ['hand_ik.L','hand_ik.R','foot_ik.L','foot_ik.R']
 def set_ik_fk(rig, value):
     for n in ik_prop_bones:
         rig.pose.bones[n]['IK_FK'] = value
+
+
+# Retargeted clips are baked onto the FK controls, so an unkeyed switch means FK.
+IK_FK_DEFAULT = 1.0
+POSE_CHANNEL_RESTS = (
+    ('location', (0.0, 0.0, 0.0)),
+    ('rotation_quaternion', (1.0, 0.0, 0.0, 0.0)),
+    ('rotation_euler', (0.0, 0.0, 0.0)),
+    ('rotation_axis_angle', (0.0, 0.0, 1.0, 0.0)),
+    ('scale', (1.0, 1.0, 1.0)),
+)
+
+
+def rest_pose_channels(rig, keyed=frozenset()):
+    """Put every control the action does not key back at rest.
+
+    Blender keeps an unkeyed control wherever the last action left it, so one clip's edit
+    (a posed finger master, the left arm switched to IK) would leak into every other clip.
+    keyed holds (bone name, channel) pairs, the channel being a transform property or
+    '["IK_FK"]'.
+    """
+    for bone in rig.pose.bones:
+        for prop, rest in POSE_CHANNEL_RESTS:
+            if (bone.name, prop) not in keyed:
+                setattr(bone, prop, rest)
+    for name in ik_prop_bones:
+        bone = rig.pose.bones.get(name)
+        if bone is not None and 'IK_FK' in bone and (name, '["IK_FK"]') not in keyed:
+            bone['IK_FK'] = IK_FK_DEFAULT
+
+
+def key_ik_fk(rig, frame):
+    for name in ik_prop_bones:
+        bone = rig.pose.bones.get(name)
+        if bone is not None and 'IK_FK' in bone:
+            bone.keyframe_insert('["IK_FK"]', frame=frame, group=name)
 
 def fix_poles(context, rig):
     oops.mode_set(mode = 'EDIT')

@@ -5,20 +5,6 @@ from bpy.app.translations import contexts as i18n_contexts
 from bpy.app.handlers import persistent
 
 
-class RigToolsPreferencesAddKeymapOperator(bpy.types.Operator):
-    """Add key map item"""
-    bl_idname = "boilerpate_preferences.keyitem_add"
-    bl_label = "Add Key Map Item"
-
-    def execute(self, context):
-        km = context.keymap
-
-        kmi = km.keymap_items.new("object.empty_operator", 'A', 'PRESS')
-        context.preferences.is_dirty = True
-        return {'FINISHED'}
-
-
-
 user_prefs = bpy.context.preferences.themes[0].view_3d
 
 class RigToolsPreferencesDefaults():
@@ -86,8 +72,6 @@ class RigToolsPreferences(bpy.types.AddonPreferences):
         for kmi in km.keymap_items:
             if is_addon_keymap(kmi):
                 rna_keymap_ui.draw_kmi(["ADDON", "USER", "DEFAULT"], kc, km, kmi, col, 0)
-        subcol = col.split(factor=0.2).column()
-        # subcol.operator(RigToolsPreferencesAddKeymapOperator.bl_idname, text="Add New", text_ctxt=i18n_contexts.id_windowmanager, icon='ADD')
 
 from bl_keymap_utils.io import keyconfig_init_from_data
 

@@ -270,6 +270,10 @@ def bake_retargeted_action(context, source_armature, rig, mapping, source_action
     rig.animation_data_create()
     rig.animation_data.action = action
     rig.animation_data.action_slot = slot
+    # The fresh action keys nothing yet, so whatever the previous clip left on the controls
+    # (a posed finger master, an IK switch) would be baked into this one as compensation.
+    b_fun.rest_pose_channels(rig)
+    b_fun.key_ik_fk(rig, frame_start)
 
     ordered_mapping = sorted(
         mapping, key=lambda entry: target_bone_depth(rig, entry[0]))

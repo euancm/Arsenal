@@ -1,55 +1,0 @@
-0. Functions that could replace references
-  unreal.AssetData.is_redirector: x.is_redirector() -> bool Returns true if the this asset is a redirector.  Returns:     bool:
-  unreal.AssetRegistryHelpers.is_redirector: X.is_redirector(asset_data) -> bool Returns true if the this asset is a redirector.  Args:     asset_data (AssetData):   Returns:     bool:
-  unreal.ContentBrowserItemCategoryFilter.INCLUDE_REDIRECTORS: Flags controlling which item categories should be included Generally matches EContentBrowserItemFlags::Category_MASK  **C++ Source:**  - **Module**: Content
-  unreal.CppMediator.consolidate_averaged_csv: X.consolidate_averaged_csv(scene_prefix) -> bool Consolidate Averaged CSV  Args:     scene_prefix (str):   Returns:     bool:
-  unreal.CppMediator.fixup_quest_item_generator_references: X.fixup_quest_item_generator_references() -> None Fixup Quest Item Generator References
-  unreal.DataprepOperationsLibrary.consolidate_objects: X.consolidate_objects(selected_objects) -> None Replace all references to the assets in the array, except the first, with the first asset of the array.  Args
-  unreal.EditorAssetLibrary.consolidate_asset_duplicates: X.consolidate_asset_duplicates(asset) -> bool GSC{  Args:     asset (Object):   Returns:     bool:
-  unreal.EditorAssetLibrary.consolidate_assets: X.consolidate_assets(asset_to_consolidate_to, assets_to_consolidate) -> bool Consolidates an asset by replacing all references/uses of the provided AssetsToCon
-  unreal.EditorAssetSubsystem.consolidate_assets: x.consolidate_assets(asset_to_consolidate_to, assets_to_consolidate) -> bool Consolidates assets by replacing all references/uses of the provided AssetsToConso
-  unreal.EnhancedInputPlatformData.get_context_redirect: x.get_context_redirect(context) -> InputMappingContext Returns a pointer to the desired redirect mapping context. If there isn't one, then this returns InConte
-  unreal.EnhancedInputPlatformData.mapping_context_redirects: (Map[InputMappingContext, InputMappingContext]):  [Read-Only] Maps one Input Mapping Context to another. This can be used to replace specific Input Mapping Cont
-  unreal.HoudiniRuntimeSettings.support_face_remap: (bool):  [Read-Write]
-  unreal.ImportAssetParameters.follow_redirectors: (bool):  [Read-Write] Tell Interchange to follow redirectors when determining the location an asset will be imported.
-  unreal.InterchangeGenericMeshPipeline.support_face_remap: (bool):  [Read-Write] If enabled, imported static meshes are set up for use with physical material masks.
-  unreal.InterchangeStaticMeshFactoryNode.get_custom_support_face_remap: x.get_custom_support_face_remap() -> bool or None Get whether the static mesh is set up for use with physical material masks.  Returns:     bool or None:  
-  unreal.InterchangeStaticMeshFactoryNode.set_custom_support_face_remap: x.set_custom_support_face_remap(attribute_value, add_apply_delegate=True) -> bool Set whether the static mesh is set up for use with physical material masks. 
-  unreal.LandmassManagerBase.consolidate_nodes: x.consolidate_nodes() -> Array[int32] Consolidate Nodes  Returns:     Array[int32]:       nodes_to_consolidate (Array[int32]):
-  unreal.LiveLinkRemapAsset.get_remapped_bone_name: x.get_remapped_bone_name(bone_name) -> Name Blueprint Implementable function for getting a remapped bone name from the original  Args:     bone_name (Name):
-  unreal.LiveLinkRemapAsset.get_remapped_curve_name: x.get_remapped_curve_name(curve_name) -> Name Blueprint Implementable function for getting a remapped curve name from the original  Args:     curve_name (Na
-  unreal.LiveLinkRemapAsset.remap_curve_elements: x.remap_curve_elements(curve_items) -> Map[Name, float] Blueprint Implementable function for remapping, adding or otherwise modifying the curve element data fr
-  unreal.MeshBuildSettings.support_face_remap: (bool):  [Read-Write]
-  unreal.ModifyCurveApplyMode.REMAP_CURVE: EModify Curve Apply Mode  **C++ Source:**  - **Module**: AnimGraphRuntime - **File**: AnimNode_ModifyCurve.h 
-  unreal.NiagaraDataInterfaceUObjectPropertyReader.set_u_object_reader_property_remap: X.set_u_object_reader_property_remap(niagara_component, user_parameter_name, graph_name, remap_name) -> None Remaps a property reader, where the  Args:     
-  unreal.RigVMController.set_remapped_variable: x.set_remapped_variable(function_ref_node, inner_variable_name, outer_variable_name, setup_undo_redo=True) -> bool Sets the remapped variable on a function ref
-  unreal.RigVMGraphNotifType.VARIABLE_REMAPPING_CHANGED: The Graph Notification Type is used to differentiate between all of the changes that can happen within a graph.  **C++ Source:**  - **Plugin**: RigVM - **M
-  unreal.VisualLoggerLibrary.redirect_vislog: X.redirect_vislog(source_owner, destination_owner) -> None Makes SourceOwner log to DestinationOwner's vislog  Args:     source_owner (Object):      destin
-  unreal.WorldPartitionFixupToolActor.bp_get_fixup_data_layers: x.bp_get_fixup_data_layers(actor, debug_log) -> Name BP Get Fixup Data Layers  Args:     actor (Actor):      debug_log (bool):   Returns:     Name:
-  unreal.WorldPartitionFixupToolActor.bp_get_fixup_runtime_grid: x.bp_get_fixup_runtime_grid(actor, debug_log) -> Name BP Get Fixup Runtime Grid  Args:     actor (Actor):      debug_log (bool):   Returns:     Name:
-montage /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Reload/OneHand/MG_fp_mousegun_reload_increased_one_hand; replacement sequence /MouseMod/_STALKER2/Animations/Player/AnimSequences/pt/mousegun/Shoot/AS_fp_mousegun_shoot
-1. consolidate_assets on scratch sequences
-  OK    duplicate old sequence: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_OldSeq.ZZ_OldSeq' (0x0000056A8F2D4800) Class 'AnimSequence'>
-  OK    duplicate new sequence: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_NewSeq.ZZ_NewSeq' (0x0000056A2E379600) Class 'AnimSequence'>
-  OK    duplicate real montage: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_Montage.ZZ_Montage' (0x0000056A2F838500) Class 'AnimMontage'>
-  original slots ['MainActionSlot']; plays /Game/_STALKER2/Animations/Player/AnimSequences/pt/udp/Reload/OneHand/AS_fp_udp_reload_increased_one_hand.AS_fp_udp_reload_increased_one_hand
-  OK    build montage from old sequence: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_Built.ZZ_Built' (0x0000056A2F839680) Class 'AnimMontage'>
-  built montage plays /MouseMod/ZZ_ArsenalProbe3/ZZ_OldSeq.ZZ_OldSeq
-  EditorAssetLibrary.consolidate_assets exists: True
-  OK    consolidate_assets(new, [old]): True
-  built montage now plays /MouseMod/ZZ_ArsenalProbe3/ZZ_NewSeq.ZZ_NewSeq
-  old sequence still exists: True
-2. Montage with a /Game reference, replaced through a scratch stand-in
-  real montage copy plays /Game/_STALKER2/Animations/Player/AnimSequences/pt/udp/Reload/OneHand/AS_fp_udp_reload_increased_one_hand.AS_fp_udp_reload_increased_one_hand
-  OK    duplicate the /Game sequence: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_StandIn.ZZ_StandIn' (0x0000056A2E37DE00) Class 'AnimSequence'>
-  a duplicate does not take over references to the original, so consolidating it would not change the montage;
-  the real /Game case needs a function that rewrites references without deleting the original (see section 0).
-3. rename_assets fix-up: does a montage follow a renamed sequence?
-  OK    duplicate sequence: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_Renameable.ZZ_Renameable' (0x0000056A2F1AEA00) Class 'AnimSequence'>
-  OK    build montage on it: <Object '/MouseMod/ZZ_ArsenalProbe3/ZZ_Holder.ZZ_Holder' (0x0000056AC73CA800) Class 'AnimMontage'>
-  OK    rename_assets: True
-  holder plays /MouseMod/ZZ_ArsenalProbe3/ZZ_Renamed.ZZ_Renamed
-4. Slot names
-  real montage copy ['MainActionSlot']; factory montage ['DefaultSlot']
-Cleaning up scratch assets
-  OK    delete scratch folder: True

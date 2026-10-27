@@ -220,14 +220,34 @@ def tidy_generated_rig(context, rig):
         if not hand:
             continue
         for name in star_bone_names(rig, side):
-            edit_bones[name].parent = hand
-            edit_bones[name].use_connect = False
+            source = edit_bones[name]
+            source.parent = hand
+            source.use_connect = False
+            # The mesh's groups were renamed DEF-*, but Rigify's basic.raw_copy
+            # wrist helpers have no deform copy of their own.
+            deform_name = 'DEF-' + name
+            if deform_name not in edit_bones:
+                deform = edit_bones.new(deform_name)
+                deform.head = source.head
+                deform.tail = source.tail
+                deform.roll = source.roll
+                deform.parent = source
+            edit_bones[deform_name].use_deform = True
     oops.mode_set(mode='OBJECT')
+
+    # A game joint has one transform; Blender-only B-bone segments cannot be
+    # represented on the unchanged retail skeleton.
+    for bone in rig.data.bones:
+        if bone.use_deform:
+            bone.bbone_segments = 1
+    for name, target in b_fun.upper_arm_twist_sources(rig):
+        rig.pose.bones[name].constraints[0].subtarget = target
 
     hidden = rig.data.collections.get(HIDDEN_BONE_COLLECTION)
     if hidden is None:
         hidden = rig.data.collections.new(HIDDEN_BONE_COLLECTION)
     hidden_names = list(HIDDEN_BONE_NAMES) + star_bone_names(rig, 'L') + star_bone_names(rig, 'R')
+    hidden_names += ['DEF-' + name for side in ('L', 'R') for name in star_bone_names(rig, side)]
     for name in hidden_names:
         bone = rig.data.bones.get(name)
         if not bone:
@@ -759,6 +779,12 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
             [source_name, target_name]
             for source_name, target_name in mapping.mapping.items()
             if source_name and target_name and target_name in rig.pose.bones
+        ])
+        rig['arsenal_deformation_mapping'] = json.dumps([
+            [source_name, target_name]
+            for source_name, target_name in mapping.mapping.items()
+            if source_name and target_name
+            and 'DEF-' + target_name in rig.pose.bones
         ])
         rig.select_set(False)
         armature_object.select_set(True)

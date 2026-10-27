@@ -7,7 +7,7 @@ Developer documentation for the importer module integrated into Stalker 2 Arsena
 - Blender with the FBX importer enabled. The minimum supported version is Blender 5.2.2; earlier versions are not supported.
 - The asset directory must contain `Animations/Player` and `Animations/Weapons`. The add-on accepts either the folder containing `Animations`, or the `Animations` folder itself.
 - The base-skeleton operation is designed for a blank scene. It refuses to run if the active scene already contains an armature.
-- The add-on imports animation and the character mesh included in the character idle FBX. It does not import weapon meshes or build a material setup.
+- These operators import animation and the character mesh included in the character idle FBX. Weapon meshes and materials are imported by **Import Weapon** (see "Attachments, sockets and textures").
 - No third-party Python packages are required.
 
 ## Installation and Quick Start
@@ -19,9 +19,11 @@ Developer documentation for the importer module integrated into Stalker 2 Arsena
 5. Retarget the animations from panel 3. Keyframes are cleaned automatically afterwards.
 6. Save the `.blend` file after reviewing the generated actions and scene.
 
+**Import New Animations** (panel 2, Object Mode) adds clips to a blend that has already been converted, for example one deleted by mistake. It imports only the pairs whose key no action has yet (an action named after the key, or a retargeted action whose `arsenal_source_action` is the key), retargets them onto the rig, renames them to the key and removes the source actions. Existing actions are never changed, and running it again does nothing.
+
 The individual operators (Import Rigged Weapon, Create Base Skeleton, Scan Animations, Import All, the guess buttons) still exist but are no longer shown in the panel. Fingers are in separate `Fingers.L` / `Fingers.R` bone collections (plus Detail collections).
 
-The tested workspace produced a 120-bone armature, one retained character mesh, one camera, and 32 animation actions. The supplied library also has four unmatched animations.
+For the pistol (UDP) this gives a 120-bone armature, one retained character mesh, one camera and 37 animation actions, with no unmatched files.
 
 ## Asset Layout and Pairing
 
@@ -37,9 +39,12 @@ It identifies files by filename stem, not by directory name:
 | Side | Prefix | Example | Pair key |
 | --- | --- | --- | --- |
 | Character | `AS_fp_<name>_` | `AS_fp_udp_reload.FBX` | `reload` |
+| Character (offset aim) | `AS_FP_Player_<name>_` | `AS_FP_Player_Udp_IdleToOffsetAim_01.FBX` | `IdleToOffsetAim_01` |
 | Weapon | `AS_<name>_fp_` | `AS_udp_fp_reload.FBX` | `reload` |
 
-Matching is case-insensitive. Suffixes are compared after `casefold()`, and the character-side spelling is used for the generated action name. Matching suffixes present on both sides form pairs. A suffix with more than one file on either side is ambiguous and skipped. A suffix found on only one side is reported and skipped.
+Matching is case-insensitive. Suffixes are compared after `casefold()`, and the character-side spelling is used for the generated action name. Matching suffixes present on both sides form pairs. A suffix with more than one file on either side is ambiguous and skipped.
+
+A suffix found on only one side (`idle_boltlock` and `break_bullet_idle` are weapon-only, the offset aim clips character-only) is paired with the other side's `idle` as a **stand-in** (`stand_in_half`). The bake runs for the real half's length, and export writes only the real half; the Export panel shows "(weapon only)" or "(character only)". `*_add` keys have no stand-in: those additive idles are rebuilt by the ZoneKit import script and stay unpaired.
 
 The idle pair used to create the base skeleton is found through the same scan and must have the suffix `idle`. The exact expected files are `AS_fp_udp_idle.FBX` and `AS_udp_fp_idle.FBX`.
 
@@ -90,7 +95,7 @@ Each pair is processed independently:
 3. Determine animated bone names from action F-curves. If curves are not exposed through the legacy API, the code attempts Blender's layered-action channel bags; if no curve names can be read, it falls back to all bone names shared by source and destination.
 4. Add a local-space **Copy Transforms** constraint on each matching master pose bone, targeting the same-named bone on the corresponding imported source armature.
 5. When both files animate the same bone, the first source wins. The character source is supplied first, so character transforms take priority for shared hands; weapon transforms are used for weapon-specific bones.
-6. Select the master armature and run `bpy.ops.nla.bake` with visual keying, all pose bones, constraint clearing disabled, and curve cleaning enabled. The bake starts at frame 1 and ends at the longest imported action duration.
+6. Temporarily reveal the master armature if it is hidden (after conversion it sits in the hidden **Arsenal Retarget Backups** collection, and a hidden object is not evaluated), select it and run `bpy.ops.nla.bake` with visual keying, all pose bones, constraint clearing disabled, and curve cleaning enabled. The bake starts at frame 1 and ends at the longest imported action duration (for a stand-in pair, the real half's duration).
 7. Name the baked action with the shared suffix and set `use_fake_user=True`, so it remains in the file when not assigned.
 8. Remove temporary constraints, source armatures, source meshes, and imported source actions. Restore the user's active object, selection, frame, and prior master action/NLA state.
 
@@ -123,6 +128,7 @@ Operators:
 | `bpy.ops.stalker2.create_base_skeleton()` | Build the idle-derived armature, retain the character mesh, and create the camera |
 | `bpy.ops.stalker2.scan_animations()` | Scan and report matching, unmatched, and ambiguous files |
 | `bpy.ops.stalker2.import_animations()` | Import and bake all matching pairs onto the tagged armature |
+| `bpy.ops.stalker2.import_new_animations()` | On a converted rig, import and retarget only the pairs the blend has no action for |
 
 Core helpers are module-level functions to keep the import, bake, and cleanup behavior testable: `_scan_library`, `_create_base_skeleton`, `_import_fbx`, `_put_action_on_nla`, `_copy_bone_transforms`, `_bake_parameters`, and `_import_pair`.
 
@@ -141,7 +147,7 @@ The complete workflow was tested headlessly with Blender 5.2.2 using the provide
 - `SK_stalker` remains in the scene, parented to the master armature with an Armature modifier targeting it.
 - No weapon mesh or imported `Unreal Take` actions remain after base creation.
 - The camera is parented to `jnt_camera` and active in the scene.
-- All 32 matching animation pairs produce actions.
+- Every matching animation pair produces an action.
 - The final scene contains only the master armature, `SK_stalker`, and the generated camera.
 
 To reproduce interactively from Blender's Python Console after enabling the add-on:
@@ -162,11 +168,11 @@ For automated tests, run Blender with `--background --factory-startup --python-e
 - The base builder uses the idle pair and assumes its character rig includes `jnt_camera`.
 - The generated rig is a same-name skeleton join, not a general skeleton merge or retargeting system.
 - Shared animated bones are resolved by source order, with the character source taking precedence.
-- There is no import-selected UI, weapon mesh import, attachment setup, material setup, or export workflow.
+- These operators handle animation only; weapon meshes, attachments and materials are imported by **Import Weapon** (see below), and export is covered in [Exporting animations](exporting_animations.md).
 - Blender 5.2.2 is the minimum supported and verified runtime.
 
 
-Note: weapon-rig root motion (`jnt_offset`) is now baked in world space so aim poses (`idle_aim`, `aim_to_idle`, `idle_to_aim`) align. Re-import animations imported with older versions.
+Note: weapon-rig root motion (`jnt_offset`) is baked in world space so aim poses (`idle_aim`, `aim_to_idle`, `idle_to_aim`) align.
 
 ### Bone shapes
 

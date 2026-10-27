@@ -4,7 +4,7 @@ Stalker 2 Arsenal is a Blender add-on for the STALKER 2 first-person animation w
 
 ## Install
 
-In Blender Preferences, install the `Stalker2Arsenal_Blender5_2.zip` package (zip the `stalker2_arsenal` folder; it is not published yet).
+Zip the `stalker2_arsenal` folder (so the zip contains the folder itself), then in Blender use **Edit > Preferences > Add-ons > Install from Disk** and enable **Stalker 2 Arsenal**.
 
 Blender 5.2.2 is the minimum supported version. See the [development plan](../PLAN.md) for implementation status and planned work.
 
@@ -12,10 +12,13 @@ Blender 5.2.2 is the minimum supported version. See the [development plan](../PL
 
 Use the **STALKER 2** tab in the 3D View sidebar:
 
-1. **Import Assets**: choose the STALKER 2 folder containing `Animations/Player` and `Animations/Weapons`, create the base skeleton, then scan and import matching animation pairs.
-2. **Mapping Setup** (hidden in the panel; generated automatically by Import Weapon): generate a source-to-Rigify mapping, fill any blank source entries, and add mappings for an appended `Weapon` armature when present; the mapping is stored in the .blend file (and saved as a JSON preset) so it survives closing and reopening Blender.
-3. **Retarget**: (conversion now happens in Import Weapon) convert the character by mapping and retarget the imported actions onto the character, weapon, and camera controls. Conversion merges an appended `Weapon` rig and keeps a hidden source backup for future retargeting.
-4. **Animation Tools**: bake or edit animation as needed.
+1. **Set Up**: choose the template weapon, your weapon name, mod name and working folder, and create the ZoneKit setup script. Run it in ZoneKit.
+2. **Import Weapon**: one button imports the template's skeleton, meshes, attachments, textures and every first-person animation, builds the mapping and converts the character to a Rigify rig with the weapon and camera controls. The original armature is kept in a hidden backup for retargeting. **Import New Animations** adds any template animation missing from the blend.
+3. **Retarget**: bake the imported animations onto the rig's character, weapon and camera controls.
+4. **Create Your Custom Weapon**: edit the meshes and animations, and set the weapon's stats, magazines, name and description.
+5. **Export**: write the animations, meshes, CFG files, localisation and the ZoneKit import script.
+
+The [README](../../README.md) walks through the full workflow.
 
 ## Documentation
 
@@ -25,4 +28,5 @@ Use the **STALKER 2** tab in the 3D View sidebar:
 - [Mappings and armature renaming](./mappings.md)
 - [Animation retargeting](./animation.md)
 - [Utilities](./utility.md)
+- [Exporting animations and meshes](./exporting_animations.md)
 - [Weapon CFG files](cfg_export.md)

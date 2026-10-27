@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Stalker 2 Arsenal",
     "author": "euanm.com, based on OneClickRig by Artem Poletsky",
-    "version": (1, 5, 0),
+    "version": (1, 0, 0),
     "blender": (5, 2, 2),
     "location": "View3D > Sidebar > STALKER 2",
     "description": "Import STALKER 2 animations, generate a Rigify rig, and retarget actions",
@@ -72,6 +72,7 @@ classes = (
     stalker2_animation_importer.STALKER2_OT_scan_animations,
     stalker2_animation_importer.STALKER2_OT_import_animations,
     stalker2_animation_importer.STALKER2_OT_import_weapon,
+    stalker2_animation_importer.STALKER2_OT_import_new_animations,
     stalker2_animation_importer.STALKER2_PT_animation_importer,
     # preferences.RigToolsPreferences,
     # preferences.BoilerplatePreferencesAddKeymapOperator,

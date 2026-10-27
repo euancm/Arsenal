@@ -175,6 +175,7 @@ def write_unreal_import(context):
         'localization': localization,
         'magazines': magazines,
         'weapon': animation_name,
+        'template_weapon': context.scene.stalker2_animation_importer.weapon_name.strip(),
         'replace_existing_assets': True,
         'mesh_name': mesh_name,
         'game_root': mount,

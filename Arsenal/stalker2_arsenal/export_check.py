@@ -58,12 +58,21 @@ def _find_file(root, relative):
     return folder if os.path.exists(folder) else None
 
 
-def path_warnings(info, cfg_paths):
-    """Check the written CFG files against each other and against the exported files."""
+def _has_token(text, token):
+    return bool(token) and re.search(rf'(?i)(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])', text) is not None
+
+
+def path_warnings(info, cfg_paths, written=None):
+    """Check the written CFG files against each other and against the exported files.
+
+    written: the files this export wrote. Only those are checked for leftover template names;
+    anything else in the output folder is from an earlier export and is summarised in one line."""
     warnings = []
     output_root = info['output_root']
     mount = info['mount']
     weapon = info['anim_name'].casefold()
+    template = (info.get('template') or 'udp').casefold()
+    check_template = template != weapon
     texts = {}
     for path in cfg_paths:
         if path.lower().endswith('.cfg') and os.path.exists(path):
@@ -83,8 +92,8 @@ def path_warnings(info, cfg_paths):
                 continue
             if asset_path.rsplit('/', 1)[-1] != asset_name:
                 warnings.append(f'{name}: "{asset_path}.{asset_name}" has a different object name than its asset.')
-            if weapon != 'udp' and 'udp' in asset_path.casefold():
-                warnings.append(f'{name}: path "{asset_path}" still contains the template name "udp".')
+            if check_template and _has_token(asset_path.rsplit('/', 1)[-1], template):
+                warnings.append(f'{name}: path "{asset_path}" still contains the template name "{template}".')
             if kind in ('StaticMesh', 'SkeletalMesh'):
                 relative = asset_path[len(mount) + 1:]
                 if _find_file(output_root, relative + '.FBX') is None:
@@ -93,14 +102,25 @@ def path_warnings(info, cfg_paths):
     mod_folder = os.path.join(output_root, 'GameLite', 'ModGameData')
     if os.path.isdir(mod_folder) and info['mod'] not in os.listdir(mod_folder):
         warnings.append(f'GameLite/ModGameData has no "{info["mod"]}" folder.')
+    written_set = {os.path.normcase(os.path.abspath(path)) for path in (written or [])}
+    stale = []
     for folder, names, files in os.walk(output_root):
         for entry in names + files:
-            relative = os.path.relpath(os.path.join(folder, entry), output_root)
-            if weapon != 'udp' and re.search(r'(^|[^a-z])udp([^a-z]|$)', entry, re.IGNORECASE) \
-                    and not relative.startswith('GameLite'):
-                warnings.append(f'Exported path "{relative}" still contains the template name "udp".')
+            full = os.path.join(folder, entry)
+            relative = os.path.relpath(full, output_root)
             if re.search(r'[<>{}]', entry):
                 warnings.append(f'Exported path "{relative}" contains a placeholder character.')
+            if not check_template or relative.startswith('GameLite') or not _has_token(entry, template):
+                continue
+            if written is None or os.path.normcase(os.path.abspath(full)) in written_set:
+                warnings.append(f'Exported path "{relative}" still contains the template name "{template}".')
+            elif entry in files:
+                stale.append(relative)
+    if stale:
+        warnings.append(
+            f'{len(stale)} file(s) in the output folder from an earlier export still use the template name '
+            f'"{template}", e.g. "{stale[0]}". This export did not write them and the import script ignores them; '
+            'delete them if you no longer need them.')
     return _collapse(warnings)
 
 
@@ -114,5 +134,5 @@ def _collapse(warnings, limit=3):
             kept.append(warning)
     for kind, count in counts.items():
         if count > limit:
-            kept.append(f'...and {count - limit} more like: {kind}')
+            kept.append(f'...and {count - limit} more warnings of the same kind.')
     return kept

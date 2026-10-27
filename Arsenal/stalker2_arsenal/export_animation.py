@@ -1,9 +1,10 @@
+import json
 import math
 import os
 import re
 
 import bpy
-from mathutils import Matrix, Quaternion
+from mathutils import Matrix, Quaternion, Vector
 
 from . import bone_functions as b_fun
 from . import export_skeleton
@@ -82,7 +83,7 @@ def rename_weapon_folders(folders, old_name, new_name):
     return result
 
 
-def export_relative_path(template_path, kind, old_name, new_name, suffix, folder_override):
+def export_relative_path(template_path, kind, old_name, new_name, suffix, folder_override, exact=False):
     parts = library_anchor_parts(template_path)
     folders = parts[:-1]
     if folder_override:
@@ -96,6 +97,12 @@ def export_relative_path(template_path, kind, old_name, new_name, suffix, folder
         override_parts = [part for part in re.split(r'[\\/]+', folder_override) if part]
         folders = folders[:index + 1] + override_parts
     folders = rename_weapon_folders(folders, old_name, new_name)
+    if exact:
+        # The template's own name with the weapon swapped, as the setup script named the mod asset
+        # (this keeps AS_FP_Player_<weapon>_OffsetAim-Idle_01 and its odd casing).
+        stem = os.path.splitext(os.path.basename(template_path))[0]
+        token = re.compile(rf'(?<![a-z0-9]){re.escape(old_name)}(?![a-z0-9])', re.IGNORECASE)
+        return os.path.join(*folders, token.sub(new_name, stem) + '.fbx')
     stem = INVALID_FILENAME_CHARS.sub('_', suffix)
     if kind == 'player':
         filename = f'AS_fp_{new_name}_{stem}.fbx'
@@ -131,16 +138,23 @@ def plan_export(item_name, template_override, folder_override, pairs, old_name, 
         raise ValueError(f'No template pair for "{item_name}" (and no "{FALLBACK_TEMPLATE}" pair)')
     template = by_key[key]
     _suffix, player_template, weapon_template = template
+    stand_in = importer.stand_in_half(template)
 
     outputs = []
     for kind, template_path in (('player', player_template), ('weapon', weapon_template)):
+        if kind == stand_in:
+            # The other side's idle, only needed to solve the clip; the game has no such half to replace.
+            outputs.append((kind, template_path, None))
+            continue
         relative = export_relative_path(
-            template_path, kind, old_name, new_name, item_name, folder_override)
+            template_path, kind, old_name, new_name, item_name, folder_override, exact)
         target = os.path.join(output_root, relative)
         if is_inside(target, library_root) or os.path.normcase(target) == os.path.normcase(template_path):
             raise ValueError('Output would overwrite the original library; choose a different output folder')
         outputs.append((kind, template_path, target))
     status = 'Matches an original animation' if exact else f'New - template "{template[0]}"'
+    if stand_in:
+        status += f' ({"weapon" if stand_in == "player" else "character"} only)'
     return outputs, status
 
 
@@ -178,7 +192,7 @@ def rest_relatives(armature):
 def sample_template(context, armature, frames):
     samples = {}
     for frame in frames:
-        context.scene.frame_set(frame)
+        context.scene.frame_set(math.floor(frame), subframe=frame - math.floor(frame))
         context.view_layer.update()
         samples[frame] = (
             {pose_bone.name: pose_bone.matrix_basis.copy() for pose_bone in armature.pose.bones},
@@ -188,15 +202,78 @@ def sample_template(context, armature, frames):
 
 
 LIMB_CONTROLS = ('thigh_fk', 'shin_fk', 'foot_fk', 'upper_arm_fk', 'forearm_fk', 'hand_fk')
+TEMPLATE_SOCKETS = ('jnt_l_weapon', 'jnt_r_weapon')
+# Rigify's stretchy deform spine reproduces joint positions but not the donor's spine twist or bone
+# lengths. The game rotates these bones procedurally (look pitch, stance lean) and blends our clips with
+# vanilla ones bone by bone in local space, so they keep the donor's local twist and scale and only swing
+# to point at the rig's next spine joint, which is still solved exactly from the rig.
+TWIST_LOCKED_CHAIN = {'jnt_spine_01': 'jnt_spine_02', 'jnt_spine_02': 'jnt_spine_03'}
+BAKE_SUBSTEPS = 4
 
 
 def visible_pose_name(rig, target_name):
-    # Only the limbs have an IK alternative; ORG limb bones show the blended FK/IK result.
-    if target_name.split('.')[0] in LIMB_CONTROLS:
-        candidate = 'ORG-' + target_name.replace('_fk', '', 1)
-        if candidate in rig.pose.bones:
-            return candidate
+    # ORG bones include FK/IK blending and finger master/stretch constraints; controls do not.
+    name = target_name.replace('_fk', '', 1) if target_name.split('.')[0] in LIMB_CONTROLS else target_name
+    candidate = 'ORG-' + name
+    if candidate in rig.pose.bones:
+        return candidate
     return target_name
+
+
+def deformation_entries(rig, backup, mapping):
+    from .mapping_editor import build_mapping_guesses
+
+    entries = {
+        source: visible_pose_name(rig, target)
+        for target, source, _kind in mapping
+    }
+    deform_names = {
+        bone.name[4:] for bone in rig.data.bones
+        if bone.name.startswith('DEF-') and bone.use_deform
+    }
+    # Older rigs saved only control mappings, dropping palms and twist segments.
+    bindings = build_mapping_guesses(
+        [bone.name for bone in backup.data.bones], deform_names)
+    for target, source, _kind in mapping:
+        name = target.replace('_fk', '', 1) if target.split('.')[0] in LIMB_CONTROLS else target
+        if name in deform_names:
+            bindings[source] = name
+    bindings.update(dict(json.loads(rig.get('arsenal_deformation_mapping', '[]'))))
+    for bone in backup.data.bones:
+        target = 'DEF-' + bindings.get(bone.name, bone.name)
+        if target in rig.pose.bones and rig.data.bones[target].use_deform:
+            entries[bone.name] = target
+        elif bone.name not in entries and bone.name in rig.pose.bones:
+            entries[bone.name] = bone.name
+    explicitly_mapped = {source for _target, source, _kind in mapping}
+    return [
+        (target, source) for source, target in entries.items()
+        if source not in TEMPLATE_SOCKETS or source in explicitly_mapped
+    ]
+
+
+def deformation_preview_issues(rig):
+    issues = [
+        bone.name for bone in rig.data.bones
+        if bone.use_deform and bone.bbone_segments > 1
+    ]
+    issues.extend(name for name, _target in b_fun.upper_arm_twist_sources(rig))
+    for obj in bpy.data.objects:
+        if obj.type != 'MESH' or not any(
+                mod.type == 'ARMATURE' and mod.object == rig for mod in obj.modifiers):
+            continue
+        missing = {
+            group.index: group.name for group in obj.vertex_groups
+            if group.name.startswith('DEF-') and (
+                group.name not in rig.data.bones or not rig.data.bones[group.name].use_deform)
+        }
+        if missing:
+            used = {
+                group.group for vertex in obj.data.vertices for group in vertex.groups
+                if group.group in missing and group.weight > 0
+            }
+            issues.extend(missing[index] for index in sorted(used))
+    return issues
 
 
 def read_reversed_worlds(rig, backup, entries):
@@ -211,37 +288,76 @@ def read_reversed_worlds(rig, backup, entries):
     return result
 
 
-def solve_armature(order, relatives, original_basis, reversed_world, types, base=IDENTITY):
-    """Return (worlds, basis) per bone; mapped bones take the edited pose."""
+def compose_transform(parent, local):
+    """Compose TRS like Unreal's FTransform, without introducing matrix shear."""
+    pt, pr, ps = parent.decompose()
+    lt, lr, ls = local.decompose()
+    return Matrix.LocRotScale(
+        pt + pr @ Vector(tuple(a * b for a, b in zip(ps, lt))),
+        pr @ lr, Vector(tuple(a * b for a, b in zip(ps, ls))))
+
+
+def relative_transform(parent, world):
+    pt, pr, ps = parent.decompose()
+    wt, wr, ws = world.decompose()
+    if any(abs(value) < 1e-8 for value in ps):
+        raise ValueError('Cannot export animation with a zero-scale parent bone')
+    offset = pr.inverted() @ (wt - pt)
+    return Matrix.LocRotScale(
+        Vector(tuple(a / b for a, b in zip(offset, ps))),
+        pr.inverted() @ wr, Vector(tuple(a / b for a, b in zip(ws, ps))))
+
+
+def aimed_donor_world(parent_world, donor_local, child_local, origin, target):
+    """The donor bone's orientation and scale under parent_world, moved to origin and swung only as
+    far as needed to point at target."""
+    donor_world = compose_transform(parent_world, donor_local)
+    _dt, dr, ds = donor_world.decompose()
+    reach = dr @ Vector(tuple(a * b for a, b in zip(ds, child_local.to_translation())))
+    wanted = target - origin
+    if reach.length < 1e-6 or wanted.length < 1e-6:
+        return Matrix.LocRotScale(origin, dr, ds)
+    return Matrix.LocRotScale(origin, reach.rotation_difference(wanted) @ dr, ds)
+
+
+def solve_armature(order, relatives, original_basis, reversed_world, types, base=IDENTITY, aim_chain=None):
+    """Return (worlds, basis) per bone; mapped bones take the edited pose.
+
+    aim_chain maps a bone to the child it points at. Those bones keep the donor's local twist and
+    scale, take their position from the rig, and only swing to follow the edited child joint.
+    """
     worlds = {}
     basis = {}
+    aim_chain = aim_chain or {}
     for bone in order:
         name = bone.name
         parent_world = worlds[bone.parent.name] if bone.parent else IDENTITY
-        rest = parent_world @ relatives[name]
         original = original_basis[name]
-        if name in reversed_world:
-            local = rest.inverted_safe() @ (base @ reversed_world[name])
-            loc, rot, _scale = local.decompose()
-            original_loc, _original_rot, original_scale = original.decompose()
-            if types.get(name) == 'rot':
-                loc = original_loc
-            basis[name] = Matrix.LocRotScale(loc, rot, original_scale)
+        child = aim_chain.get(name)
+        if name in reversed_world and child in reversed_world:
+            world = aimed_donor_world(
+                parent_world, relatives[name] @ original, relatives[child] @ original_basis[child],
+                (base @ reversed_world[name]).to_translation(), (base @ reversed_world[child]).to_translation())
+            local = relatives[name].inverted_safe() @ relative_transform(parent_world, world)
+            basis[name] = Matrix.LocRotScale(*local.decompose())
+        elif name in reversed_world:
+            local = relatives[name].inverted_safe() @ relative_transform(
+                parent_world, base @ reversed_world[name])
+            # Mapping kinds govern retarget input, not export: the evaluated pose may include IK stretch
+            # or translated controls, which must survive the bake as well as rotation.
+            basis[name] = Matrix.LocRotScale(*local.decompose())
         else:
             basis[name] = original.copy()
-        worlds[name] = rest @ basis[name]
+        worlds[name] = compose_transform(parent_world, relatives[name] @ basis[name])
     return worlds, basis
 
 
 def sample_rig(context, rig, backup, mapping, frames):
-    entries = []
-    types = {}
-    for target_name, source_name, transform_type in mapping:
-        entries.append((visible_pose_name(rig, target_name), source_name))
-        types[source_name] = transform_type
+    entries = deformation_entries(rig, backup, mapping)
+    types = {source: kind for _target, source, kind in mapping}
     rows = []
     for frame in frames:
-        context.scene.frame_set(frame)
+        context.scene.frame_set(math.floor(frame), subframe=frame - math.floor(frame))
         context.view_layer.update()
         rows.append(read_reversed_worlds(rig, backup, entries))
     return rows, types
@@ -328,6 +444,7 @@ def export_fbx(context, armature, filepath):
             bake_anim_use_all_actions=False,
             bake_anim_force_startend_keying=True,
             bake_anim_simplify_factor=0.0,
+            bake_anim_step=1.0 / BAKE_SUBSTEPS,
             add_leaf_bones=False,
             armature_nodetype='ROOT',
             primary_bone_axis='Y',
@@ -352,7 +469,7 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
     animation_data.action_slot = slot
     first = math.floor(action.frame_range[0])
     last = math.ceil(action.frame_range[1])
-    frames_in = list(range(first, last + 1))
+    frames_in = [first + step / BAKE_SUBSTEPS for step in range((last - first) * BAKE_SUBSTEPS + 1)]
     frames_out = [float(frame - first) for frame in frames_in]
 
     imported = []
@@ -365,6 +482,11 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
 
         template_first = math.floor(min(player_action.frame_range[0], weapon_action.frame_range[0]))
         template_last = math.ceil(max(player_action.frame_range[1], weapon_action.frame_range[1]))
+        if player_target is None or weapon_target is None:
+            # A stand-in idle runs for as long as the clip it accompanies (as the importer baked it).
+            real_action = weapon_action if player_target is None else player_action
+            template_first = math.floor(real_action.frame_range[0])
+            template_last = math.ceil(real_action.frame_range[1])
         template_frames = [
             min(max(frame - first + template_first, template_first), template_last)
             for frame in frames_in
@@ -379,6 +501,13 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
 
         player_order, weapon_order = bone_order(player), bone_order(weapon)
         player_rel, weapon_rel = rest_relatives(player), rest_relatives(weapon)
+        socket_worlds = {}
+        for frame in unique_frames:
+            if frame != math.floor(frame):
+                continue
+            worlds, _basis = solve_armature(
+                player_order, player_rel, player_samples[frame][0], {}, types)
+            socket_worlds[frame] = {name: worlds[name] for name in TEMPLATE_SOCKETS if name in worlds}
         player_series = {bone.name: [] for bone in player_order}
         weapon_series = {bone.name: [] for bone in weapon_order}
         object_series = []
@@ -386,12 +515,22 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
         for frame_index, template_frame in enumerate(template_frames):
             player_basis, _ = player_samples[template_frame]
             weapon_basis, weapon_original_world = weapon_samples[template_frame]
-            edited = reversed_rows[frame_index]
+            edited = dict(reversed_rows[frame_index])
+            # Rigify's unanimated raw-copy sockets are not the game's animated hand sockets.
+            # Keep their donor component pose, including compensation for the changed hand axes.
+            lower, upper = math.floor(template_frame), math.ceil(template_frame)
+            weight = template_frame - lower
+            for name, world in socket_worlds[lower].items():
+                if name not in edited:
+                    a, ar, scale_a = world.decompose()
+                    b, br, scale_b = socket_worlds[upper][name].decompose()
+                    edited[name] = Matrix.LocRotScale(
+                        a.lerp(b, weight), ar.slerp(br, weight), scale_a.lerp(scale_b, weight))
 
             player_worlds, player_result = solve_armature(
                 player_order, player_rel, player_basis,
                 {name: world for name, world in edited.items() if name in player_bone_names},
-                types)
+                types, aim_chain=TWIST_LOCKED_CHAIN)
             weapon_world = player_worlds.get('jnt_weapon', weapon_original_world)
             weapon_inverse = weapon_world.inverted_safe()
 
@@ -420,28 +559,63 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
         created.append(write_armature_action(player, action.name, frames_out, player_series))
         created.append(write_armature_action(weapon, action.name, frames_out, weapon_series, object_series))
         scene.frame_set(-1)
-        export_fbx(context, player, player_target)
-        export_fbx(context, weapon, weapon_target)
+        for armature, target in ((player, player_target), (weapon, weapon_target)):
+            if target is not None:
+                export_fbx(context, armature, target)
     finally:
         for objects, actions in reversed(imported):
             importer._remove_imported(objects, actions)
         for new_action in created:
             bpy.data.actions.remove(new_action)
-    return player_target, weapon_target
+    return [target for target in (player_target, weapon_target) if target is not None]
+
+
+POSE_CHANNEL_RESTS = b_fun.POSE_CHANNEL_RESTS
+POSE_PATH = re.compile(r'pose\.bones\["((?:[^"\\]|\\.)*)"\]\.?(\w+|\["(?:[^"\\]|\\.)*"\])$')
+
+
+def snapshot_pose(rig):
+    channels = [(bone, prop, tuple(getattr(bone, prop))) for bone in rig.pose.bones for prop, _rest in POSE_CHANNEL_RESTS]
+    switches = [(rig.pose.bones[name], name, rig.pose.bones[name]['IK_FK']) for name in b_fun.ik_prop_bones
+                if name in rig.pose.bones and 'IK_FK' in rig.pose.bones[name]]
+    return channels, switches
+
+
+def restore_pose(snapshot):
+    channels, switches = snapshot
+    for bone, prop, value in channels:
+        setattr(bone, prop, value)
+    for bone, _name, value in switches:
+        bone['IK_FK'] = value
+
+
+def rest_unkeyed_channels(rig, action, slot):
+    """Export treats unkeyed channels as rest (and an unkeyed IK/FK switch as FK)."""
+    keyed = set()
+    for curve in action_slot_curves(action, slot):
+        match = POSE_PATH.match(curve.data_path)
+        if match:
+            keyed.add((bpy.utils.unescape_identifier(match.group(1)), match.group(2)))
+    b_fun.rest_pose_channels(rig, keyed)
 
 
 def run_exports(context, rig, backup, plans):
+    if deformation_preview_issues(rig):
+        raise RuntimeError(
+            'Viewport uses unbound deform groups or Blender-only B-bones. '
+            'Run Repair Deformation Preview in the Export panel, then export again.')
     scene = context.scene
     saved = (
         scene.unit_settings.scale_length,
         scene.render.fps, scene.render.fps_base,
-        scene.frame_start, scene.frame_end, scene.frame_current,
+        scene.frame_start, scene.frame_end, scene.frame_current, scene.frame_subframe,
         rig.animation_data.action if rig.animation_data else None,
         rig.animation_data.action_slot if rig.animation_data else None,
         context.view_layer.objects.active,
     )
     written = []
     failures = []
+    pose = snapshot_pose(rig)
     mapping, _missing = resolve_animation_mapping(backup, rig)
     if not mapping:
         raise RuntimeError('No animation bone mappings matched the source skeleton and Rigify rig.')
@@ -450,11 +624,13 @@ def run_exports(context, rig, backup, plans):
         with b_fun.forced_pose_position(rig, backup):
             for action, slot, outputs in plans:
                 try:
+                    rest_unkeyed_channels(rig, action, slot)
                     written.extend(export_action(context, rig, backup, mapping, action, slot, outputs))
                 except Exception as error:
                     failures.append((action.name, str(error)))
     finally:
-        (scale, fps, fps_base, frame_start, frame_end, frame_current,
+        restore_pose(pose)
+        (scale, fps, fps_base, frame_start, frame_end, frame_current, frame_subframe,
          rig_action, rig_slot, active) = saved
         scene.unit_settings.scale_length = scale
         scene.render.fps = fps
@@ -465,7 +641,7 @@ def run_exports(context, rig, backup, plans):
             rig.animation_data.action = rig_action
             if rig_action:
                 rig.animation_data.action_slot = rig_slot
-        scene.frame_set(frame_current)
+        scene.frame_set(frame_current, subframe=frame_subframe)
         for obj in scene.objects:
             obj.select_set(obj == active)
         context.view_layer.objects.active = active
@@ -475,6 +651,32 @@ def run_exports(context, rig, backup, plans):
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
+
+class ARSENAL_OT_RepairDeformationPreview(bpy.types.Operator):
+    bl_idname = 'object.arsenal_repair_deformation_preview'
+    bl_label = 'Repair Deformation Preview'
+    bl_description = (
+        'Bind missing wrist helpers, use one segment per game bone and give the upper arm '
+        'its full twist; does not change animation keys')
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        rig, _backup = find_export_rig(context)
+        return rig is not None
+
+    def execute(self, context):
+        from .convert_to_rigify import tidy_generated_rig
+
+        rig, _backup = find_export_rig(context)
+        tidy_generated_rig(context, rig)
+        issues = deformation_preview_issues(rig)
+        if issues:
+            self.report({'ERROR'}, 'Unbound deformation groups remain: ' + ', '.join(issues))
+            return {'CANCELLED'}
+        self.report({'INFO'}, 'Repaired deformation preview; animation keys are unchanged. Save your blend.')
+        return {'FINISHED'}
+
 
 class ARSENAL_ExportAction(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty()
@@ -668,7 +870,8 @@ class ARSENAL_OT_ExportValidate(bpy.types.Operator):
             return {'CANCELLED'}
         for action, _slot, outputs in plans:
             for _kind, _template, target in outputs:
-                print(f'[Arsenal export] {action.name}: {target}')
+                if target is not None:
+                    print(f'[Arsenal export] {action.name}: {target}')
         for bone_name, _stem, target in static_plan:
             print(f'[Arsenal export] static mesh {bone_name}: {target}')
         try:
@@ -707,15 +910,20 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
         export = context.scene.arsenal_export
         parts = []
         warn = False
+        written = []
         try:
             _build_static_plan(context)
             if any(item.enabled for item in export.actions):
-                summary, failed = _report_animation(self, context, _run_animation_export(context))
+                result = _run_animation_export(context)
+                written += result[0]
+                summary, failed = _report_animation(self, context, result)
                 parts.append(summary)
                 warn = warn or failed
             else:
                 self.report({'WARNING'}, 'No actions are ticked; exporting static meshes only.')
-            summary, skipped = _report_static(self, _run_static_export(context))
+            result = _run_static_export(context)
+            written += result[0]
+            summary, skipped = _report_static(self, result)
             parts.append(summary)
             warn = warn or skipped
             try:
@@ -723,7 +931,8 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
                 written_cfgs, cfg_info = weapon_cfg.export_cfg_files(self, context)
                 parts.append('the CFG files')
                 from . import export_check
-                problems = export_check.name_warnings(cfg_info) + export_check.path_warnings(cfg_info, written_cfgs)
+                problems = export_check.name_warnings(cfg_info) + export_check.path_warnings(
+                    cfg_info, written_cfgs, written + list(written_cfgs))
                 for problem in problems:
                     self.report({'WARNING'}, problem)
                     print(f'[Arsenal export] CHECK: {problem}')
@@ -771,6 +980,10 @@ class ARSENAL_PT_ExportPanel(bpy.types.Panel):
             layout.prop(item, 'template')
             layout.prop(item, 'folder')
         layout.label(text=export.summary)
+        rig, _backup = find_export_rig(context)
+        if rig and deformation_preview_issues(rig):
+            layout.label(text='Viewport deformation needs repair', icon='ERROR')
+            layout.operator('object.arsenal_repair_deformation_preview', icon='MOD_ARMATURE')
         layout.operator('object.arsenal_export_validate', icon='CHECKMARK')
         layout.operator('object.arsenal_export_all', icon='EXPORT')
         layout.separator()
@@ -778,6 +991,7 @@ class ARSENAL_PT_ExportPanel(bpy.types.Panel):
 
 
 CLASSES = (
+    ARSENAL_OT_RepairDeformationPreview,
     ARSENAL_ExportAction,
     ARSENAL_ExportProps,
     ARSENAL_UL_ExportActions,

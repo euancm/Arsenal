@@ -324,11 +324,11 @@ def build_context(context):
     if main is None:
         raise RuntimeError('No weapon mesh is weighted to the mapped weapon bones.')
     output_root = bpy.path.abspath(export.output_folder).strip()
-    category = static_mesh.validate_names(main.name, export.static_category.strip()).replace(os.sep, '/')
+    mesh_name = static_mesh.weapon_mesh_name(main, context.scene)
+    category = static_mesh.validate_names(mesh_name, export.static_category.strip()).replace(os.sep, '/')
     weapon_id, sid = weapon_names(context.scene, export, cfg)
     mod_name(export)
     mount = animation_export.mod_mount(export)
-    mesh_name = main.name
     mesh_folder = f'{mount}/_Stalker_2/weapons/{category}/p_{mesh_name}'
 
     def mesh_path(folder, stem):
@@ -341,10 +341,11 @@ def build_context(context):
         parts.append((mesh_path(f'{mesh_folder}/AnimMesh', stem), joint))
 
     magazines = collect_magazines(cfg, others)
+    template = static_mesh.template_token(context.scene)
     for magazine in magazines:
         for key in ('full', 'empty'):
             obj = magazine[key]
-            stem = f'SM_wpn_{mesh_name}_SM_{obj.name}'
+            stem = static_mesh.attachment_stem(mesh_name, obj.name, template)
             magazine[key + '_path'] = mesh_path(f'{mesh_folder}/AnimMesh', stem)
         bones = static_mesh.weighted_bones(magazine['full'], bone_joints)
         magazine['socket'] = bone_joints[max(bones, key=bones.get)] if bones else 'jnt_magazine'
@@ -361,7 +362,7 @@ def build_context(context):
         'weapon_id': weapon_id, 'sid': sid, 'player_sid': f'{sid}_Player', 'mesh_name': mesh_name,
         'mesh_folder': mesh_folder, 'world_mesh': mesh_path(mesh_folder, f'SM_{mesh_name}'),
         'parts': parts, 'magazines': magazines, 'animation_dir': animation_dir,
-        'anim_name': animation_export.weapon_name(context.scene),
+        'anim_name': animation_export.weapon_name(context.scene), 'template': template,
     }
 
 

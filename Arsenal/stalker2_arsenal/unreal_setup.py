@@ -111,23 +111,16 @@ def select_assets(assets, config, additive_of=None):
                 # Magazine meshes (default, increased/big/twin; full/empty) sit in the weapon's folder, and some
                 # (SM_ak_mag_full, SM_ar_ak_bigmag_*) do not carry the weapon token in their own name.
                 result['static_meshes'].append(package)
-    restore_paired_sequences(result, anim_tokens)
+    export_additive_overlays(result)
     return result
 
 
-def pair_key(package, anim_tokens):
-    """AS_fp_udp_reload and AS_udp_fp_reload both give 'reload': the player and weapon halves of one animation."""
-    name = package.rsplit('/', 1)[-1].lower()
-    words = [w for w in name.split('_')[1:] if w != 'fp' and w not in anim_tokens]
-    return '_'.join(words)
-
-
-def restore_paired_sequences(result, anim_tokens):
-    """A player sequence flagged additive is still one half of a normal animation when the weapon half is not
-    additive (reload, melee, break bullet), and Blender needs both halves."""
-    weapon_keys = {pair_key(p, anim_tokens) for p in result['sequences'] if '/animations/weapons/' in p.lower()}
+def export_additive_overlays(result):
+    """Additive overlays (shoot, equip, empty click, offset aim, and the player halves of reload and melee)
+    store a full pose and are edited in Blender like any other clip; UE subtracts their reference pose itself.
+    Only the *_add idle companions stay unexported: the import script rebuilds them from the exported idle."""
     for package in list(result['additive']):
-        if '/animations/player/' in package.lower() and pair_key(package, anim_tokens) in weapon_keys:
+        if not package.lower().endswith('_add'):
             result['additive'].remove(package)
             result['sequences'].append(package)
     result['sequences'].sort()

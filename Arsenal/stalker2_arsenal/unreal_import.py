@@ -130,6 +130,34 @@ def find_replacement(ref_package, weapon, mount, mod_assets):
     return None
 
 
+def template_sequence_package(package, weapon, template_weapon, mount):
+    if not package.startswith(mount.rstrip('/') + '/'):
+        raise ValueError(f'Not a mod package: {package}')
+    pattern = re.compile(rf'(?<![a-z0-9]){re.escape(weapon)}(?![a-z0-9])', re.IGNORECASE)
+    return '/Game' + pattern.sub(template_weapon, package[len(mount.rstrip('/')):])
+
+
+def transforms_equal(left, right):
+    # Additive base subtraction/reapplication rounds native-key positions by up to ~5e-5 cm.
+    for field, tolerance in (('translation', 1e-4), ('rotation', 1e-5), ('scale3d', 1e-5)):
+        a, b = getattr(left, field), getattr(right, field)
+        axes = ('x', 'y', 'z', 'w') if field == 'rotation' else ('x', 'y', 'z')
+        if all(abs(getattr(a, axis) - getattr(b, axis)) <= tolerance for axis in axes):
+            continue
+        if field == 'rotation' and all(abs(getattr(a, axis) + getattr(b, axis)) <= tolerance for axis in axes):
+            continue
+        return False
+    return True
+
+
+def raw_pose_options():
+    options = unreal.AnimPoseEvaluationOptions()
+    options.evaluation_type = unreal.AnimDataEvalType.RAW
+    options.should_retarget = False
+    options.retrieve_additive_as_full_pose = True
+    return options
+
+
 MAGAZINE_SID = re.compile(r'\bGun[A-Za-z0-9_]*?_Mag[A-Za-z0-9_]*')
 EXTENDED_WORDS = ('extend', 'increas', 'big', 'large', 'long', 'drum', 'ext')
 
@@ -334,6 +362,23 @@ class Importer:
             mesh.set_material(index, material)
 
     def import_static_meshes(self):
+        mount = self.manifest['game_root'].rstrip('/')
+        packages = {
+            f'{folder}/{name}' for _path, folder, name in self.plan['static_meshes']
+        }
+        registry = unreal.AssetRegistryHelpers.get_asset_registry()
+        for data in registry.get_assets_by_path(mount + '/_Stalker_2/weapons', recursive=True):
+            if str(data.asset_class_path.asset_name) == 'StaticMesh':
+                packages.add(str(data.package_name))
+        collisions = [
+            package for package in sorted(packages)
+            if self.library.does_asset_exist('/Game' + package[len(mount):])
+        ]
+        if collisions:
+            raise RuntimeError(
+                'Static mesh packages would override vanilla weapons. Archive the old mod-owned '
+                'packages outside Content and export with a unique weapon mesh name: '
+                + ', '.join(collisions))
         options = unreal.FbxImportUI()
         options.set_editor_property('automated_import_should_detect_type', False)
         options.set_editor_property('mesh_type_to_import', unreal.FBXImportType.FBXIT_STATIC_MESH)
@@ -365,7 +410,23 @@ class Importer:
         options.set_editor_property('import_materials', False)
         options.set_editor_property('import_textures', False)
         options.set_editor_property('skeleton', skeleton)
-        self.import_tasks([self.task(path, folder, name, options) for path, folder, name in pending])
+        animation_options = options.get_editor_property('anim_sequence_import_data')
+        animation_options.set_editor_property('preserve_local_transform', True)
+        animation_options.set_editor_property('use_default_sample_rate', False)
+        animation_options.set_editor_property('custom_sample_rate', 0)
+        tasks = [self.task(path, folder, name, options) for path, folder, name in pending]
+        for task in tasks:
+            # Interchange recomputes locals from sheared globals, changing the baked pose.
+            task.set_editor_property('factory', unreal.FbxFactory())
+        flag = 'Interchange.FeatureFlags.Import.FBX'
+        interchange_enabled = unreal.SystemLibrary.get_console_variable_bool_value(flag)
+        try:
+            if interchange_enabled:
+                unreal.SystemLibrary.execute_console_command(None, flag + ' 0')
+            self.import_tasks(tasks)
+        finally:
+            if interchange_enabled:
+                unreal.SystemLibrary.execute_console_command(None, flag + ' 1')
 
     def import_skeletal_mesh(self):
         """Create SK_<weapon> (and its skeleton) from the exported armature before any animation needs it."""
@@ -383,6 +444,136 @@ class Importer:
         options.set_editor_property('import_textures', False)
         options.set_editor_property('create_physics_asset', False)
         self.import_tasks([self.task(path, folder, name, options) for path, folder, name in pending])
+
+    @staticmethod
+    def same_raw_animation(asset, original):
+        library = unreal.AnimationLibrary
+        if abs(asset.get_play_length() - original.get_play_length()) > 1e-6:
+            return False
+        frames = library.get_num_frames(asset)
+        if (frames != library.get_num_frames(original)
+                or library.get_animation_interpolation_type(asset) != library.get_animation_interpolation_type(original)):
+            return False
+        names = library.get_animation_track_names(asset)
+        if set(names) != set(library.get_animation_track_names(original)):
+            return False
+        if not names:
+            raise RuntimeError(f'No raw animation tracks on {asset.get_path_name()}')
+        if frames < 1:
+            raise RuntimeError(f'No animation intervals on {asset.get_path_name()}')
+        options = raw_pose_options()
+        for frame in range(frames + 1):
+            time = asset.get_play_length() * frame / frames
+            ours = unreal.AnimPoseExtensions.get_anim_pose_at_time(asset, time, options)
+            theirs = unreal.AnimPoseExtensions.get_anim_pose_at_time(original, time, options)
+            for name in names:
+                a = unreal.AnimPoseExtensions.get_bone_pose(ours, name, unreal.AnimPoseSpaces.LOCAL)
+                b = unreal.AnimPoseExtensions.get_bone_pose(theirs, name, unreal.AnimPoseSpaces.LOCAL)
+                if not transforms_equal(a, b):
+                    return False
+        return True
+
+    def sync_additive_idle(self, source, target):
+        """The collection plays *_idle*_add, not the nonadditive FBX reference clip."""
+        if source.get_editor_property('additive_anim_type') != unreal.AdditiveAnimationType.AAT_NONE:
+            raise RuntimeError(f'Expected a nonadditive idle: {source.get_path_name()}')
+        if target.get_editor_property('additive_anim_type') != unreal.AdditiveAnimationType.AAT_LOCAL_SPACE_BASE:
+            raise RuntimeError(f'Expected a local additive idle: {target.get_path_name()}')
+        frames = unreal.AnimationLibrary.get_num_frames(target) + 1
+        if frames < 2:
+            raise RuntimeError(f'Cannot resample an idle with fewer than two keys: {target.get_path_name()}')
+        names = unreal.AnimationLibrary.get_animation_track_names(source)
+        if not names:
+            raise RuntimeError(f'No raw idle tracks on {source.get_path_name()}')
+        options = raw_pose_options()
+        tracks = {name: ([], [], []) for name in names}
+        unchanged = set(unreal.AnimationLibrary.get_animation_track_names(target)) == set(names)
+        for frame in range(frames):
+            time = source.get_play_length() * frame / (frames - 1)
+            pose = unreal.AnimPoseExtensions.get_anim_pose_at_time(source, time, options)
+            current = unreal.AnimPoseExtensions.get_anim_pose_at_time(
+                target, target.get_play_length() * frame / (frames - 1), options) if unchanged else None
+            for name, (positions, rotations, scales) in tracks.items():
+                transform = unreal.AnimPoseExtensions.get_bone_pose(pose, name, unreal.AnimPoseSpaces.LOCAL)
+                positions.append(transform.translation)
+                rotations.append(transform.rotation)
+                scales.append(transform.scale3d)
+                if unchanged:
+                    actual = unreal.AnimPoseExtensions.get_bone_pose(current, name, unreal.AnimPoseSpaces.LOCAL)
+                    unchanged = transforms_equal(transform, actual)
+        if unchanged:
+            return
+        controller = target.controller
+        controller.open_bracket('Sync exported additive idle', False)
+        try:
+            controller.remove_all_bone_tracks(False)
+            if unreal.AnimationLibrary.get_animation_track_names(target):
+                raise RuntimeError(f'Could not clear idle tracks on {target.get_path_name()}')
+            for name, values in tracks.items():
+                if not controller.add_bone_curve(name, False) or not controller.set_bone_track_keys(
+                        name, *values, should_transact=False):
+                    raise RuntimeError(f'Could not write {name} on {target.get_path_name()}')
+        finally:
+            controller.close_bracket(False)
+        if not self.library.save_loaded_asset(target):
+            raise RuntimeError(f'Could not save additive idle {target.get_path_name()}')
+        log(f'  additive idle {target.get_name()} <- {source.get_name()} (kept timing, curves and additive base)')
+        self.count('additive idles synced')
+
+    def update_additive_playback(self):
+        assets = self.mod_assets()['sequence']
+        exported = {
+            f'{folder}/{name}'.lower()
+            for _path, folder, name in self.plan['player_animations']
+        }
+        for package in sorted(exported):
+            if package.endswith(('_idle', '_idle_aim')):
+                companion = package.rsplit('/', 1)[-1] + '_add'
+                matches = [path for path in assets.values()
+                           if path.rsplit('/', 1)[-1].lower() == companion]
+                if len(matches) > 1:
+                    raise RuntimeError(f'Ambiguous additive idle for {package}: {matches}')
+                if matches and matches[0].lower() not in exported:
+                    self.sync_additive_idle(self.library.load_asset(assets[package]),
+                                            self.library.load_asset(matches[0]))
+
+        template_weapon = self.manifest.get('template_weapon')
+        if not template_weapon:
+            warn('Regenerate the import script to preserve unchanged overlays\' original additive references.')
+            return
+        mount = self.manifest['game_root'].rstrip('/')
+        weapon = self.manifest['weapon']
+        for package in sorted(assets.values()):
+            if package.lower() in exported or '/animations/player/' not in package.lower():
+                continue
+            if not re.search(rf'(?<![a-z0-9]){re.escape(weapon)}(?![a-z0-9])', package, re.IGNORECASE):
+                continue
+            asset = self.library.load_asset(package)
+            if asset.get_editor_property('additive_anim_type') == unreal.AdditiveAnimationType.AAT_NONE:
+                continue
+            reference = asset.get_editor_property('ref_pose_seq')
+            if reference is None or not self.package_of(reference).startswith(mount + '/'):
+                continue
+            original_path = template_sequence_package(package, weapon, template_weapon, mount)
+            if not self.library.does_asset_exist(original_path):
+                warn(f'Cannot verify additive reference for {package}: missing template {original_path}')
+                continue
+            original = self.library.load_asset(original_path)
+            settings = ('additive_anim_type', 'ref_pose_type', 'ref_frame_index')
+            if any(asset.get_editor_property(key) != original.get_editor_property(key) for key in settings):
+                log(f'  kept custom additive settings on {asset.get_name()}')
+                continue
+            if not self.same_raw_animation(asset, original):
+                log(f'  kept custom additive reference on {asset.get_name()} (raw tracks differ from template)')
+                continue
+            original_reference = original.get_editor_property('ref_pose_seq')
+            if original_reference is None:
+                raise RuntimeError(f'Template additive clip has no reference: {original_path}')
+            asset.set_editor_property('ref_pose_seq', original_reference)
+            if not self.library.save_loaded_asset(asset):
+                raise RuntimeError(f'Could not save additive reference on {package}')
+            log(f'  unchanged overlay {asset.get_name()}: restored {original_reference.get_path_name()}')
+            self.count('additive references restored')
 
     def mod_assets(self):
         """Animation assets of the mod: {kind: {lower package: package}}, kind is sequence/montage/collection."""
@@ -763,7 +954,6 @@ class Importer:
         raise RuntimeError(f'no readable text array property on the text asset; its Python attributes are: {own}')
 
     @staticmethod
-    @staticmethod
     def language_value(key):
         member = key.split('::')[-1]
         name = re.sub(r'(?<!^)(?=[A-Z])', '_', member).upper()
@@ -858,6 +1048,7 @@ class Importer:
         self.import_static_meshes()
         self.import_animations(self.plan['player_animations'], self.manifest['player_skeleton'])
         self.import_animations(self.plan['weapon_animations'], self.manifest['weapon_skeleton'])
+        self.update_additive_playback()
         self.update_montages()
         self.import_localization()
         self.tidy_empty_folders()

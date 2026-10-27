@@ -26,6 +26,49 @@ def static_mesh_stem(weapon_name, joint_name):
     return f'SM_wpn_{weapon_name}_SM_{part}'
 
 
+BLENDER_SUFFIX = re.compile(r'\.\d{3}$')
+
+
+def template_token(scene):
+    """The template weapon's name ("udp"), as set by the Set Up panel."""
+    importer = getattr(scene, 'stalker2_animation_importer', None)
+    return importer.weapon_name.strip().lower() if importer else ''
+
+
+def weapon_mesh_name(main, scene):
+    name = main.name
+    template = template_token(scene)
+    if name.casefold() == template.casefold():
+        from .export_animation import weapon_name
+        name = weapon_name(scene)
+        if not name or name.casefold() == template.casefold():
+            raise ValueError(
+                'Choose a custom weapon name or rename the main mesh. '
+                'Using the template mesh name would override the original game weapon.')
+    return name
+
+
+def attachment_part(obj_name, weapon_name, template=''):
+    """Name an attachment object's mesh after the new weapon: SM_pt_udp_mag_full -> pt_<weapon>_mag_full.
+
+    Drops the object's own SM_ prefix (the stem adds one) and Blender's .001 suffix, and swaps the
+    template weapon's name for the new one. Shared attachments (SM_sc01_en_silen_1) keep their name."""
+    name = BLENDER_SUFFIX.sub('', obj_name)
+    if name[:3].upper() == 'SM_':
+        name = name[3:]
+    if template and template != weapon_name.lower():
+        name = re.sub(rf'(?i)(?<![a-z0-9]){re.escape(template)}(?![a-z0-9])', weapon_name, name)
+    return name
+
+
+def attachment_stem(weapon_name, obj_name, template=''):
+    return f'SM_wpn_{weapon_name}_SM_{attachment_part(obj_name, weapon_name, template)}'
+
+
+def world_attachment_stem(weapon_name, obj_name, template=''):
+    return f'SM_{weapon_name}_{attachment_part(obj_name, weapon_name, template)}'
+
+
 def static_mesh_folder(output_root, category, weapon_name):
     return os.path.join(output_root, '_Stalker_2', 'weapons', category, f'p_{weapon_name}', 'AnimMesh')
 
@@ -153,8 +196,9 @@ def plan_static_meshes(rig, bone_joints, category, output_root, scene):
     main, main_bones, others = classify_meshes(rig, scene, bone_joints)
     if main is None:
         raise ValueError('No weapon mesh is weighted to the mapped weapon bones.')
-    weapon_name = main.name
+    weapon_name = weapon_mesh_name(main, scene)
     folder = static_mesh_folder(output_root, validate_names(weapon_name, category), weapon_name)
+    template = template_token(scene)
     plan = []
     for bone_name in sorted(main_bones, key=lambda name: bone_joints[name]):
         stem = static_mesh_stem(weapon_name, bone_joints[bone_name])
@@ -162,16 +206,18 @@ def plan_static_meshes(rig, bone_joints, category, output_root, scene):
     for obj, _bones in sorted(others, key=lambda item: item[0].name):
         if UNSAFE_NAME.search(obj.name):
             raise ValueError(f'Mesh object name "{obj.name}" contains characters that are not allowed in a file name.')
-        stem = f'SM_wpn_{weapon_name}_SM_{obj.name}'
+        stem = attachment_stem(weapon_name, obj.name, template)
         plan.append((obj.name, stem, os.path.join(folder, stem + '.FBX')))
     world_folder = os.path.dirname(folder)
     for obj in [main] + [obj for obj, _bones in sorted(others, key=lambda item: item[0].name)]:
-        stem = f'SM_{weapon_name}' if obj is main else f'SM_{weapon_name}_{obj.name}'
+        stem = f'SM_{weapon_name}' if obj is main else world_attachment_stem(weapon_name, obj.name, template)
         plan.append((WORLD_PREFIX + obj.name, stem, os.path.join(world_folder, stem + '.FBX')))
     stems = [stem for _label, stem, _path in plan]
     duplicates = sorted({stem for stem in stems if stems.count(stem) > 1})
     if duplicates:
-        raise ValueError(f'These static mesh names would collide: {", ".join(duplicates)}.')
+        raise ValueError(f'These static mesh names would collide: {", ".join(duplicates)}. Two mesh objects bound '
+                         'to the rig have the same name apart from a .001 suffix or the template name; '
+                         'delete or unbind the spare copy.')
     return weapon_name, plan
 
 

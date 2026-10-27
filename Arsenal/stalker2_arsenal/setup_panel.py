@@ -90,9 +90,10 @@ class ARSENAL_SetupProps(bpy.types.PropertyGroup):
         name='Dry Run', default=False,
         description='Only write the report of what the ZoneKit script would export and rename; change nothing')
     export_additive: bpy.props.BoolProperty(
-        name='Export Additive Animations', default=False,
-        description='Also export additive animation sequences. The add-on does not use them yet, '
-                    'so they are only checked out and renamed')
+        name='Export Additive Idles', default=False,
+        description='Also export the additive idle companions (*_idle_add). The add-on does not use them: '
+                    'the import script rebuilds them from your idle, so they are only checked out and renamed. '
+                    'Shoot, equip and other additive overlays are always exported')
     status: bpy.props.StringProperty(default='')
 
 
