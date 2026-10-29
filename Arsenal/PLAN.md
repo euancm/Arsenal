@@ -8,7 +8,9 @@ One Blender 5.2.2+ add-on that lets a 3D artist, with minimal technical input, t
 2. **Simple editing** of weapon, mesh and animation data (Rigify rig, retargeting, controls).
 3. **Seamless re-export and packaging** (FBX, ZoneKit import script, CFG, localisation, mod assets).
 
-The add-on lives in `Arsenal/stalker2_arsenal/` and installs from `Stalker2Arsenal_Blender5_2.zip`. The Glock mod in the repo root is a separate deliverable.
+This repository is dedicated to the add-on, its resources, developer tools and documentation. The add-on lives in `Arsenal/stalker2_arsenal/`; install it by zipping that folder. Weapon projects, extracted template libraries, generated exports and packaged mods belong in separate working folders, not in this checkout. The former standalone Glock/custom-pistol assets have been removed; named mods below are historical test cases, not bundled examples.
+
+Legacy-only character tools and their resources have also been removed: Mixamo/DAZ presets, mannequin pose and reverse skeleton conversion (including the neck2 mapping/templates), rig reset/scale, weight-paint shortcuts and vertex placement. The STALKER importer still uses mapping-based Rigify conversion and metarig generation. Keep `mappings/uemannequin_rigify.json`, `animation_mappings/rigify_uemannequin.json` and the weapon shape library: these are live workflow dependencies, despite the inherited mannequin names. Generated STALKER mappings now live in Blender's `DATAFILES/stalker2_arsenal/mappings` user directory, not the addon; existing checkout copies were migrated there. Bundled references remain read-only.
 
 ## Workflow (as built)
 
@@ -296,10 +298,18 @@ Probe: `num_sockets()` / `get_socket_by_index()` on all 63 vanilla weapon meshes
    - The add-on writes it as a mesh socket. Fine-tuning then becomes one number, not a round trip through Blender.
 7. **Animations are not touched.** The aim clips stay as the template's. The previous idea of offsetting `jnt_camera` in the aim clips is dropped: with an eye-point socket the camera correction would be applied twice. It is kept only as a fallback if step 1 shows the game ignores mesh sockets.
 
+### E9Mod measurement (2026-10-29)
+
+- The current `idle_aim` FBX weapon attachment matches the authored Blender pose (0 cm / 0 degrees in the first-frame check). The static part pivot calculation matches the evaluated rigid weapon vertices within 0.00004 cm. These checks do not evaluate the complete runtime graph.
+- The saved player aim/additive poses and weapon aim pose were read in ZoneKit. `SK_e9gen7` still inherits UDP's `CameraSocket` on `jnt_wpn_udp`: (-9.000, 1.603, 9.300).
+- Blender's bone-parented preview camera is at the Camera bone's **tail**, 1 cm sideways from the exported camera bone's origin. In Unreal coordinates, the authored preview eye is (0, -1, 160.338013), while composing the aimed weapon attachment with the inherited socket gives (0.589, 0, 160.089993).
+- Controlled test, not yet verified in game: make `CameraSocket` mesh-only on the mod-owned mesh and set its relative location to (-9.000, 0.603, 9.548013). This preserves the existing X/eye relief and rotation, and matches the preview's Y/Z eye line. Do not edit the animation or the shared skeleton. Package and test settled aim before implementing automatic calibration or generalizing the socket writer.
+- The 1 cm preview-camera offset is a confirmed discrepancy, but it does not by itself establish the cause of the reported vertical misalignment. Both runtime use of the mesh override and the final visual alignment still require an in-game test.
+
 ### Steps
 
 1. **Read-only checks in ZoneKit.** Done: socket survey. Still to do:
-   - **Mesh sockets via Python:** confirm `SkeletalMesh.add_socket(socket, add_to_skeleton=False)`, or an equivalent, is exposed in this ZoneKit build. Try it on a scratch `/<Mod>/ZZ_*` copy only, as D8 requires.
+   - **Mesh sockets via Python:** `add_socket` is exposed in this ZoneKit build, but creating a correctly named/parented socket is not yet verified: `socket_name` and `bone_name` reject `set_editor_property`, and `unreal.duplicate_object` is unavailable. Use the editor's **Create Mesh Socket** command for the first runtime test rather than changing the shared skeleton or relying on unverified Python calls.
    - **Mesh-socket override:** confirm `find_socket('CameraSocket')` on that scratch mesh returns the mesh socket.
    - **Play-test tool:** find which tool the workflow uses to move the camera offset, and which asset it saves (expected: the weapon's skeleton).
 2. **Socket export fix plus Blender display.**
@@ -375,6 +385,7 @@ Ordered by value to an artist. "Needs test" means it cannot be validated without
 6. **Pre-flight validation panel**: single "Check Everything" button covering skeleton/bone names, action coverage per montage, attachment list, naming rules, CFG sanity, and the montage status; output as a plain-language checklist.
 7. **Weapon control editor** (create controls from selected weapon bones) and **arbitrary cameras** from the previous plan.
 8. **Regression matrix and release**: run the animation matrix on all five templates (only the pistol has been tested in game); produce the release zip only when the user decides (zips are git-ignored).
+9. **Completion notifications (implemented)**: Blender import, retarget and Export All show one completion popup per operation, including warnings or failure; nested import steps do not create extra popups. Generated ZoneKit setup/export and import scripts show an OK dialog using `EditorDialog`, with success/warning/error categories. Detailed reports and exceptions remain available. Background Blender runs log instead of opening a popup; Unreal's unattended mode handles dialogs without waiting. ZoneKit dialogs still need an interactive editor check.
 
 ## Acceptance criteria
 

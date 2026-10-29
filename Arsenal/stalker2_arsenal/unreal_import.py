@@ -83,10 +83,26 @@ def log(message):
         unreal.log(message)
 
 
+WARNINGS = []
+
+
 def warn(message):
+    WARNINGS.append(message)
     print('WARNING: ' + message)
     if unreal is not None:
         unreal.log_warning(message)
+
+
+def notify_completion(error=None):
+    status = 'failed' if error is not None else 'finished with warnings' if WARNINGS else 'complete'
+    message = str(error) if error is not None else (
+        f'{len(WARNINGS)} warnings. See the Output Log for details.' if WARNINGS
+        else 'Import finished. You can now package and test the mod.')
+    if unreal is not None:
+        category = (unreal.AppMsgCategory.ERROR if error is not None else
+                    unreal.AppMsgCategory.WARNING if WARNINGS else unreal.AppMsgCategory.INFO)
+        unreal.EditorDialog.show_message(
+            f'Arsenal import {status}', message, unreal.AppMsgType.OK, message_category=category)
 
 
 def name_key(name, token):
@@ -191,6 +207,7 @@ def swap_magazine_sids(text, magazines, lines=None, label=''):
 
 class Importer:
     PARAMETER_DEFAULTS = {'D': 'Diffuse_VT', 'N': 'Normal_VT', 'RMA': 'RMAE_VT'}
+    ADDITIVE_SETTINGS = ('ref_pose_seq', 'ref_pose_type', 'ref_frame_index', 'additive_anim_type')
 
     def __init__(self, manifest, base_dir, overwrite):
         self.manifest = manifest
@@ -400,6 +417,14 @@ class Importer:
         pending = [(path, folder, name) for path, folder, name in files if self.wanted(folder, name, replace=True)]
         if not pending:
             return
+        playback = {}
+        for _path, folder, name in pending:
+            package = f'{folder}/{name}'
+            if self.library.does_asset_exist(package):
+                asset = self.library.load_asset(package)
+                if asset is None:
+                    raise RuntimeError(f'Cannot read animation settings before import: {package}')
+                playback[package] = {key: asset.get_editor_property(key) for key in self.ADDITIVE_SETTINGS}
         skeleton = self.skeleton(skeleton_path)
         options = unreal.FbxImportUI()
         options.set_editor_property('automated_import_should_detect_type', False)
@@ -424,9 +449,24 @@ class Importer:
             if interchange_enabled:
                 unreal.SystemLibrary.execute_console_command(None, flag + ' 0')
             self.import_tasks(tasks)
+            for package, settings in playback.items():
+                asset = self.library.load_asset(package)
+                if asset is None:
+                    raise RuntimeError(f'Cannot restore animation settings after import: {package}')
+                self.restore_additive_settings(asset, settings)
         finally:
             if interchange_enabled:
                 unreal.SystemLibrary.execute_console_command(None, flag + ' 1')
+
+    def restore_additive_settings(self, asset, settings):
+        if all(asset.get_editor_property(key) == value for key, value in settings.items()):
+            return
+        for key, value in settings.items():
+            asset.set_editor_property(key, value)
+        if not self.library.save_loaded_asset(asset):
+            raise RuntimeError(f'Could not save additive settings on {asset.get_path_name()}')
+        log(f'  restored additive settings on {asset.get_name()}')
+        self.count('additive settings restored')
 
     def import_skeletal_mesh(self):
         """Create SK_<weapon> (and its skeleton) from the exported armature before any animation needs it."""
@@ -526,6 +566,32 @@ class Importer:
             f'{folder}/{name}'.lower()
             for _path, folder, name in self.plan['player_animations']
         }
+        template_weapon = self.manifest.get('template_weapon')
+        mount = self.manifest['game_root'].rstrip('/')
+        weapon = self.manifest['weapon']
+        if template_weapon:
+            for package in sorted(exported):
+                if package not in assets:
+                    warn(f'Cannot verify additive settings: exported animation not found in registry: {package}')
+                    continue
+                asset = self.library.load_asset(assets[package])
+                if asset.get_editor_property('additive_anim_type') != unreal.AdditiveAnimationType.AAT_NONE:
+                    continue
+                original_path = template_sequence_package(assets[package], weapon, template_weapon, mount)
+                if not self.library.does_asset_exist(original_path):
+                    continue
+                original = self.library.load_asset(original_path)
+                if original.get_editor_property('additive_anim_type') == unreal.AdditiveAnimationType.AAT_NONE:
+                    continue
+                settings = {key: original.get_editor_property(key) for key in self.ADDITIVE_SETTINGS}
+                reference = settings['ref_pose_seq']
+                if reference is not None:
+                    replacement = find_replacement(self.package_of(reference), weapon, mount, assets)
+                    if replacement is not None:
+                        settings['ref_pose_seq'] = self.library.load_asset(replacement)
+                        if settings['ref_pose_seq'] is None:
+                            raise RuntimeError(f'Cannot load additive reference: {replacement}')
+                self.restore_additive_settings(asset, settings)
         for package in sorted(exported):
             if package.endswith(('_idle', '_idle_aim')):
                 companion = package.rsplit('/', 1)[-1] + '_add'
@@ -537,12 +603,9 @@ class Importer:
                     self.sync_additive_idle(self.library.load_asset(assets[package]),
                                             self.library.load_asset(matches[0]))
 
-        template_weapon = self.manifest.get('template_weapon')
         if not template_weapon:
             warn('Regenerate the import script to preserve unchanged overlays\' original additive references.')
             return
-        mount = self.manifest['game_root'].rstrip('/')
-        weapon = self.manifest['weapon']
         for package in sorted(assets.values()):
             if package.lower() in exported or '/animations/player/' not in package.lower():
                 continue
@@ -1062,7 +1125,7 @@ def print_plan(manifest, base_dir):
             print('   ', item)
 
 
-def main(argv=None):
+def _main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     manifest_path = find_manifest()
     with open(manifest_path, encoding='utf-8') as handle:
@@ -1072,6 +1135,20 @@ def main(argv=None):
         print_plan(manifest, base_dir)
         return
     Importer(manifest, base_dir, '--overwrite' in argv).run()
+
+
+def main(argv=None):
+    WARNINGS.clear()
+    try:
+        _main(argv)
+    except Exception as error:
+        if unreal is not None:
+            unreal.log_error(f'Arsenal import failed: {error}')
+            notify_completion(error)
+        raise
+    else:
+        if unreal is not None and '--dry-run' not in (sys.argv[1:] if argv is None else argv):
+            notify_completion()
 
 
 if unreal is not None or __name__ == '__main__':

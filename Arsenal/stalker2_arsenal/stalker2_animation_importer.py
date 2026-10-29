@@ -13,6 +13,7 @@ import os
 import re
 import textwrap
 import bpy
+from .notifications import completion, report
 
 
 DEFAULT_WEAPON_NAME = "UDP"
@@ -662,30 +663,31 @@ class STALKER2_OT_import_animations(bpy.types.Operator):
     bl_description = "Import and combine all matching animation pairs"
     bl_options = {"REGISTER"}
 
+    @completion('Animation import')
     def execute(self, context):
         settings = context.scene.stalker2_animation_importer
         try:
             master = _find_master_armature(context)
         except RuntimeError as error:
-            self.report({"ERROR"}, str(error))
+            report(self, {"ERROR"}, str(error))
             return {"CANCELLED"}
 
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
             pairs, player_only, weapon_only, ambiguous = _scan_library(root, settings.weapon_name)
         except (OSError, TypeError, ValueError) as error:
-            self.report({"ERROR"}, str(error))
+            report(self, {"ERROR"}, str(error))
             return {"CANCELLED"}
         settings.scan_summary = _scan_summary(pairs, player_only, weapon_only, ambiguous)
         if not pairs:
-            self.report({"WARNING"}, "No matching animation pairs found")
+            report(self, {"WARNING"}, "No matching animation pairs found")
             return {"CANCELLED"}
         for suffix in player_only:
-            self.report({"WARNING"}, f"Character animation found: {suffix}; weapon animation missing")
+            report(self, {"WARNING"}, f"Character animation found: {suffix}; weapon animation missing")
         for suffix in weapon_only:
-            self.report({"WARNING"}, f"Weapon animation found: {suffix}; character animation missing")
+            report(self, {"WARNING"}, f"Weapon animation found: {suffix}; character animation missing")
         for suffix in ambiguous:
-            self.report({"WARNING"}, f"Ambiguous animation suffix skipped: {suffix}")
+            report(self, {"WARNING"}, f"Ambiguous animation suffix skipped: {suffix}")
 
         successes = 0
         failures = []
@@ -695,12 +697,12 @@ class STALKER2_OT_import_animations(bpy.types.Operator):
                 successes += 1
             except Exception as error:
                 failures.append((pair[0], str(error)))
-                self.report({"WARNING"}, f"Failed {pair[0]}: {error}")
+                report(self, {"WARNING"}, f"Failed {pair[0]}: {error}")
 
         if failures:
-            self.report({"WARNING"}, f"Imported {successes}/{len(pairs)} pairs; {len(failures)} failed")
+            report(self, {"WARNING"}, f"Imported {successes}/{len(pairs)} pairs; {len(failures)} failed")
         else:
-            self.report({"INFO"}, f"Imported {successes} animation pairs")
+            report(self, {"INFO"}, f"Imported {successes} animation pairs")
         return {"FINISHED"}
 
 
@@ -711,6 +713,7 @@ class STALKER2_OT_import_weapon(bpy.types.Operator):
                       "and convert the character to Rigify, ready for retargeting")
     bl_options = {"REGISTER", "UNDO"}
 
+    @completion('Weapon import')
     def execute(self, context):
         settings = context.scene.stalker2_animation_importer
         ui = context.scene.arsenal_ui
@@ -718,7 +721,7 @@ class STALKER2_OT_import_weapon(bpy.types.Operator):
 
         def fail(step, error):
             settings.scan_summary = f"Failed at: {step}"
-            self.report({"ERROR"}, f"{step}: {error}")
+            report(self, {"ERROR"}, f"{step}: {error}")
             return {"CANCELLED"}
 
         def step(label, operator):
@@ -733,16 +736,19 @@ class STALKER2_OT_import_weapon(bpy.types.Operator):
         root = bpy.path.abspath(settings.animation_root).strip()
         name = settings.weapon_name.strip()
         if not name or not root:
-            self.report({"ERROR"}, "Enter the weapon name and choose the exported files folder first.")
+            report(self, {"ERROR"}, "Enter the weapon name and choose the exported files folder first.")
             return {"CANCELLED"}
         if any(obj.type == "ARMATURE" and (obj.get(import_weapon.RIG_MARKER) or obj.get(BASE_MARKER))
                for obj in context.scene.objects):
-            self.report({"ERROR"}, "A weapon has already been imported into this scene. Start from a new scene.")
+            report(self, {"ERROR"}, "A weapon has already been imported into this scene. Start from a new scene.")
             return {"CANCELLED"}
 
         current = "Import weapon rig"
         try:
-            import_weapon.import_rigged_weapon(context, root, import_weapon.donor_mesh_name(settings))
+            _rig, _main, skipped = import_weapon.import_rigged_weapon(
+                context, root, import_weapon.donor_mesh_name(settings))
+            for part in skipped:
+                report(self, {"WARNING"}, f'No bone for the part "{part}"; it was not imported')
 
             current = "Create base skeleton"
             master = _create_base_skeleton(context, root, name)
@@ -763,7 +769,7 @@ class STALKER2_OT_import_weapon(bpy.types.Operator):
             return fail(current, error)
 
         settings.scan_summary = "Imported. Edit the weapon, then retarget the animations."
-        self.report({"INFO"}, "Weapon imported and converted. Select the rig and click Retarget Animation.")
+        report(self, {"INFO"}, "Weapon imported and converted. Select the rig and click Retarget Animation.")
         return {"FINISHED"}
 
 
@@ -848,27 +854,29 @@ class STALKER2_OT_import_new_animations(bpy.types.Operator):
     def poll(cls, context):
         return context.mode == "OBJECT"
 
+    @completion('New animation import')
     def execute(self, context):
         from . import export_animation
         settings = context.scene.stalker2_animation_importer
         rig, backup = export_animation.find_export_rig(context)
         if rig is None:
-            self.report({"ERROR"}, "No converted weapon rig found. Use Import Weapon first.")
+            report(self, {"ERROR"}, "No converted weapon rig found. Use Import Weapon first.")
             return {"CANCELLED"}
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
             names, failures = import_new_animations(context, rig, backup, root, settings.weapon_name)
         except Exception as error:
-            self.report({"ERROR"}, str(error))
+            report(self, {"ERROR"}, str(error))
             return {"CANCELLED"}
         for suffix, error in failures:
-            self.report({"WARNING"}, f"Failed {suffix}: {error}")
+            report(self, {"WARNING"}, f"Failed {suffix}: {error}")
         if not names and not failures:
             settings.scan_summary = "No new animations found."
+            report(self, {"INFO"}, settings.scan_summary)
         else:
             settings.scan_summary = f"Added {len(names)} animations."
             if names:
-                self.report({"INFO"}, f"Added {len(names)} animations: {', '.join(sorted(names))}")
+                report(self, {"INFO"}, f"Added {len(names)} animations: {', '.join(sorted(names))}")
         return {"FINISHED"}
 
 

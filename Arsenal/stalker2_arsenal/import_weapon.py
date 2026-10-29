@@ -6,6 +6,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from . import stalker2_animation_importer as importer
+from .notifications import completion, report
 
 RIG_MARKER = 'arsenal_weapon_rig'
 SOCKET_FILE = 'weapon_sockets.json'
@@ -571,17 +572,18 @@ class STALKER2_OT_import_rigged_weapon(bpy.types.Operator):
                       'of the weapon named above')
     bl_options = {'REGISTER', 'UNDO'}
 
+    @completion('Weapon rig import')
     def execute(self, context):
         settings = context.scene.stalker2_animation_importer
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
             rig, main, skipped = import_rigged_weapon(context, root, donor_mesh_name(settings))
         except (OSError, RuntimeError, ValueError) as error:
-            self.report({'ERROR'}, str(error))
+            report(self, {'ERROR'}, str(error))
             return {'CANCELLED'}
         for part in skipped:
-            self.report({'WARNING'}, f'No bone for the part "{part}"; it was not imported')
-        self.report({'INFO'}, f'Imported weapon rig "{rig.name}" with {len(rig.data.bones)} bones'
+            report(self, {'WARNING'}, f'No bone for the part "{part}"; it was not imported')
+        report(self, {'INFO'}, f'Imported weapon rig "{rig.name}" with {len(rig.data.bones)} bones'
                     + (f' and mesh "{main.name}"' if main else ''))
         return {'FINISHED'}
 

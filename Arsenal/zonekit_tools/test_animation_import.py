@@ -38,6 +38,9 @@ class AnimationImportTests(unittest.TestCase):
         importer.wanted = Mock(return_value=True)
         importer.skeleton = Mock(return_value=object())
         importer.counts = {}
+        importer.library = SimpleNamespace(
+            does_asset_exist=Mock(return_value=False), load_asset=Mock(),
+            save_loaded_asset=Mock(return_value=True))
         imported = []
 
         def import_tasks(tasks):
@@ -57,11 +60,76 @@ class AnimationImportTests(unittest.TestCase):
             AnimPoseEvaluationOptions=SimpleNamespace,
             AnimDataEvalType=SimpleNamespace(RAW='raw'),
             AnimPoseSpaces=SimpleNamespace(LOCAL='local'),
+            AdditiveAnimationType=SimpleNamespace(AAT_NONE='none', AAT_LOCAL_SPACE_BASE='local'),
             SystemLibrary=SimpleNamespace(
                 get_console_variable_bool_value=Mock(return_value=True),
                 execute_console_command=Mock()),
         )
         return importer, unreal, imported
+
+    def test_reimport_preserves_custom_additive_settings(self):
+        importer, unreal, _ = self.make_importer()
+        reference = object()
+        values = dict(path='/Test/reload', additive_anim_type='mesh', ref_pose_type='frame',
+                      ref_frame_index=3, ref_pose_seq=reference)
+        asset = Properties(**values)
+        importer.library.does_asset_exist.return_value = True
+        importer.library.load_asset.return_value = asset
+        native_import = importer.tools.import_asset_tasks
+
+        def reset_settings(tasks):
+            native_import(tasks)
+            asset.values.update(additive_anim_type='none', ref_pose_type='skeleton',
+                                ref_frame_index=0, ref_pose_seq=None)
+
+        importer.tools.import_asset_tasks = reset_settings
+        with patch.object(runtime, 'unreal', unreal):
+            importer.import_animations([(r'C:\export\reload.fbx', '/Test', 'reload')], '/Game/Skeleton')
+        self.assertEqual(asset.values, values)
+        importer.library.save_loaded_asset.assert_called_once_with(asset)
+
+    def test_exported_overlay_recovers_lost_template_additive_settings(self):
+        importer, unreal, _ = self.make_importer()
+        unreal.AdditiveAnimationType = SimpleNamespace(AAT_NONE='none', AAT_LOCAL_SPACE_BASE='local')
+        package = '/Mod/Animations/Player/gun/Reload/AS_fp_gun_reload'
+        original_package = '/Game/Animations/Player/udp/Reload/AS_fp_udp_reload'
+        base = Properties(path='/Mod/Animations/Player/gun/Idle/AS_fp_gun_idle', additive_anim_type='none')
+        original_base = Properties(path='/Game/Animations/Player/udp/Idle/AS_fp_udp_idle')
+        asset = Properties(path=package, additive_anim_type='none', ref_pose_type='skeleton',
+                           ref_frame_index=0, ref_pose_seq=None, tracks='edited')
+        original = Properties(path=original_package, additive_anim_type='local',
+                              ref_pose_type='frame', ref_frame_index=2, ref_pose_seq=original_base)
+        packages = {package: asset, original_package: original, base.get_path_name(): base}
+        importer.manifest = {'weapon': 'gun', 'template_weapon': 'udp', 'game_root': '/Mod'}
+        importer.plan = {'player_animations': [('reload.fbx', *package.rsplit('/', 1))]}
+        importer.mod_assets = lambda: {'sequence': {p.lower(): p for p in (package, base.get_path_name())}}
+        importer.library = SimpleNamespace(
+            does_asset_exist=lambda path: path in packages,
+            load_asset=lambda path: packages[path], save_loaded_asset=Mock(return_value=True))
+        with patch.object(runtime, 'unreal', unreal):
+            importer.update_additive_playback()
+            importer.update_additive_playback()
+        self.assertEqual(asset.get_editor_property('additive_anim_type'), 'local')
+        self.assertEqual(asset.get_editor_property('ref_pose_type'), 'frame')
+        self.assertEqual(asset.get_editor_property('ref_frame_index'), 2)
+        self.assertIs(asset.get_editor_property('ref_pose_seq'), base)
+        self.assertEqual(asset.get_editor_property('tracks'), 'edited')
+        importer.library.save_loaded_asset.assert_called_once_with(asset)
+
+    def test_additive_restore_reports_save_failure(self):
+        importer, unreal, _ = self.make_importer()
+        asset = Properties(path='/Test/reload', additive_anim_type='none')
+        importer.library.save_loaded_asset.return_value = False
+        with patch.object(runtime, 'unreal', unreal):
+            with self.assertRaisesRegex(RuntimeError, 'Could not save additive settings'):
+                importer.restore_additive_settings(asset, {'additive_anim_type': 'local'})
+
+    def test_unchanged_additive_settings_are_not_saved(self):
+        importer, unreal, _ = self.make_importer()
+        asset = Properties(path='/Test/idle', additive_anim_type='none')
+        with patch.object(runtime, 'unreal', unreal):
+            importer.restore_additive_settings(asset, {'additive_anim_type': 'none'})
+        importer.library.save_loaded_asset.assert_not_called()
 
     def test_animation_tasks_preserve_baked_local_transforms(self):
         importer, unreal, imported = self.make_importer()
@@ -250,7 +318,7 @@ class AnimationImportTests(unittest.TestCase):
     def test_exported_aim_transitions_keep_their_additive_mode_and_reference(self):
         importer, unreal, _ = self.make_importer()
         unreal.AdditiveAnimationType = SimpleNamespace(
-            AAT_LOCAL_SPACE_BASE='local', AAT_ROTATION_OFFSET_MESH_SPACE='mesh')
+            AAT_NONE='none', AAT_LOCAL_SPACE_BASE='local', AAT_ROTATION_OFFSET_MESH_SPACE='mesh')
         package = '/Mod/Animations/Player/gun/Idle/AS_fp_gun_idle_to_aim'
         asset = Properties(path=package, additive_anim_type='local', tracks='edited',
                            ref_pose_seq='common', ref_pose_type='frame', ref_frame_index=0)
@@ -312,11 +380,13 @@ class AnimationImportTests(unittest.TestCase):
             ('idle.fbx', *idle.rsplit('/', 1)), ('idle_add.fbx', *companion.rsplit('/', 1))]}
         importer.mod_assets = lambda: {'sequence': {p.lower(): p for p in (idle, companion)}}
         importer.sync_additive_idle = Mock()
-        importer.library = SimpleNamespace(load_asset=Mock())
+        importer.library = SimpleNamespace(
+            load_asset=lambda path: Properties(additive_anim_type='none' if path == idle else 'local'),
+            does_asset_exist=Mock(return_value=False), save_loaded_asset=Mock())
         with patch.object(runtime, 'unreal', unreal):
             importer.update_additive_playback()
         importer.sync_additive_idle.assert_not_called()
-        importer.library.load_asset.assert_not_called()
+        importer.library.save_loaded_asset.assert_not_called()
 
 
 if __name__ == '__main__':

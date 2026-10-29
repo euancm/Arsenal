@@ -1,9 +1,8 @@
 import bpy
 import re
-from . import preferences
 import os
 
-from . import map_bones, templates
+from . import map_bones
 from . import bone_functions as b_fun
 
 oops = bpy.ops.object
@@ -216,7 +215,8 @@ class GenerateMappingGuessOperator(bpy.types.Operator):
 
         ui = context.scene.arsenal_ui
         ui.edit_mapping = True
-        if ui.active_mapping and map_bones.has_mapping(ui.active_mapping):
+        if (ui.active_mapping and map_bones.has_mapping(ui.active_mapping)
+                and not map_bones.is_bundled_mapping(ui.active_mapping)):
             # Repeating the guess rebuilds the current mapping instead of piling up new presets.
             mapping_name = ui.active_mapping
         else:
@@ -523,23 +523,6 @@ class RemoveMappingOperator(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
 
-class RenameArmatureOperator(bpy.types.Operator):
-    """Rename armature by mapping"""
-    bl_idname = "armature.arsenal_rename_armature"
-    bl_label = "Rename armature"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        return (context.space_data.type == 'VIEW_3D'
-            and context.view_layer.objects.active)
-
-    def execute(self, context):
-        ui = context.scene.arsenal_ui
-        mapping = map_bones.BoneMapping(ui.active_mapping, ui.rename_reverse)
-        mapping.rename_armature(context.object.data)
-        return {'FINISHED'}
-
 class AddPrefixOperator(bpy.types.Operator):
     """Add prefix"""
     bl_idname = "armature.arsenal_add_prefix"
@@ -558,28 +541,6 @@ class AddPrefixOperator(bpy.types.Operator):
         for bone in context.object.data.edit_bones:
             bone.name = self.prefix + bone.name
         return {'FINISHED'}
-
-class RemovePrefixOperator(bpy.types.Operator):
-    """Remove prefix"""
-    bl_idname = "armature.arsenal_remove_prefix"
-    bl_label = "Remove prefix"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    prefix: bpy.props.StringProperty(default = 'DEF-')
-
-    @classmethod
-    def poll(cls, context):
-        return (context.space_data.type == 'VIEW_3D'
-            and context.view_layer.objects.active)
-
-    def execute(self, context):
-        oops.mode_set(mode = 'EDIT')
-        for bone in context.object.data.edit_bones:
-            bone.name = re.sub('^'+self.prefix, '', bone.name)
-        return {'FINISHED'}
-
-
-
 
 class ARSENAL_IU_Props(bpy.types.PropertyGroup):
 
@@ -627,18 +588,6 @@ class ARSENAL_IU_Props(bpy.types.PropertyGroup):
     new_mapping_name: bpy.props.StringProperty()
     mapping_entries:bpy.props.CollectionProperty(type=MappingEntry)
     loading_mapping: bpy.props.BoolProperty(default=False, options={'HIDDEN'})
-    rename_reverse: bpy.props.BoolProperty(
-        name = "Reverse",
-        default = False
-        )
-
-    new_template_name: bpy.props.StringProperty()
-    active_template: bpy.props.EnumProperty(
-        name = "Template",
-        description = "Saved templates",
-        items = templates.get_templates,
-        default = None
-        )
 
 
 class ARSENAL_PT_BoneMappingsPanel(bpy.types.Panel):

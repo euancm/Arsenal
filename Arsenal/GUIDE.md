@@ -2,6 +2,11 @@
 
 This guide aggregates essential rules, naming conventions, and best practices for modding S.T.A.L.K.E.R. 2 configuration files (`.cfg`), based on community findings and documentation.
 
+This is a developer reference for Arsenal's CFG generation, not a bundled playable mod.
+For the add-on workflow and generated weapon configuration, see [CFG export](doc/cfg_export.md)
+and the [README](../README.md). Extracted data and generated mod files belong in your own
+working folder outside this repository.
+
 ## 0. Verifying Mod Loading (UE4SS)
 
 Before diving into complex changes, always verify if your mod is even being mounted by the engine. You can check this using the `ue4ss zdev` console or logs. Look for `LogPakFile` entries like these:

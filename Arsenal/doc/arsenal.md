@@ -24,9 +24,7 @@ The [README](../../README.md) walks through the full workflow.
 
 - [STALKER 2 animation importer](./stalker2_animation_importer.md)
 - [Converting to Rigify](./converting_to_rigify.md)
-- [Converting from Rigify](./converting_from_rigify.md)
-- [Mappings and armature renaming](./mappings.md)
+- [Internal bone mappings](./mappings.md)
 - [Animation retargeting](./animation.md)
-- [Utilities](./utility.md)
 - [Exporting animations and meshes](./exporting_animations.md)
 - [Weapon CFG files](cfg_export.md)

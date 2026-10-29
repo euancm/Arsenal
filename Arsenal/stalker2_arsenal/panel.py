@@ -1,22 +1,6 @@
 import bpy
 
 
-class SetUESceneSettingsOperator(bpy.types.Operator):
-    """Set UE scene settings"""
-    bl_idname = "object.arsenal_set_ue_scene_settings"
-    bl_label = "Set UE settings"
-    bl_options = {'REGISTER', 'UNDO'}
-    #
-    # @classmethod
-    # def poll(cls, context):
-    #     return (context.space_data.type == 'VIEW_3D')
-
-    def execute(self, context):
-        context.scene.unit_settings.scale_length = 0.01
-        context.scene.render.fps = 30
-        return {'FINISHED'}
-
-
 class ARSENAL_PT_AnimationPanel(bpy.types.Panel):
     """
     Animation panel

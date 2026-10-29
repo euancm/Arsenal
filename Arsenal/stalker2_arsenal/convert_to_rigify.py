@@ -2,7 +2,6 @@ import bpy
 import uuid
 import math
 import json
-from . import preferences
 from .map_bones import BoneMapping
 from . import bone_functions as b_fun
 from . import generate_metarig
@@ -501,48 +500,6 @@ UE_REQUIRED_BONES = {
 }
 
 
-def validate_ue_mannequin(armature_object, mapping):
-    mapped_bones = {mapping.get_name(bone.name): bone for bone in armature_object.data.bones}
-    if 'spine' not in mapped_bones:
-        return (
-            "This button requires the standard Unreal mannequin spine, but the built-in "
-            "mapping could not find 'spine'. Use 'Convert char by mapping' with a mapping "
-            "for this skeleton."
-        )
-
-    missing_bones = sorted(UE_REQUIRED_BONES - mapped_bones.keys())
-    if missing_bones:
-        missing = ', '.join(missing_bones[:8])
-        if len(missing_bones) > 8:
-            missing += ', ...'
-        return (
-            "This button requires the standard Unreal mannequin bone names. "
-            f"The built-in mapping is missing: {missing}. "
-            "Use 'Convert char by mapping' with a mapping for this skeleton."
-        )
-
-    spine = mapped_bones['spine']
-    spine_length = 1
-    while True:
-        spine_children = [
-            child for child in spine.children
-            if mapping.get_name(child.name).startswith('spine')
-        ]
-        if not spine_children:
-            break
-        spine = spine_children[0]
-        spine_length += 1
-
-    if spine_length not in {6, 7}:
-        return (
-            "The built-in Unreal mannequin mapping must produce a spine chain "
-            "of 6 or 7 bones; this skeleton maps to "
-            f"{spine_length}. Use 'Convert char by mapping' with a matching mapping."
-        )
-
-    return None
-
-
 def validate_custom_mapping(armature_object, mapping, mapping_name):
     mapped_bones = {mapping.get_name(bone.name): bone for bone in armature_object.data.bones}
     if 'spine' not in mapped_bones:
@@ -578,74 +535,6 @@ def validate_custom_mapping(armature_object, mapping, mapping_name):
         )
 
     return None
-
-
-class ConvertToRigifyOperator(bpy.types.Operator):
-    """Convert character to rigify"""
-    bl_idname = "object.arsenal_convert_to_rigify"
-    bl_label = "Convert UE character to rigify"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    # example_prop: bpy.props.BoolProperty(name="Example prop", default=False)
-
-    @classmethod
-    def poll(cls, context):
-        return (context.space_data.type == 'VIEW_3D'
-            # and len(context.selected_objects) > 0
-            and context.view_layer.objects.active
-            and context.object.type == 'ARMATURE'
-            and (context.object.mode == 'OBJECT'))
-
-    def execute(self, context):
-        armature_object = context.object
-        mapping = BoneMapping('uemannequin_rigify', False)
-        mapping_error = validate_ue_mannequin(armature_object, mapping)
-        if mapping_error:
-            self.report({'ERROR'}, mapping_error)
-            return {'CANCELLED'}
-
-        mesh_objects = [child for child in armature_object.children if child.type == 'MESH']
-        if not mesh_objects:
-            self.report({'ERROR'}, 'The armature must have a child mesh to convert.')
-            return {'CANCELLED'}
-
-        backup_id = create_retarget_backup(context, armature_object)
-        parent = armature_object.parent
-        mesh_object = mesh_objects[0]
-        if parent:
-            parent.select_set(True)
-        mesh_object.select_set(True)
-
-        oops.transform_apply(location = True, rotation = True, scale = True)
-        if parent:
-            parent.select_set(False)
-        mesh_object.select_set(False)
-
-        mapping_reverse = BoneMapping('uemannequin_rigify', True)
-        mapping.rename_armature(armature_object.data)
-        oops.mode_set(mode = 'OBJECT')
-        oops.arsenal_generate_metarig()
-        metarig = context.object
-        oops.mode_set(mode = 'OBJECT')
-        pops.rigify_generate()
-        armature_object.select_set(True)
-        mapping_reverse.rename_armature(armature_object.data)
-        oops.mode_set(mode = 'OBJECT')
-        oops.arsenal_bind_rigify_to_armature()
-        
-        objs = bpy.data.objects
-
-        objs.remove(armature_object)
-        objs.remove(metarig)
-        if parent:
-            objs.remove(parent)
-        # self.prefs = preferences.get_prefs()
-
-        # self.report({'INFO'}, self.prefs.hello)
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        return self.execute(context)
 
 
 class ConvertToRigifyByMappingOperator(bpy.types.Operator):

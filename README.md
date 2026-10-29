@@ -10,7 +10,9 @@ Further credits:
 - [tnebes/stalker2mods](https://github.com/tnebes/stalker2mods) - the modding guide behind the weapon config tooltips and CFG export.
 - [sdwvit/S2Mods](https://github.com/sdwvit/S2Mods/blob/master/.claude/skills/eng-localization/SKILL.md) - the localisation reference (text SIDs and the mod text asset format) behind the weapon name and description feature.
 
-This project is intended to be a solution to automatically import stalker 2 weapons from the Stalker 2 Zonekit into blender, making them simpler to work with a standard animation rig, allowing tweaks, replacements and other mods to be put together more simply. It will also allow automatic compilation of all the finished files needed to implement a custom weapon.
+STALKER 2 Arsenal is a Blender add-on for importing template weapons from ZoneKit, editing meshes and animations on a Rigify rig, and exporting the assets and configuration needed for your own weapon mods.
+
+This repository contains the add-on, its resources, developer tools and documentation. It does not include a playable weapon mod, custom-pistol project files or extracted game assets. Create and package your own mod in a separate ZoneKit project; keep its working files outside this checkout.
 
 ## AI
 
@@ -25,7 +27,7 @@ The full round trip works for the pistol template (UDP), tested in game from a b
 - ZoneKit setup script → Blender import and retarget → edit → Blender export → ZoneKit import script → package the mod.
 - The new weapon is a separate item with its own mesh and CFG stats. The vanilla UDP and Gambit pistols are left untouched.
 - It takes normal and extended magazines, fires and reloads.
-- Every first-person animation of the weapon can be edited in Blender: idle, aim and the aim transitions, reload (all variants), fire and aimed fire, empty click, equip and unequip, melee, offset aim, the empty-gun slide lock (`idle_boltlock`) and `break_bullet_idle`. What you see in the Blender viewport is what you get in game, including fingers, wrist twist and sleeves, and edited clips blend cleanly with the game's own.
+- Every first-person animation of the weapon can be edited in Blender: idle, aim and the aim transitions, reload (all variants), fire and aimed fire, empty click, equip and unequip, melee, offset aim, the empty-gun slide lock (`idle_boltlock`) and `break_bullet_idle`. Export fidelity has been tested for fingers, wrist twist and sleeves, and edited clips blend with the game's own. Final sight alignment still requires an in-game check.
 - Animations shared by every pistol (sprint, walk, jump, cover lean and so on) come from the game and are not imported.
 
 Known limitations:
@@ -37,16 +39,14 @@ Known limitations:
 
 The [development plan](Arsenal/PLAN.md) has the technical details and what's next.
 
-## Custom Pistol
-
-![A screenshot of the Blender interface showing the custom pistol](BannerImage.png)
-
-The custom pistol (E9Gen7) in the repo root was the original testbed for the Arsenal add-on and is a separate deliverable. It has not been rebuilt or retested with the current pipeline; the add-on now builds each weapon into its own ZoneKit mod (see Workflow below).
-
-
 ## Arsenal
 
 Arsenal is a Blender add-on that combines the STALKER 2 animation importer with mapping, Rigify conversion, retargeting and export tools.
+
+Inherited general-purpose character tools (Mixamo/DAZ presets, mannequin pose and skeleton conversion, rig reset/scale, weight-paint shortcuts and vertex-placement utilities) are not included. The `uemannequin_rigify` and `rigify_uemannequin` mappings remain required internal references for STALKER bone matching and retargeting; do not delete them.
+
+Generated bone mappings are stored in Blender's user-data directory, not inside the addon.
+See [mapping storage and migration](Arsenal/doc/mappings.md).
 
 Requires Blender 5.2.2 or newer.
 
@@ -58,15 +58,21 @@ See the [add-on guide](Arsenal/doc/arsenal.md) and the [development plan](Arsena
 
 ## Exporting your own source assets
 
-The extracted FBX files are not distributed with this repository (they belong to gsc). The add-on's setup script exports them from your own ZoneKit install.
+The extracted FBX files are not distributed with this repository (they belong to GSC Game World). The add-on's setup script exports them from your own ZoneKit install to your separate working folder.
 
 In ZoneKit, weapons are stored in two places. Animations are in `_STALKER2/Animations/...` (for example `Player/AnimSequences/pt/udp` and `Weapons/pt/udp`), and models and textures in `_Stalker_2/weapons/pistol/p_udp`. Not every weapon names its animations and meshes alike (the SMG is `viper` for animations but `vip` for meshes), so the add-on has a separate name for each.
 
 [survey_template_assets.py](Arsenal/zonekit_tools/survey_template_assets.py) lists every file a template weapon uses and what the add-on does with it. Run it in ZoneKit (paste its path into the Python bar); the results go to `Arsenal/zonekit_tools/survey_output`, which is git-ignored.
 
-The other scripts in [zonekit_tools](Arsenal/zonekit_tools) are developer checks: [audit_mod.py](Arsenal/zonekit_tools/audit_mod.py) (plain Python) lists a mod's dangling or leftover template references, and the `test_*.py` files are regression tests: the Blender export and import (`test_animation_export.py`, `test_new_animations.py`, `test_skeleton_export.py`, run with `blender --background`), and the ZoneKit setup and import scripts (`test_unreal_setup.py`, `test_animation_import.py`, plain Python).
+The other scripts in [zonekit_tools](Arsenal/zonekit_tools) are developer checks: [audit_mod.py](Arsenal/zonekit_tools/audit_mod.py) (plain Python) lists a mod's dangling or leftover template references, and the `test_*.py` files are regression tests: the Blender registration/resources, export, import and magazine detection (`test_addon_registration.py`, `test_animation_export.py`, `test_export_ik_controls.py`, `test_new_animations.py`, `test_skeleton_export.py`, `test_weapon_cfg.py`, run with `blender --background`), and the ZoneKit setup, import and completion notifications (`test_unreal_setup.py`, `test_animation_import.py`, `test_completion_notifications.py`, plain Python).
 
 ## Workflow
+
+Long-running Blender imports, retargeting and Export All show a completion popup, labelled as
+complete, finished with warnings or failed. Generated ZoneKit setup/export and import scripts
+show an OK dialog when finished. Keep the report log / Output Log for details; a warning notification
+does not mean every asset succeeded. Regenerate existing ZoneKit scripts to include this behavior.
+Background Blender runs log completion without opening a popup.
 
 ### 1. Set up (Blender and ZoneKit)
 
@@ -95,7 +101,7 @@ Start with a new, empty Blender file and press N in the 3D view to open the **ST
    When it's done the character will be in his starting A pose, surrounded by rig controls. The status line under the button tells you how it went.
 2. Press **Retarget Animation** in panel 3. This one is slow (about 5 minutes on my PC) as it does a lot of work to get a faithful result. Keyframes are cleaned up automatically afterwards.
 
-Once it's finished the character will jump into an action pose. Press 0 on the numpad for an FPS view that matches the game. From here you can go into pose mode, play the animations and make whatever changes you like. The fingers are split into left and right bone collections to make life easier when both hands are close together.
+Once it's finished the character will jump into an action pose. Press 0 on the numpad for the first-person camera preview. Final sight alignment must be checked in game because the runtime uses weapon eye-point sockets. From here you can go into pose mode, play the animations and make whatever changes you like. The fingers are split into left and right bone collections to make life easier when both hands are close together.
 
 ### 3. Make your weapon
 
@@ -104,10 +110,17 @@ Edit, replace or add to the weapon mesh however you like (importing, appending o
 If you delete one of the template's animations by mistake, **Import New Animations** in panel 2 (in Object Mode) brings back any that are missing, without touching the ones you have.
 
 A few things to know:
-- Each animation is exported on its own: a control you don't key in an animation is exported at its rest pose, even if the viewport still shows it where another animation left it. Key a control in every animation where its pose matters.
+- Each animation is exported on its own: a control you don't key in an animation is exported at its rest pose, even if the viewport still shows it where another animation left it. Key a control in every animation where its pose matters. Export rejects active IK-chain controls with unkeyed non-rest offsets: key the named control's Location, Rotation and Scale in that action, not just the IK/FK switch or constraint influence.
 - Rename the main weapon mesh from the template mesh name (e.g. `udp`) to your new weapon's name.
 - Extra parts that need to swap in-game, like `magazine_full` and `magazine_empty`, should be separate objects with the same armature modifier. Each one is exported as its own static mesh, named after the object.
 - The skeleton exported to Unreal keeps the original bones, so extra bones you add won't be exported.
+
+For an IK arm, key `hand_ik.L/R` and `upper_arm_ik.L/R`, plus `upper_arm_ik_target.L/R` if you
+use the elbow pole target. Key **Location, Rotation and Scale** in each affected action.
+The IK/FK switch on `upper_arm_parent.L/R` and any constraint Influence need their own keys;
+keying either does not store the IK controls' offsets.
+See [Keeping edited animations correct on export](Arsenal/doc/exporting_animations.md#keeping-edited-animations-correct-on-export)
+for the control table, step-by-step workflow and export-error troubleshooting.
 
 ### 4. Export
 
@@ -123,7 +136,7 @@ See [exporting animations](Arsenal/doc/exporting_animations.md) and [CFG export]
 
 ### 5. Import into ZoneKit, package and test
 
-1. In ZoneKit, select your mod, paste the import script's path into the Python bar and run it. It imports the textures, materials, static and skeletal meshes, and the animations. It also refreshes the additive idle animations from your edited idles, repoints the weapon's montages and animation collection at your animations, and writes the weapon's name and description into the mod's text asset. Check the Output Log for warnings. Always use the script from the latest export: an older script contains older import code.
+1. In ZoneKit, select your mod, paste the import script's path into the Python bar and run it. It imports the textures, materials, static and skeletal meshes, and the animations. It preserves additive playback settings across animation reimport, recovers missing overlay settings from the template, refreshes the additive idle animations from your edited idles, repoints the weapon's montages and animation collection at your animations, and writes the weapon's name and description into the mod's text asset. Check the Output Log for warnings. Always use the script from the latest export: an older script contains older import code.
 2. Package the mod in ZoneKit, then replace the installed pak and test in game.
 3. When you close ZoneKit after packaging it may ask to save `SK_<weapon>` (save it; it's your mod's mesh) and to check out `SK_stalker_Skeleton` (decline; that's the base game's shared skeleton).
 

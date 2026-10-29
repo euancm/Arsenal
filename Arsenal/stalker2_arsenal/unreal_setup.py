@@ -628,7 +628,7 @@ def validate(config):
         raise RuntimeError(f'Mod name "{config["mod"]}" is not valid.')
 
 
-def main():
+def _main():
     config = load_config()
     validate(config)
     if unreal is None:
@@ -672,6 +672,34 @@ def main():
     log('Setup finished. Next: in Blender, press Import Weapon with the ZoneKit export folder.')
 
 
+def notify_completion(error=None):
+    warnings = sum(line.startswith('WARNING: ') for line in REPORT)
+    status = 'failed' if error is not None else 'finished with warnings' if warnings else 'complete'
+    message = str(error) if error is not None else (
+        f'{warnings} warnings. See the Output Log and setup report for details.' if warnings
+        else 'Setup finished. Next: in Blender, press Import Weapon.')
+    if CONFIG and CONFIG.get('dry_run') and error is None:
+        message = 'Dry run finished; no assets were changed. See the setup report for details.'
+    if unreal is not None:
+        category = (unreal.AppMsgCategory.ERROR if error is not None else
+                    unreal.AppMsgCategory.WARNING if warnings else unreal.AppMsgCategory.INFO)
+        unreal.EditorDialog.show_message(
+            f'Arsenal setup {status}', message, unreal.AppMsgType.OK, message_category=category)
+
+
+def main():
+    REPORT.clear()
+    try:
+        _main()
+    except Exception as error:
+        if unreal is not None:
+            unreal.log_error(f'Arsenal setup failed: {error}')
+            notify_completion(error)
+        raise
+    else:
+        notify_completion()
+
+
 def offline(survey_path, key):
     with open(survey_path, encoding='utf-8') as handle:
         data = json.load(handle)[key]
@@ -698,8 +726,4 @@ if unreal is not None or __name__ == '__main__':
     if unreal is None and len(sys.argv) > 2:
         offline(sys.argv[1], sys.argv[2])
     else:
-        try:
-            main()
-        except Exception as error:
-            warn(str(error))
-            raise
+        main()

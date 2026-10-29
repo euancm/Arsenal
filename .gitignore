@@ -7,5 +7,6 @@ __pycache__/
 /Arsenal/Source FBX Files/
 /Arsenal/*.blend
 survey_output/
-/Content/*
-/E9/*
+# Generated working folders (keep weapon projects outside this checkout)
+/ZoneKit Export/
+/Blender Export/

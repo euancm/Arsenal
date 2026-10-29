@@ -12,19 +12,12 @@ bl_info = {
 
 if "bpy" in locals():
     import importlib
-    importlib.reload(preferences)
-    importlib.reload(weight_paint_toggle)
-    importlib.reload(place_bone_to_vertex)
+    importlib.reload(notifications)
     importlib.reload(generate_metarig)
-    importlib.reload(bind_rig_to_armature)
     importlib.reload(convert_to_rigify)
     importlib.reload(retarget_animation)
-    importlib.reload(reset_rigify)
-    importlib.reload(add_unreal_skeleton)
     importlib.reload(panel)
     importlib.reload(mapping_editor)
-    importlib.reload(pose_character)
-    importlib.reload(templates)
     importlib.reload(animation)
     importlib.reload(stalker2_animation_importer)
     importlib.reload(import_weapon)
@@ -37,19 +30,12 @@ if "bpy" in locals():
     importlib.reload(debug_report)
     importlib.reload(setup_panel)
 else:
-    from . import preferences
-    from . import weight_paint_toggle
-    from . import place_bone_to_vertex
+    from . import notifications
     from . import generate_metarig
-    from . import bind_rig_to_armature
     from . import convert_to_rigify
     from . import retarget_animation
-    from . import reset_rigify
-    from . import add_unreal_skeleton
     from . import panel
     from . import mapping_editor
-    from . import pose_character
-    from . import templates
     from . import animation
     from . import stalker2_animation_importer
     from . import import_weapon
@@ -74,28 +60,13 @@ classes = (
     stalker2_animation_importer.STALKER2_OT_import_weapon,
     stalker2_animation_importer.STALKER2_OT_import_new_animations,
     stalker2_animation_importer.STALKER2_PT_animation_importer,
-    # preferences.RigToolsPreferences,
-    # preferences.BoilerplatePreferencesAddKeymapOperator,
-    weight_paint_toggle.WeightPaintToggleOperator,
-    place_bone_to_vertex.PlaceBoneToVertexOperator,
     generate_metarig.GenerateMetarigOperator,
-    bind_rig_to_armature.BindRigifyToArmatureOperator,
-    bind_rig_to_armature.FixTwistBonesOperator,
-    bind_rig_to_armature.UnfixTwistBonesOperator,
-    bind_rig_to_armature.FixTwistConstraintsOperator,
-    convert_to_rigify.ConvertToRigifyOperator,
     convert_to_rigify.ConvertToRigifyByMappingOperator,
     retarget_animation.RetargetAnimationOperator,
-    reset_rigify.ResetRigifyOperator,
-    reset_rigify.ApplyScaleRigifyOperator,
-    add_unreal_skeleton.AddUnrealSkeletonOperator,
-    templates.SaveSkeletonDataOperator,
-    templates.RemoveSkeletonDataOperator,
     animation.AddKeyFrameOperator,
     animation.BakeAnimationOperator,
     panel.ARSENAL_PT_AnimationPanel,
     panel.ARSENAL_PT_MainPanel,
-    panel.SetUESceneSettingsOperator,
     mapping_editor.MappingEntry,
     mapping_editor.GenerateMappingGuessOperator,
     mapping_editor.GenerateWeaponMappingGuessOperator,
@@ -107,31 +78,12 @@ classes = (
     mapping_editor.MappingAddEntryOperator,
     mapping_editor.SaveMappingOperator,
     mapping_editor.RemoveMappingOperator,
-    mapping_editor.RenameArmatureOperator,
     mapping_editor.AddPrefixOperator,
-    mapping_editor.RemovePrefixOperator,
-    pose_character.PoseCharacterOperator,
-    pose_character.ApplyPoseOperator,
-    pose_character.SavePoseOperator,
     *export_animation.CLASSES,
     *export_unreal.CLASSES,
     *weapon_cfg.CLASSES,
     *debug_report.CLASSES,
 )
-
-def vertex_menu_draw(self, context):
-    layout = self.layout
-    operator = place_bone_to_vertex.PlaceBoneToVertexOperator
-    if operator.poll(context):
-        layout.separator()
-        layout.operator_context = "INVOKE_DEFAULT"
-        layout.operator(operator.bl_idname, text = operator.bl_label)
-
-def vertext_context_menu_func(self, context):
-    if tuple(context.scene.tool_settings.mesh_select_mode) != (True, False, False):
-        return
-    vertex_menu_draw(self, context)
-
 
 def register():
     for cls in classes:
@@ -145,9 +97,6 @@ def register():
     bpy.types.Scene.arsenal_setup = bpy.props.PointerProperty(type = setup_panel.ARSENAL_SetupProps)
 
     bpy.types.Scene.arsenal_ui = bpy.props.PointerProperty(type = mapping_editor.ARSENAL_IU_Props)
-    preferences.register_keymaps()
-    bpy.types.VIEW3D_MT_edit_mesh_vertices.append(vertex_menu_draw)
-    bpy.types.VIEW3D_MT_edit_mesh_context_menu.append(vertext_context_menu_func)
 
 def unregister():
     del bpy.types.Scene.stalker2_animation_importer
@@ -157,11 +106,7 @@ def unregister():
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
-    bpy.types.VIEW3D_MT_edit_mesh_vertices.remove(vertex_menu_draw)
-    bpy.types.VIEW3D_MT_edit_mesh_context_menu.remove(vertext_context_menu_func)
-
     del bpy.types.Scene.arsenal_ui
-    preferences.unregister_keymaps()
 
 if __name__ == "__main__":
     register()

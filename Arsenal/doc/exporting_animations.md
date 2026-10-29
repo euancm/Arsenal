@@ -12,6 +12,89 @@ The **5. Export** panel turns the actions on the Rigify rig back into STALKER 2 
    - **Folder**: the category folder below the weapon folder, for example `Reload/TwoHands`. Empty copies the template folder.
 5. **Validate** checks everything and prints the files it would write (see the system console). **Export All** writes the animations, the static meshes (see below), the CFG files and the import script.
 
+**Export All** shows one completion popup. Its title distinguishes success, warnings and failure;
+details remain in Blender's report log and system console. Imports and retargeting use the same
+notifications. Background Blender runs print completion instead of opening a popup.
+
+## Keeping edited animations correct on export
+
+**If a control's pose matters in an animation, key it in that animation.** A pose that looks right
+in the viewport is not necessarily stored in the selected action.
+
+Blender can keep an unkeyed control where you left it while editing another action. Export treats
+each action independently and resets unkeyed transforms to rest, so one animation's changes do not
+leak into the others. This can make a hand jump away from the gun or an elbow bend differently in
+the FBX, even though the viewport looked correct.
+
+### Which controls need keys?
+
+For an arm using IK, check these controls on the generated Rigify rig. `.L` and `.R` mean the
+character's left and right, not the left and right of the screen.
+
+| Purpose | Left arm | Right arm | What to key |
+| --- | --- | --- | --- |
+| Hand position and orientation | `hand_ik.L` | `hand_ik.R` | Location, Rotation and Scale |
+| Upper-arm IK orientation and scale; affects the elbow bend | `upper_arm_ik.L` | `upper_arm_ik.R` | Location, Rotation and Scale |
+| Elbow pole target, when used | `upper_arm_ik_target.L` | `upper_arm_ik_target.R` | Location, Rotation and Scale |
+| Selects FK or IK | `upper_arm_parent.L` | `upper_arm_parent.R` | The **IK/FK** custom property |
+
+On this Rigify rig, **IK/FK = 0 is IK; 1 is FK**. Intermediate values blend them.
+Keying that switch does **not** key the hand, upper-arm or pole-target transforms.
+
+If you edit a leg using IK, the equivalent controls are `foot_ik.L/R`, `thigh_ik.L/R` and
+`thigh_ik_target.L/R`, with the IK/FK switch on `thigh_parent.L/R`.
+
+Also key anything else you deliberately animate:
+
+- In FK, the arm controls are `upper_arm_fk.L/R`, `forearm_fk.L/R` and `hand_fk.L/R`.
+- Key `Weapon`, `Camera`, finger controls and other pose controls in each action that depends on
+  their edited transforms.
+- If you change a **Child Of** or other constraint's Influence, key that property too.
+  Constraint keys do not replace transform keys, and transform keys do not store the Influence.
+
+You do not need to key every bone in the rig. Key the controls you use and the offsets they depend
+on; leave generated `ORG-`, `MCH-` and `DEF-` bones alone.
+
+### A safe editing workflow
+
+1. **Choose the action first.** Select the generated rig, enter Pose Mode and select the intended
+   action in the Action Editor. Check the action name before inserting keys.
+2. **Choose FK or IK for each arm.** Set the IK/FK property and key it by right-clicking the
+   property and choosing **Insert Keyframe**. If switching modes mid-animation, use Rigify's
+   snapping controls to preserve the pose and key the controls on both sides of the switch.
+3. **Store the starting offsets.** For an IK arm, select its hand, upper-arm IK and any pole-target
+   controls you use from the table above. At the action's first frame, insert keys for
+   **Location, Rotation and Scale**. Use that keying set, or insert keys on those transform
+   properties in the Item panel. Do not rely on an unspecified default keying set.
+4. **Animate and key your edits.** Add transform keys wherever the intended pose changes.
+   Key constraint Influence separately when it changes. Auto Keying can help, but do not assume
+   it stored controls or properties you did not touch.
+5. **Check the end pose.** Scrub to the last frame and confirm the hands, elbows and weapon are
+   correct. Add keys for the intended end pose. For a fixed offset, the first and last values
+   should be identical; for motion, key the different poses you actually want.
+6. **Repeat for every affected action.** Keys in `reload` do not supply offsets for
+   `idle_to_aim`, `aim_to_idle` or `idle_aim`. Check both transitions separately.
+7. **Export and inspect before packaging.** Review export errors, then preview the imported
+   sequences in ZoneKit. Compare the first, middle and last frames with Blender.
+
+When checking an existing action, first establish the pose you actually intend. Do not blindly
+key a hand position inherited from whichever action you viewed previously. Save a copy before
+repairing keys.
+
+### If export reports an unkeyed IK control
+
+The exporter checks every integer frame and rejects active IK-chain controls with non-rest
+transform properties that are not keyed in the action. The error names the control, action,
+frame and missing properties.
+
+Select that action and control, restore the intended pose, and key **Location, Rotation and
+Scale**. For example, an error naming `upper_arm_ik.R` needs keys on that control, not just
+`hand_ik.R` or the IK/FK switch. Then re-export.
+
+This check is a safety net, not proof that every edit is keyed: it does not validate all FK,
+finger, camera, constraint or other custom-property changes. If an FBX differs from the viewport,
+check those keys too.
+
 ## Static meshes
 
 One FBX is written per mesh to `<output>/_Stalker_2/weapons/<Weapon Category>/p_<weapon>/AnimMesh/`. File names come from the **mesh object names**; the weapon name is not used for them. The weapon category (default `pistol`) is a field in the panel.
@@ -42,6 +125,13 @@ The export also writes `SK_<weapon>.FBX` from the donor's skeletal carrier mesh.
 
 After **Export All**, paste the clipboard (the script's path, e.g. `D:\Euan\3D\Stalker Mods\MonkeyMod\import_monkeygun.py`) into the ZoneKit editor's Python bar and press Enter. It imports the textures (correct sRGB / normal / mask settings), creates the material instance from the parent material, imports the static meshes and assigns materials, then imports the player and weapon animations onto their skeletons. Existing assets are skipped; add `--overwrite` to re-import. The mount point is the **Mod Name** (e.g. `/MonkeyMod`). The other assets are fixed: player skeleton `SK_Stalker`, weapon skeleton `SK_<weapon>`, parent material `MI_PBR_Weapons` and physical material `PM_MetalSolid`. The skeletons must already exist in the project.
 
+The latest generated setup/export and import scripts show an OK dialog when finished, with a
+success, warning or error category. Warnings are counted for that run; inspect the Output Log
+(and the setup report for setup/export) before packaging. Failures still raise the original
+exception. Older generated scripts must be regenerated to gain notifications. Unreal's
+`-unattended` mode logs the dialog without waiting for input; an import `--dry-run` prints its
+plan without a completion dialog.
+
 Animation tasks explicitly use `FbxFactory` with **Preserve Local Transform** enabled.
 Interchange's global-to-local reconstruction changes rotations and scales in stretched hierarchies,
 even when that option is set. An explicit factory alone does not route existing Interchange assets
@@ -66,8 +156,16 @@ in the same local-bone representation, even where their visible hand positions w
 Do not convert these assets to mesh-space additives based only on a graph node name.
 That conversion was tested in game and caused a tilted default view and severe arm
 deformation in game; it has been reverted. The importer preserves the donor's local-space
-idle mode and leaves exported aim-transition modes unchanged. Full-pose comparisons and
+idle mode and preserves exported overlays' additive settings across FBX reimport. Full-pose comparisons and
 isolated virtual-attachment composition do not validate the complete runtime graph.
+
+The legacy FBX importer can reset an existing sequence's additive mode and reference settings
+when replacing it. The script captures those settings before import and restores them afterwards.
+If an exported player overlay has already lost its additive settings, the script recovers them
+from the matching template sequence, using the mod's matching reference animation when available.
+Existing nonzero additive modes and custom reference settings are preserved. Plain `idle` and
+`idle_aim` remain nonadditive. A correct full-pose sequence preview alone does not confirm that an
+overlay is configured correctly for the game's additive graph.
 
 ### Overlays edited in Blender
 

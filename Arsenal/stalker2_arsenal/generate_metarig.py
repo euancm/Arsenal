@@ -1,8 +1,5 @@
 import bpy
-import os
-from . import preferences
-from .map_bones import BoneMapping
-from mathutils import Vector, Matrix, geometry
+from mathutils import Vector, geometry
 import math
 from . import bone_functions as b_fun
 import re

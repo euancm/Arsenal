@@ -1,6 +1,6 @@
 """Weapon settings and the CFG files STALKER 2 needs for a working weapon mod.
 
-The six files written mirror the structure of a hand-made mod (see Content/GameLite/ModGameData):
+The six files written use the game's Content/GameLite/ModGameData layout in the export folder:
 ItemPrototypes (weapon, attachments), MeshPrototypes, and the WeaponData general setup, player
 settings and player attributes. Everything the add-on already knows (weapon name, mesh names,
 bone sockets, mod name, folders) is filled in automatically; the rest comes from the panel.
@@ -14,6 +14,7 @@ import bpy
 from . import export_animation as animation_export
 from . import export_static_mesh as static_mesh
 from .weapon_presets import PRESETS
+from .notifications import report
 
 PISTOL = PRESETS['TemplatePistol']
 SAFE_ID = re.compile(r'^[A-Za-z0-9_]+$')
@@ -287,7 +288,7 @@ def detect_magazines(others):
         if index == 0 and not qualifier:
             name = 'Default'
         elif qualifier:
-            word = qualifier.group(1).lower()
+            word = (qualifier.group(1) or qualifier.group(2)).lower()
             name = MAG_QUALIFIER_NAMES.get(word, word.title())
         else:
             name = re.sub(r'[^A-Za-z0-9]', '', key.title()) or f'Extra{index}'
@@ -738,11 +739,11 @@ def export_cfg_files(operator, context):
     """Write the CFG files and the localisation JSON, reporting problems on the operator."""
     written, info = write_cfg_files(context)
     if not info['magazines']:
-        operator.report({'WARNING'}, 'No separate magazine meshes found; magazine entries were skipped.')
+        report(operator, {'WARNING'}, 'No separate magazine meshes found; magazine entries were skipped.')
     if not localization_entries(info):
-        operator.report({'WARNING'}, 'No weapon name entered; the game will show the raw SID.')
+        report(operator, {'WARNING'}, 'No weapon name entered; the game will show the raw SID.')
     elif not any(entry.language == 'en' and entry.name.strip() for entry in info['cfg'].texts):
-        operator.report({'WARNING'}, 'No English name entered; other languages fall back to English.')
+        report(operator, {'WARNING'}, 'No English name entered; other languages fall back to English.')
     return written, info
 
 class ARSENAL_OT_CfgApplyTemplate(bpy.types.Operator):

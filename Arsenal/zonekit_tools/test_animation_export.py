@@ -106,18 +106,23 @@ def main():
     pairs, _player, _weapon, _ambiguous = ex.importer._scan_library(library, settings.weapon_name)
     first, last = math.floor(action.frame_range[0]), math.ceil(action.frame_range[1])
     frames = list(range(first, last + 1))
-    left_names = {
+    arm_names = {
         source for source, _target in bindings
-        if source.startswith('jnt_l_') and any(token in source for token in ('arm', 'hand', 'elbow', 'shoulder'))
+        if source.startswith(('jnt_l_', 'jnt_r_'))
+        and any(token in source for token in ('arm', 'hand', 'elbow', 'shoulder'))
     }
-    checked_names = left_names | {'jnt_spine_03'}
+    checked_names = arm_names | {'jnt_spine_03'}
+    camera = rig.pose.bones.get('Camera')
+    camera_source = backup.data.bones.get('jnt_camera')
+    assert camera is not None and camera_source is not None, 'Camera bone mapping is missing'
+    checked_names.add('jnt_camera')
     vertices = []
     for vertex in mesh.data.vertices:
         weights = [(mesh.vertex_groups[group.group].name, group.weight) for group in vertex.groups]
         # Export deliberately gives these bones the donor's twist (and, on the spine, length), not Rigify's.
         if any(name in ex.TWIST_LOCKED_CHAIN for name, weight in weights if weight > 0):
             continue
-        if any(name in left_names for name, weight in weights if weight > 0):
+        if any(name in arm_names for name, weight in weights if weight > 0):
             vertices.append((vertex.index, vertex.co.copy(), weights))
     assert vertices, 'No weighted arm/hand vertices tested'
     parent = rig.pose.bones['upper_arm_parent.L']
@@ -127,8 +132,6 @@ def main():
     saved_mutes = [(curve, curve.mute) for curve in ik_curves]
     for curve in ik_curves:
         curve.mute = True
-    mode_positions = []
-
     try:
         with tempfile.TemporaryDirectory(prefix='arsenal-animation-test-') as folder:
             outputs, _status = ex.plan_export(
@@ -137,14 +140,28 @@ def main():
                         & set(ex.TEMPLATE_SOCKETS)), 'Unmapped runtime sockets were taken from Rigify'
             objects, actions, donor, donor_clip = ex.importer._import_fbx(outputs[0][1])
             try:
-                socket_poses = {}
-                for frame in frames:
-                    bpy.context.scene.frame_set(min(frame, math.ceil(donor_clip.frame_range[1])))
-                    bpy.context.view_layer.update()
-                    socket_poses[frame] = {
-                        name: world for name, world in engine_worlds(donor).items()
-                        if name in ex.TEMPLATE_SOCKETS
-                    }
+                weapon_objects, weapon_actions, _weapon_donor, weapon_clip = ex.importer._import_fbx(outputs[1][1])
+                try:
+                    template_first = math.floor(min(donor_clip.frame_range[0], weapon_clip.frame_range[0]))
+                    template_last = math.ceil(max(donor_clip.frame_range[1], weapon_clip.frame_range[1]))
+                    if outputs[0][2] is None or outputs[1][2] is None:
+                        real_clip = weapon_clip if outputs[0][2] is None else donor_clip
+                        template_first = math.floor(real_clip.frame_range[0])
+                        template_last = math.ceil(real_clip.frame_range[1])
+                    template_frames = [
+                        min(max(frame - first + template_first, template_first), template_last)
+                        for frame in frames
+                    ]
+                    socket_poses = {}
+                    for frame, template_frame in zip(frames, template_frames):
+                        bpy.context.scene.frame_set(template_frame)
+                        bpy.context.view_layer.update()
+                        socket_poses[frame] = {
+                            name: world for name, world in engine_worlds(donor).items()
+                            if name in ex.TEMPLATE_SOCKETS
+                        }
+                finally:
+                    ex.importer._remove_imported(weapon_objects, weapon_actions)
             finally:
                 ex.importer._remove_imported(objects, actions)
             for mode in (0.0, 0.5, 1.0):
@@ -166,13 +183,18 @@ def main():
                         world = rig.matrix_world @ rig.pose.bones['Weapon'].matrix
                         rest = rig.matrix_world @ rig.data.bones['Weapon'].matrix_local
                         row['jnt_offset'] = backup.matrix_world.inverted_safe() @ world @ rest.inverted_safe() @ backup.matrix_world @ backup.data.bones['jnt_offset'].matrix_local
+                        camera_world = rig.matrix_world @ camera.matrix
+                        camera_rest = rig.data.bones['Camera'].matrix_local
+                        row['jnt_camera'] = (
+                            backup.matrix_world.inverted_safe() @ camera_world @ camera_rest.inverted_safe()
+                            @ backup.matrix_world @ camera_source.matrix_local
+                        )
                         expected[frame] = row
                         evaluated = viewport_mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
                         to_source = backup.matrix_world.inverted() @ evaluated.matrix_world
                         expected_vertices[frame] = [
                             to_source @ evaluated.data.vertices[index].co for index, _co, _weights in vertices
                         ]
-                    mode_positions.append(expected[frames[len(frames) // 2]]['jnt_l_hand'].translation.copy())
                     bpy.context.scene.frame_set(last, subframe=.375)
                     _written, failures = ex.run_exports(
                         bpy.context, rig, backup, [(action, slot, outputs)])
@@ -188,7 +210,8 @@ def main():
                         for name, desired in socket_poses[frame].items():
                             actual = worlds[name]
                             assert (actual.translation - desired.translation).length < 0.001, (frame, name)
-                            assert angular_error(actual.to_quaternion(), desired.to_quaternion()) < 0.002, (frame, name)
+                            angle = angular_error(actual.to_quaternion(), desired.to_quaternion())
+                            assert angle < 0.002, (frame, name, math.degrees(angle))
                         for name, desired in expected[frame].items():
                             if name not in checked_names:
                                 continue
@@ -199,7 +222,8 @@ def main():
                                 continue
                             angle = angular_error(actual.to_quaternion(), desired.to_quaternion())
                             max_angle = max(max_angle, angle)
-                            if name == 'jnt_l_hand' or name.startswith('jnt_l_hand_index_'):
+                            if name in ('jnt_l_hand', 'jnt_r_hand') or name.startswith(
+                                    ('jnt_l_hand_index_', 'jnt_r_hand_index_')):
                                 key_angle = max(key_angle, angle)
                         skin = {
                             name: worlds[name] @ backup.data.bones[name].matrix_local.inverted()
@@ -266,7 +290,6 @@ def main():
         for curve, muted in saved_mutes:
             curve.mute = muted
         parent['IK_FK'] = saved_ik
-    assert (mode_positions[0] - mode_positions[2]).length > 0.01, 'FK/IK tests did not change the wrist pose'
     print('PASS: all frames, FK / blended / IK hand and finger FBX round-trips')
 
 

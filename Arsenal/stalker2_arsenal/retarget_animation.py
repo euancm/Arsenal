@@ -3,6 +3,7 @@ import math
 import json
 from . import bone_functions as b_fun
 from . import map_bones
+from .notifications import completion, report
 
 oops = bpy.ops.object
 RETARGET_CONSTRAINT_PREFIX = 'Arsenal Retarget '
@@ -427,6 +428,7 @@ class RetargetAnimationOperator(bpy.types.Operator):
             return bool(context.object.data.get('rig_id') and backup)
         return len(context.selected_objects) == 2
 
+    @completion('Retarget')
     def execute(self, context):
         backup_collection = None
         collection_was_hidden = False
@@ -434,7 +436,7 @@ class RetargetAnimationOperator(bpy.types.Operator):
             rig = context.object
             source_armature, backup_collection = find_retarget_backup(rig)
             if not source_armature:
-                self.report({'ERROR'}, 'No saved source armature was found for this Rigify rig.')
+                report(self, {'ERROR'}, 'No saved source armature was found for this Rigify rig.')
                 return {'CANCELLED'}
             if backup_collection:
                 collection_was_hidden = backup_collection.hide_viewport
@@ -446,22 +448,22 @@ class RetargetAnimationOperator(bpy.types.Operator):
         try:
             mapping, missing = resolve_animation_mapping(source_armature, rig)
             if missing:
-                self.report({'WARNING'}, f'Skipped {len(missing)} unresolved animation mappings.')
+                report(self, {'WARNING'}, f'Skipped {len(missing)} unresolved animation mappings.')
             if not mapping:
-                self.report({'ERROR'}, 'No animation bone mappings matched the source skeleton and Rigify rig.')
+                report(self, {'ERROR'}, 'No animation bone mappings matched the source skeleton and Rigify rig.')
                 return {'CANCELLED'}
 
             actions = retarget_animation_actions(
                 context, source_armature, rig, mapping,
                 set_anim_length=self.set_anim_length)
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            report(self, {'ERROR'}, str(error))
             return {'CANCELLED'}
         finally:
             if backup_collection:
                 backup_collection.hide_viewport = collection_was_hidden
 
-        self.report({'INFO'}, f'Retargeted {len(actions)} actions onto {rig.name}.')
+        report(self, {'INFO'}, f'Retargeted {len(actions)} actions onto {rig.name}.')
         if self.remove_source_actions and backup_collection:
             removed = 0
             for output in actions:
@@ -469,7 +471,7 @@ class RetargetAnimationOperator(bpy.types.Operator):
                 if source and source not in actions:
                     bpy.data.actions.remove(source)
                     removed += 1
-            self.report({'INFO'}, f'Removed {removed} original source actions.')
+            report(self, {'INFO'}, f'Removed {removed} original source actions.')
 
         # Outputs keep the source name once it is free, otherwise the rig_ name stays to avoid clashes.
         for output in actions:

@@ -10,6 +10,7 @@ from . import bone_functions as b_fun
 from . import export_skeleton
 from . import export_static_mesh as static_mesh
 from . import stalker2_animation_importer as importer
+from .notifications import completion, report
 from .retarget_animation import (
     action_slot_curves,
     find_retarget_backup,
@@ -572,6 +573,12 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
 
 POSE_CHANNEL_RESTS = b_fun.POSE_CHANNEL_RESTS
 POSE_PATH = re.compile(r'pose\.bones\["((?:[^"\\]|\\.)*)"\]\.?(\w+|\["(?:[^"\\]|\\.)*"\])$')
+IK_EXPORT_CONTROLS = (
+    ('thigh_parent.L', ('foot_ik.L', 'thigh_ik.L', 'thigh_ik_target.L')),
+    ('thigh_parent.R', ('foot_ik.R', 'thigh_ik.R', 'thigh_ik_target.R')),
+    ('upper_arm_parent.L', ('hand_ik.L', 'upper_arm_ik.L', 'upper_arm_ik_target.L')),
+    ('upper_arm_parent.R', ('hand_ik.R', 'upper_arm_ik.R', 'upper_arm_ik_target.R')),
+)
 
 
 def snapshot_pose(rig):
@@ -589,13 +596,60 @@ def restore_pose(snapshot):
         bone['IK_FK'] = value
 
 
-def rest_unkeyed_channels(rig, action, slot):
-    """Export treats unkeyed channels as rest (and an unkeyed IK/FK switch as FK)."""
+def keyed_pose_channels(action, slot):
     keyed = set()
     for curve in action_slot_curves(action, slot):
         match = POSE_PATH.match(curve.data_path)
         if match:
             keyed.add((bpy.utils.unescape_identifier(match.group(1)), match.group(2)))
+    return keyed
+
+
+def validate_ik_controls(context, rig, action, slot):
+    keyed = keyed_pose_channels(action, slot)
+    controls = []
+    for parent_name, control_names in IK_EXPORT_CONTROLS:
+        parent = rig.pose.bones.get(parent_name)
+        if parent is None or 'IK_FK' not in parent:
+            continue
+        for control_name in control_names:
+            control = rig.pose.bones.get(control_name)
+            if control is None:
+                continue
+            rotation = {
+                'QUATERNION': 'rotation_quaternion',
+                'AXIS_ANGLE': 'rotation_axis_angle',
+            }.get(control.rotation_mode, 'rotation_euler')
+            missing = [
+                (prop, rest) for prop, rest in POSE_CHANNEL_RESTS
+                if prop in ('location', rotation, 'scale') and (control_name, prop) not in keyed
+            ]
+            if missing:
+                controls.append((parent, control, missing))
+    if not controls:
+        return
+    for frame in range(math.floor(action.frame_range[0]), math.ceil(action.frame_range[1]) + 1):
+        context.scene.frame_set(frame)
+        context.view_layer.update()
+        for parent, control, missing in controls:
+            if parent['IK_FK'] >= 1.0 - 1e-5:
+                continue
+            unkeyed = [
+                prop for prop, rest in missing
+                if any(abs(value - default) > 1e-5
+                       for value, default in zip(getattr(control, prop), rest))
+            ]
+            if unkeyed:
+                raise RuntimeError(
+                    f'{control.name} uses IK at frame {frame}, but its non-rest '
+                    f'{", ".join(unkeyed)} is not keyed in "{action.name}". '
+                    'Key this control\'s Location, Rotation and Scale in this action before exporting; '
+                    'otherwise the export resets its offset and differs from the viewport.')
+
+
+def rest_unkeyed_channels(rig, action, slot):
+    """Export treats unkeyed channels as rest (and an unkeyed IK/FK switch as FK)."""
+    keyed = keyed_pose_channels(action, slot)
     b_fun.rest_pose_channels(rig, keyed)
 
 
@@ -624,6 +678,9 @@ def run_exports(context, rig, backup, plans):
         with b_fun.forced_pose_position(rig, backup):
             for action, slot, outputs in plans:
                 try:
+                    rig.animation_data.action = action
+                    rig.animation_data.action_slot = slot
+                    validate_ik_controls(context, rig, action, slot)
                     rest_unkeyed_channels(rig, action, slot)
                     written.extend(export_action(context, rig, backup, mapping, action, slot, outputs))
                 except Exception as error:
@@ -906,6 +963,7 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
     bl_description = ('Export the ticked animations, the static meshes, the weapon CFG files and the Unreal import '
                       'script, then copy the script\'s path to the clipboard to paste into the ZoneKit Python bar')
 
+    @completion('Export')
     def execute(self, context):
         export = context.scene.arsenal_export
         parts = []
@@ -920,7 +978,8 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
                 parts.append(summary)
                 warn = warn or failed
             else:
-                self.report({'WARNING'}, 'No actions are ticked; exporting static meshes only.')
+                report(self, {'WARNING'}, 'No actions are ticked; exporting static meshes only.')
+                warn = True
             result = _run_static_export(context)
             written += result[0]
             summary, skipped = _report_static(self, result)
@@ -934,11 +993,11 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
                 problems = export_check.name_warnings(cfg_info) + export_check.path_warnings(
                     cfg_info, written_cfgs, written + list(written_cfgs))
                 for problem in problems:
-                    self.report({'WARNING'}, problem)
+                    report(self, {'WARNING'}, problem)
                     print(f'[Arsenal export] CHECK: {problem}')
                 warn = warn or bool(problems)
             except Exception as error:
-                self.report({'WARNING'}, f'CFG files not written: {error}')
+                report(self, {'WARNING'}, f'CFG files not written: {error}')
                 warn = True
             from . import export_unreal
             script_path, manifest = export_unreal.write_unreal_import(context)
@@ -947,10 +1006,10 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
                 print('[Arsenal export] Slots left to the game\'s own materials: ' + ', '.join(manifest['game_materials']))
             context.window_manager.clipboard = script_path
         except Exception as error:
-            self.report({'ERROR'}, str(error))
+            report(self, {'ERROR'}, str(error))
             return {'CANCELLED'}
         export.summary = 'Wrote ' + ' and '.join(parts) + '.'
-        self.report({'WARNING'} if warn else {'INFO'},
+        report(self, {'WARNING'} if warn else {'INFO'},
                     export.summary + ' The import script path is on the clipboard: paste it into the ZoneKit '
                     'Python bar.')
         return {'FINISHED'}
