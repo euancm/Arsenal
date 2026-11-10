@@ -556,6 +556,7 @@ class GenerateMetarigOperator(bpy.types.Operator):
     """Select an armature. Operator will create new metarig from the armature."""
     bl_idname = "object.arsenal_generate_metarig"
     bl_label = "Generate metarig from armature"
+    bl_description = 'Create a new Rigify metarig aligned to the selected armature using the current bone mapping'
     bl_options = {'REGISTER', 'UNDO'}
 
     head_chain_length: bpy.props.IntProperty(default = 2)

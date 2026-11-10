@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 
 path = Path(__file__).parents[1] / 'stalker2_arsenal' / 'unreal_setup.py'
@@ -49,6 +51,38 @@ class SetupSelectionTests(unittest.TestCase):
         setup.export_additive_overlays(selection)
         copied = setup.copied(selection)
         self.assertEqual(len(copied), 7)
+
+
+class SetupCopyTests(unittest.TestCase):
+    def test_copies_directly_without_revision_control_checkout(self):
+        item = ('/Game/Template', '/Mod/Template', '/Mod/Custom')
+        assets = {item[0]}
+        library = SimpleNamespace(
+            does_asset_exist=lambda path: path in assets,
+            checkout_asset=Mock(),
+            duplicate_asset=Mock(side_effect=lambda source, target: assets.add(target)))
+        with patch.object(setup, 'unreal', SimpleNamespace(EditorAssetLibrary=library, log=Mock())), \
+                patch.object(setup, 'warn') as warning:
+            self.assertEqual(setup.checkout_copies({'copies': [item]}, {}), [item])
+        library.checkout_asset.assert_not_called()
+        library.duplicate_asset.assert_called_once_with(item[0], item[1])
+        warning.assert_not_called()
+
+    def test_existing_mod_copy_is_not_overwritten(self):
+        item = ('/Game/Template', '/Mod/Template', '/Mod/Custom')
+        library = SimpleNamespace(does_asset_exist=Mock(return_value=True), duplicate_asset=Mock())
+        with patch.object(setup, 'unreal', SimpleNamespace(EditorAssetLibrary=library, log=Mock())):
+            self.assertEqual(setup.checkout_copies({'copies': [item]}, {}), [item])
+        library.duplicate_asset.assert_not_called()
+
+    def test_failed_copy_warns_and_is_not_renamed(self):
+        item = ('/Game/Template', '/Mod/Template', '/Mod/Custom')
+        library = SimpleNamespace(
+            does_asset_exist=Mock(return_value=False), duplicate_asset=Mock(return_value=None))
+        with patch.object(setup, 'unreal', SimpleNamespace(EditorAssetLibrary=library)), \
+                patch.object(setup, 'warn') as warning:
+            self.assertEqual(setup.checkout_copies({'copies': [item]}, {}), [])
+        self.assertTrue(any('no copy in the mod' in call.args[0] for call in warning.call_args_list))
 
 
 if __name__ == '__main__':

@@ -1,0 +1,3500 @@
+{
+  "templates": {
+    "TemplatePistol": [
+      {
+        "sid": "GunUDP_Upgrade_Attachment_Laser",
+        "Text": "sid_upgrades_GunUDP_Upgrade_Attachment_Laser_name",
+        "Hint": "sid_upgrades_GunUDP_Upgrade_Attachment_Laser_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Handgun/UDP/Barrel/Module/T_UDPM_a_1.T_UDPM_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_SpreadReduction.T_PDA_Upgrades_Icon_SpreadReduction'",
+        "BaseCost": "1100",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos5Effect",
+          "DispersionPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "EN_Laser_1"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunUDP_Upgrade_Barrel_1",
+        "Text": "sid_upgrades_GunUDP_Upgrade_Barrel_1_name",
+        "Hint": "sid_upgrades_GunUDP_Upgrade_Barrel_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Handgun/UDP/Barrel/Upgrade/T_UDPU_a_1.T_UDPU_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Falloff.T_PDA_Upgrades_Icon_Falloff'",
+        "BaseCost": "350",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "FireDistancePos25Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunUDP_Upgrade_Barrel_2_1",
+        "Text": "sid_upgrades_GunUDP_Upgrade_Barrel_2_1_name",
+        "Hint": "sid_upgrades_GunUDP_Upgrade_Barrel_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Handgun/UDP/Barrel/Upgrade/T_UDPU_a_a.T_UDPU_a_a'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_DropDamage.T_PDA_Upgrades_Icon_DropDamage'",
+        "BaseCost": "800",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "DamageFalloffPos30Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunUDP_Upgrade_Barrel_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunUDP_Upgrade_Barrel_2_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunUDP_Upgrade_Barrel_2_2",
+        "Text": "sid_upgrades_GunUDP_Upgrade_Barrel_2_2_name",
+        "Hint": "sid_upgrades_GunUDP_Upgrade_Barrel_2_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Handgun/UDP/Barrel/Upgrade/T_UDPU_a_b.T_UDPU_a_b'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_ArmorPiercing.T_PDA_Upgrades_Icon_ArmorPiercing'",
+        "BaseCost": "800",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ArmorPiercingPos50Effect",
+          "CoverPiercingPos50Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunUDP_Upgrade_Barrel_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunUDP_Upgrade_Barrel_2_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunUDP_Upgrade_Body_1",
+        "Text": "sid_upgrades_GunUDP_Upgrade_Body_1_name",
+        "Hint": "sid_upgrades_GunUDP_Upgrade_Body_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Handgun/UDP/Body/Upgrade/T_UDPU_b_1.T_UDPU_b_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Readiness.T_PDA_Upgrades_Icon_Readiness'",
+        "BaseCost": "250",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "WeaponWithdrawPos20ShowEffect",
+          "WeaponWithdrawPos20HideEffect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunUDP_Upgrade_Body_2",
+        "Text": "sid_upgrades_GunUDP_Upgrade_Body_2_name",
+        "Hint": "sid_upgrades_GunUDP_Upgrade_Body_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Handgun/UDP/Body/Upgrade/T_UDPU_b_2.T_UDPU_b_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MovementAiming.T_PDA_Upgrades_Icon_MovementAiming'",
+        "BaseCost": "500",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingMovementPos30Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunUDP_Upgrade_Body_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      }
+    ],
+    "TemplateSMG": [
+      {
+        "sid": "GunViper_Upgrade_Attachment_Rail",
+        "Text": "sid_upgrades_GunViper_Upgrade_Attachment_Rail_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Attachment_Rail_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Module/T_ViperM_1.T_ViperM_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/T_mod_icon_m.T_mod_icon_m'",
+        "BaseCost": "900",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [],
+        "AttachPrototypeSIDs": [
+          "TopRailViper"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunViper_Upgrade_Attachment_Laser",
+        "Text": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Handling_name",
+        "Hint": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Handling_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Module/T_ViperM_2.T_ViperM_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "1100",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos10Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "EN_Laser_1"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Attachment_Laser_HP"
+        ],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunViper_Upgrade_Barrel_1_1",
+        "Text": "sid_upgrades_GunViper_Upgrade_Barrel_1_1_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Barrel_1_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Barrel/Upgrade/T_ViperU_a_1.T_ViperU_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Velocity.T_PDA_Upgrades_Icon_Velocity'",
+        "BaseCost": "350",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ProjectileSpeedPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_1_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunViper_Upgrade_Barrel_1_2",
+        "Text": "sid_upgrades_GunViper_Upgrade_Barrel_1_2_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Barrel_1_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Barrel/Upgrade/T_ViperU_a_2.T_ViperU_a_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_ShootingDepreciation.T_PDA_Upgrades_Icon_ShootingDepreciation'",
+        "BaseCost": "300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "DurabilityPerShotPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_1_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunViper_Upgrade_Barrel_2_1",
+        "Text": "sid_upgrades_GunViper_Upgrade_Barrel_2_1_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Barrel_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Barrel/Upgrade/T_ViperU_a_1_a.T_ViperU_a_1_a'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_ArmorPiercing.T_PDA_Upgrades_Icon_ArmorPiercing'",
+        "BaseCost": "800",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ArmorPiercingPos30Effect",
+          "CoverPiercingPos30Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_1_1",
+          "GunViper_Upgrade_Barrel_1_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_2_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunViper_Upgrade_Barrel_2_2",
+        "Text": "sid_upgrades_GunViper_Upgrade_Barrel_2_2_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Barrel_2_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Barrel/Upgrade/T_ViperU_a_2_a.T_ViperU_a_2_a'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Falloff.T_PDA_Upgrades_Icon_Falloff'",
+        "BaseCost": "700",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "FireDistancePos20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_1_1",
+          "GunViper_Upgrade_Barrel_1_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_2_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunViper_Upgrade_Barrel_3",
+        "Text": "sid_upgrades_GunViper_Upgrade_Barrel_3_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Barrel_3_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Barrel/Upgrade/T_ViperU_a_1_a1.T_ViperU_a_1_a1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MaxSpread.T_PDA_Upgrades_Icon_MaxSpread'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "2",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "MaxDispersionPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Barrel_2_1",
+          "GunViper_Upgrade_Barrel_2_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunViper_Upgrade_Body_1",
+        "Text": "sid_upgrades_GunViper_Upgrade_Body_1_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Body_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Upgrade/T_ViperU_b_1.T_ViperU_b_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Depreciation.T_PDA_Upgrades_Icon_Depreciation'",
+        "BaseCost": "300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "DurabilityPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunViper_Upgrade_Body_2",
+        "Text": "sid_upgrades_GunViper_Upgrade_Body_2_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Body_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Upgrade/T_ViperU_b_2.T_ViperU_b_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MovementAiming.T_PDA_Upgrades_Icon_MovementAiming'",
+        "BaseCost": "500",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingMovementPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Body_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunViper_Upgrade_Body_3_1",
+        "Text": "sid_effects_change_caliber_to_0_45_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Body_3_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Upgrade/T_ViperU_b_a.T_ViperU_b_a'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_CaliberChange.T_PDA_Upgrades_Icon_CaliberChange'",
+        "BaseCost": "1500",
+        "HorizontalPosition": "2",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ChangeCaliber045Effect",
+          "ChangeAmmoTypesNo919Effect",
+          "ChangeAmmoTypes045Effect",
+          "DamagePos20Effect",
+          "RecoilNeg20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Body_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Body_3_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunViper_Upgrade_Body_3_2",
+        "Text": "sid_upgrades_GunViper_Upgrade_Body_3_2_name",
+        "Hint": "sid_upgrades_GunViper_Upgrade_Body_3_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Upgrade/T_ViperU_b_b.T_ViperU_b_b'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Recoil.T_PDA_Upgrades_Icon_Recoil'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "2",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "RecoilPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Body_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Body_3_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunViper_Upgrade_Attachment_Laser_HP",
+        "Text": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Accuracy_name",
+        "Hint": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Accuracy_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Body/Module/T_ViperM_3.T_ViperM_3'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MaxSpread.T_PDA_Upgrades_Icon_MaxSpread'",
+        "BaseCost": "1100",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "MaxDispersionPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "HP_Laser_2"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [
+          "GunViper_Upgrade_Attachment_Laser"
+        ],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunViper_Upgrade_Attachment_Offset_Stock",
+        "Text": "sid_upgrades_nvgpack_Upgr_gunstock_07_name",
+        "Hint": "sid_upgrades_nvgpack_Upgr_gunstock_07_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/SMG/Viper/Stock/Upgrade/T_ViperU_c.T_ViperU_c'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "1500",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "CanToggleOffsetAiming"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      }
+    ],
+    "TemplateRifle": [
+      {
+        "sid": "GunAK74_Upgrade_Attachment_SinMuz",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Attachment_SinMuz_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Attachment_SinMuz_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Barrel/Module/T_AK47_Mod_a_1.T_AK47_Mod_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MaxSpread.T_PDA_Upgrades_Icon_MaxSpread'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "MaxDispersionPos25Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "RU_SinMuz_2"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunAK74_Upgrade_Barrel_1",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Barrel_1_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Barrel_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Barrel/Upgrade/T_AK47_Upg_a_1.T_AK47_Upg_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Recoil.T_PDA_Upgrades_Icon_Recoil'",
+        "BaseCost": "350",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "RecoilPos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunAK74_Upgrade_Barrel_2_1",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Barrel_2_1_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Barrel_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Barrel/Upgrade/T_AK47_Upg_a_2.T_AK47_Upg_a_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_ArmorPiercing.T_PDA_Upgrades_Icon_ArmorPiercing'",
+        "BaseCost": "800",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ArmorPiercingPos30Effect",
+          "CoverPiercingPos30Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Barrel_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Barrel_2_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunAK74_Upgrade_Barrel_2_2",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Barrel_2_2_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Barrel_2_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Barrel/Upgrade/T_AK47_Upg_a_b.T_AK47_Upg_a_b'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Falloff.T_PDA_Upgrades_Icon_Falloff'",
+        "BaseCost": "700",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "FireDistancePos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Barrel_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Barrel_2_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunAK74_Upgrade_Body_1",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Body_1_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Body_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Body/Upgrade/T_AK47_Upg_b_1.T_AK47_Upg_b_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_WeightLoss.T_PDA_Upgrades_Icon_WeightLoss'",
+        "BaseCost": "300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "WeightPos30Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunAK74_Upgrade_Body_2",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Body_2_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Body_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Body/Upgrade/T_AK47_Upg_b_2.T_AK47_Upg_b_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Range.T_PDA_Upgrades_Icon_Range'",
+        "BaseCost": "700",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "BulletFalloffPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Body_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunAK74_Upgrade_Stock_1",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Stock_1_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Stock_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Stock/Upgrade/T_AK47_Upg_c_1.T_AK47_Upg_c_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "250",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunAK74_Upgrade_Stock_2",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Stock_2_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Stock_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Stock/Upgrade/T_AK47_Upg_c_2.T_AK47_Upg_c_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "700",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "IdleSwayXPos15Effect",
+          "IdleSwayYPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Stock_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunAK74_Upgrade_Stock_3",
+        "Text": "sid_upgrades_GunAK74_Upgrade_Stock_3_name",
+        "Hint": "sid_upgrades_GunAK74_Upgrade_Stock_3_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Stock/Upgrade/T_AK47_Upg_c_3.T_AK47_Upg_c_3'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Recoil.T_PDA_Upgrades_Icon_Recoil'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "2",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "RecoilPos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunAK74_Upgrade_Stock_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunAK74_Upgrade_Attachment_Offset_Stock",
+        "Text": "sid_upgrades_nvgpack_Upgr_gunstock_07_name",
+        "Hint": "sid_upgrades_nvgpack_Upgr_gunstock_07_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Assault/AK74/Stock/Upgrade/T_AK47_Upg_d.T_AK47_Upg_d'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "1500",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "CanToggleOffsetAiming"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      }
+    ],
+    "TemplateShotgun": [
+      {
+        "sid": "GunM860_Upgrade_Attachment_Laser",
+        "Text": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Handling_name",
+        "Hint": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Handling_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Barrel/Module/T_M860M_a_1.T_M860M_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "4600",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos10Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "EN_Laser_1"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Attachment_Laser_HP"
+        ],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Attachment_Mag",
+        "Text": "sid_upgrades_GunM860_Upgrade_Attachment_Mag_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Attachment_Mag_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Body/Module/T_M860M_b_1.T_M860M_b_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "11400",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Body",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimeNeg10Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "GunM860_MagLarge",
+          "M860ShortGrip",
+          "MagFedM860"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [
+          "Blueprint_M860_Upgrade_1"
+        ],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Barrel_1_1",
+        "Text": "sid_upgrades_GunM860_Upgrade_Barrel_1_1_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Barrel_1_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Barrel/Upgrade/T_M860U_a_a.T_M860U_a_a'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_SpreadReduction.T_PDA_Upgrades_Icon_SpreadReduction'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "DispersionPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Barrel_1_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Barrel_1_2",
+        "Text": "sid_upgrades_GunM860_Upgrade_Barrel_1_2_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Barrel_1_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Barrel/Upgrade/T_M860U_a_b.T_M860U_a_b'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_CaliberChange.T_PDA_Upgrades_Icon_CaliberChange'",
+        "BaseCost": "1500",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "FireDistancePos10HiddenEffect",
+          "DispersionPos30Effect",
+          "ChangeAmmoTypesNoBuckEffect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Barrel_1_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Barrel_2_1",
+        "Text": "sid_upgrades_GunM860_Upgrade_Barrel_2_1_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Barrel_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Barrel/Upgrade/T_M860U_a_b1.T_M860U_a_b1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_ArmorPiercing.T_PDA_Upgrades_Icon_ArmorPiercing'",
+        "BaseCost": "3100",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ArmorPiercingPos25Effect",
+          "CoverPiercingPos25Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Barrel_1_1",
+          "GunM860_Upgrade_Barrel_1_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunM860_Upgrade_Stock_1_1",
+        "Text": "sid_upgrades_GunM860_Upgrade_Stock_1_1_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Stock_1_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Stock/Upgrade/T_M860U_b_a.T_M860U_b_a'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Recoil.T_PDA_Upgrades_Icon_Recoil'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "RecoilPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_1_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Stock_1_2",
+        "Text": "sid_upgrades_GunM860_Upgrade_Stock_1_2_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Stock_1_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Stock/Upgrade/T_M860U_b_b.T_M860U_b_b'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "900",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_1_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Stock_2_1",
+        "Text": "sid_upgrades_GunM860_Upgrade_Stock_2_1_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Stock_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Stock/Upgrade/T_M860U_b_a1.T_M860U_b_a1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingReturn.T_PDA_Upgrades_Icon_AimingReturn'",
+        "BaseCost": "2700",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ShotRecoveryPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_1_1",
+          "GunM860_Upgrade_Stock_1_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_2_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunM860_Upgrade_Stock_2_2",
+        "Text": "sid_upgrades_GunM860_Upgrade_Stock_2_2_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Stock_2_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Stock/Upgrade/T_M860U_b_b1.T_M860U_b_b1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MovementAiming.T_PDA_Upgrades_Icon_MovementAiming'",
+        "BaseCost": "1800",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingMovementPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_1_1",
+          "GunM860_Upgrade_Stock_1_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_2_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunM860_Upgrade_Stock_3",
+        "Text": "sid_upgrades_GunM860_Upgrade_Stock_3_name",
+        "Hint": "sid_upgrades_GunM860_Upgrade_Stock_3_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Stock/Upgrade/T_M860U_b_a2.T_M860U_b_a2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Readiness.T_PDA_Upgrades_Icon_Readiness'",
+        "BaseCost": "3800",
+        "HorizontalPosition": "2",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "WeaponWithdrawPos30ShowEffect",
+          "WeaponWithdrawPos30HideEffect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Stock_2_1",
+          "GunM860_Upgrade_Stock_2_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunM860_Upgrade_Attachment_Laser_HP",
+        "Text": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Accuracy_name",
+        "Hint": "sid_upgrades_nvgpack_Upgrade_Attachment_Laser_Accuracy_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Barrel/Module/T_M860M_a_2.T_M860M_a_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_SpreadReduction.T_PDA_Upgrades_Icon_SpreadReduction'",
+        "BaseCost": "4600",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "DispersionPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "HP_Laser_2"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [
+          "GunM860_Upgrade_Attachment_Laser"
+        ],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunM860_Upgrade_Attachment_Offset_Stock",
+        "Text": "sid_upgrades_nvgpack_Upgr_gunstock_07_name",
+        "Hint": "sid_upgrades_nvgpack_Upgr_gunstock_07_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Shotgun/M860/Stock/Upgrade/T_M860U_c.T_M860U_c'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "5900",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "CanToggleOffsetAiming"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      }
+    ],
+    "TemplateSniper": [
+      {
+        "sid": "GunThreeLine_Upgrade_Attachment_SinMuz",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Attachment_SinMuz_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Attachment_SinMuz_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineM_1.T_ThreelineM_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_SpreadReduction.T_PDA_Upgrades_Icon_SpreadReduction'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::None",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "RecoilPos10Effect",
+          "DispersionPos25Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "RU_SinMuz_5"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Attachment_Rail",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Attachment_Rail_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Attachment_Rail_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineM_3.T_ThreelineM_3'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/T_mod_icon_m.T_mod_icon_m'",
+        "BaseCost": "900",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::None",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::PistolGrip",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [],
+        "AttachPrototypeSIDs": [
+          "GunBucket_TopRail"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Attachment_Grip",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Attachment_Grip_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Attachment_Grip_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineM_2.T_ThreelineM_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Recoil.T_PDA_Upgrades_Icon_Recoil'",
+        "BaseCost": "1300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::None",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "RecoilPos10Effect",
+          "DispersionPos5Effect",
+          "IdleSwayXPos10Effect",
+          "IdleSwayYPos10Effect"
+        ],
+        "AttachPrototypeSIDs": [
+          "RU_Grip_3"
+        ],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Barrel_1",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Barrel_1_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Barrel_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_a_1.T_ThreelineU_a_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Depreciation.T_PDA_Upgrades_Icon_Depreciation'",
+        "BaseCost": "300",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::None",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "DurabilityPos20Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Barrel_2_1",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Barrel_2_1_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Barrel_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_a_2_1.T_ThreelineU_a_2_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_WeightLoss.T_PDA_Upgrades_Icon_WeightLoss'",
+        "BaseCost": "600",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "WeightPos30Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Barrel_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Barrel_2_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Barrel_2_2",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Barrel_2_2_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Barrel_2_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_a_2_2.T_ThreelineU_a_2_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "700",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "IdleSwayXPos15Effect",
+          "IdleSwayYPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Barrel_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Barrel_2_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Barrel_3",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Barrel_3_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Barrel_3_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_a_3.T_ThreelineU_a_3'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_ArmorPiercing.T_PDA_Upgrades_Icon_ArmorPiercing'",
+        "BaseCost": "1500",
+        "HorizontalPosition": "2",
+        "VerticalPosition": "EUpgradeVerticalPosition::None",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Barrel",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "ArmorPiercingPos100Effect",
+          "ChangeAmmoTypesNo762DEffect",
+          "CoverPiercingPos100Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Barrel_2_1",
+          "GunThreeLine_Upgrade_Barrel_2_2"
+        ],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Grip_1",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Grip_1_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Grip_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_b_1.T_ThreelineU_b_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "250",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::None",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::PistolGrip",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Grip_2_1",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Grip_2_1_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Grip_2_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_b_2_1.T_ThreelineU_b_2_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "600",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::PistolGrip",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "IdleSwayXPos15Effect",
+          "IdleSwayYPos15Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Grip_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Grip_2_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Down"
+        ]
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Grip_2_2",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Grip_2_2_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Grip_2_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_b_2_2.T_ThreelineU_b_2_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_MovementAiming.T_PDA_Upgrades_Icon_MovementAiming'",
+        "BaseCost": "900",
+        "HorizontalPosition": "1",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::PistolGrip",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingMovementPos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Grip_1"
+        ],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Grip_2_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": [
+          "EConnectionLineState::Top"
+        ]
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Stock_1_1",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Stock_1_1_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Stock_1_1_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_c_1_1.T_ThreelineU_c_1_1'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_Breath-holding.T_PDA_Upgrades_Icon_Breath-holding'",
+        "BaseCost": "350",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Top",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "HoldBreathPos75Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Stock_1_2"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Stock_1_2",
+        "Text": "sid_upgrades_GunThreeLine_Upgrade_Stock_1_2_name",
+        "Hint": "sid_upgrades_GunThreeLine_Upgrade_Stock_1_2_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/T_ThreelineU_c_1_2.T_ThreelineU_c_1_2'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingSpeed.T_PDA_Upgrades_Icon_AimingSpeed'",
+        "BaseCost": "250",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "false",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "AimingTimePos10Effect"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [
+          "GunThreeLine_Upgrade_Stock_1_1"
+        ],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      },
+      {
+        "sid": "GunThreeLine_Upgrade_Attachment_Offset_Stock",
+        "Text": "sid_upgrades_nvgpack_Upgr_gunstock_07_name",
+        "Hint": "sid_upgrades_nvgpack_Upgr_gunstock_07_description",
+        "Image": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Weapons/Sniper/ThreeLine/Stock/Upgrade/T_ThreelineU_d.T_ThreelineU_d'",
+        "Icon": "Texture2D'/Game/GameLite/FPS_Game/UIRemaster/UITextures/PDA/Upgrades/Icons/T_PDA_Upgrades_Icon_AimingAccuracy.T_PDA_Upgrades_Icon_AimingAccuracy'",
+        "BaseCost": "1500",
+        "HorizontalPosition": "0",
+        "VerticalPosition": "EUpgradeVerticalPosition::Down",
+        "UpgradeTargetPart": "EUpgradeTargetPartType::Stock",
+        "IsModification": "true",
+        "HiddenWihoutItem": "false",
+        "DiscountCoefficient": "0.f",
+        "RepairCostModifier": "0.2f",
+        "EffectPrototypeSIDs": [
+          "CanToggleOffsetAiming"
+        ],
+        "AttachPrototypeSIDs": [],
+        "RequiredUpgradePrototypeSIDs": [],
+        "BlockingUpgradePrototypeSIDs": [],
+        "InterchangeableUpgradePrototypeSIDs": [],
+        "RequiredItemPrototypeSIDs": [],
+        "Skills": [],
+        "ConnectionLines": []
+      }
+    ]
+  },
+  "effects": {
+    "AimingMovementNeg10Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "AimingMovementNeg15Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "AimingMovementPos10Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingMovementPos12Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "12%",
+      "ValueMax": "12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingMovementPos15Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingMovementPos20Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingMovementPos30Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingMovementTemplate": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingTimeDecBy50": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-50%",
+      "ValueMax": "-50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingTimeIncBy50": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-50%",
+      "ValueMax": "-50%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "AimingTimeNeg10Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "AimingTimeNeg15Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "AimingTimeNeg20Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "AimingTimePos10Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingTimePos15Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingTimePos5Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingTimePos7Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-7%",
+      "ValueMax": "-7%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "AimingTimeTemplate": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Anomaly_Scientific_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "5.0%",
+      "ValueMax": "5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Anomaly_Scientific_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "5.0%",
+      "ValueMax": "5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos100Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos10Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos12Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "12%",
+      "ValueMax": "12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos15Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos20Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos25Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos30Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingPos50Effect": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArmorPiercingTemplate": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArtifactDurabilityIncrease1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "5.0%",
+      "ValueMax": "5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArtifactDurabilityIncrease2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArtifactDurabilityIncrease3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ArtifactDurabilityIncrease4": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BattleExoskeleton_Varta_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BattleExoskeleton_Varta_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BattleExoskeleton_Varta_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BattleExoskeleton_Varta_Armor_wearing4": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Dolg_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Military_Helmet_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Monolith_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Spark_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Svoboda_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Varta_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Varta_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Battle_Varta_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BulletDropLengthEffect": {
+      "Type": "EEffectType::BulletDropLength",
+      "ValueMin": "50.0%",
+      "ValueMax": "50.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BulletFalloffPos10Effect": {
+      "Type": "EEffectType::BulletDropLength",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BulletFalloffPos15Effect": {
+      "Type": "EEffectType::BulletDropLength",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BulletFalloffPos20Effect": {
+      "Type": "EEffectType::BulletDropLength",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BulletFalloffPos50Effect": {
+      "Type": "EEffectType::BulletDropLength",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "BulletFalloffTemplate": {
+      "Type": "EEffectType::BulletDropLength",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CanToggleOffsetAiming": {
+      "Type": "EEffectType::FlagEffect",
+      "ValueMin": "0.f",
+      "ValueMax": "0.f",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ChangeAmmoTypes045Effect": {
+      "Type": "EEffectType::ChangeAmmoTypes",
+      "ValueMin": "0.f",
+      "ValueMax": "0.f",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ChangeAmmoTypesAdd762NatoDEffect": {
+      "Type": "EEffectType::ChangeAmmoTypes",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ChangeAmmoTypesAdd762SniperDEffect": {
+      "Type": "EEffectType::ChangeAmmoTypes",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ChangeAmmoTypesNo762DEffect": {
+      "Type": "EEffectType::ChangeAmmoTypes",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ChangeAmmoTypesNo919Effect": {
+      "Type": "EEffectType::ChangeAmmoTypes",
+      "ValueMin": "0.f",
+      "ValueMax": "0.f",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ChangeAmmoTypesNoBuckEffect": {
+      "Type": "EEffectType::ChangeAmmoTypes",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ChangeCaliber045Effect": {
+      "Type": "EEffectType::ChangeCaliber",
+      "ValueMin": "0.f",
+      "ValueMax": "0.f",
+      "Positive": "EBeneficial::None"
+    },
+    "CoverPiercingPos100Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos10Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos12Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "12%",
+      "ValueMax": "12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos15Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos20Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos25Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos30Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingPos50Effect": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "CoverPiercingTemplate": {
+      "Type": "EEffectType::CoverPiercing",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffNeg70Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "-70%",
+      "ValueMax": "-70%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DamageFalloffPos100Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos10Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos12Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "12%",
+      "ValueMax": "12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos150Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "150%",
+      "ValueMax": "150%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos15Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos20Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos25Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos30Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos40Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "40%",
+      "ValueMax": "40%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos50Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos70Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "70%",
+      "ValueMax": "70%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffPos7Effect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "7%",
+      "ValueMax": "7%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageFalloffTemplate": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageNeg10Effect": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DamagePos15Effect": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamagePos20Effect": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamagePos25Effect": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamagePos28Effect": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "28%",
+      "ValueMax": "28%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamagePos30Effect": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DamageTemplate": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Default_Military_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Default_Military_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionMaxRadiusExtensionEffect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-50.0%",
+      "ValueMax": "-50.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionNeg40Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "40%",
+      "ValueMax": "40%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DispersionNeg55Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "55%",
+      "ValueMax": "55%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DispersionNeg80Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "80%",
+      "ValueMax": "80%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DispersionPos10Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionPos15Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionPos20Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionPos25Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-25%",
+      "ValueMax": "-25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionPos30Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-30%",
+      "ValueMax": "-30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionPos5Effect": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionRadiusDecBy50": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "-0.5",
+      "ValueMax": "-0.5",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DispersionTemplate": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityDamagePerShotEffect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPerShotNeg10Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DurabilityPerShotNeg15Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DurabilityPerShotNeg20Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DurabilityPerShotNeg5Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "DurabilityPerShotPos10Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPerShotPos12Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "-12%",
+      "ValueMax": "-12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPerShotPos15Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPerShotPos20Effect": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPerShotTemplate": {
+      "Type": "EEffectType::DurabilityDamagePerShot",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPos10Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPos15Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPos20Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityPos25Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityTemplate": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityUp10Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityUp15Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityUp20Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityUp25Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityUp30Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "30.0%",
+      "ValueMax": "30.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DurabilityUp5Effect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "5.0%",
+      "ValueMax": "5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "DutyArmor_4_E1_UpDurabilityArmorEffect": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "EnergeticOveruseTremorIdleSwayYModifierEffect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "3.8",
+      "ValueMax": "3.8",
+      "Positive": "EBeneficial::None"
+    },
+    "Exoskeleton_Dolg_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Dolg_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Dolg_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Dolg_Armor_wearing4": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Mercenaries_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Mercenaries_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Mercenaries_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Monolith_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Monolith_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Monolith_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Neutral_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Neutral_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Neutral_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Neutral_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Neutral_Armor_wearing4": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Svoboda_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Svoboda_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Exoskeleton_Svoboda_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistanceNeg55Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "-55.0%",
+      "ValueMax": "-55.0%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "FireDistanceNeg70Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "-70.0%",
+      "ValueMax": "-70.0%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "FireDistancePos10Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistancePos10HiddenEffect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistancePos15Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistancePos20Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistancePos25Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistancePos30Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistancePos35Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "35.0%",
+      "ValueMax": "35.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FireDistanceTemplate": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FlatnessUp10Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FlatnessUp15Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FlatnessUp20Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FlatnessUp25Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FlatnessUp30Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "30.0%",
+      "ValueMax": "30.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "FlatnessUp5Effect": {
+      "Type": "EEffectType::EffectiveFireDistance",
+      "ValueMin": "5.0%",
+      "ValueMax": "5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "GunAK74_ArmorPiercing": {
+      "Type": "EEffectType::ArmorPiercing",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "GunAK74_BaseDamage": {
+      "Type": "EEffectType::BaseDamage",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy2_Military_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyAnomaly_Monolith_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyAnomaly_Scientific_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyAnomaly_Scientific_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyAnomaly_Spark_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyBattle_Spark_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyBattle_Spark_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Dolg_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Dolg_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Dolg_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Monolith_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Monolith_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Monolith_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Svoboda_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Svoboda_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HeavyExoskeleton_Svoboda_Armor_wearing3": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Dolg_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Dolg_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Duty_Helmet_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Duty_Helmet_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Mercenaries_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Mercenaries_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Military_Helmet_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Military_Helmet_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Svoboda_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Svoboda_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Svoboda_Helmet_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Heavy_Varta_Helmet_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HideEquipmentTimeEffect": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "40%",
+      "ValueMax": "40%",
+      "Positive": "EBeneficial::None"
+    },
+    "HideEquipmentTimeEffectFast": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::None"
+    },
+    "HideEquipmentTimeEffectSlow": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "-50%",
+      "ValueMax": "-50%",
+      "Positive": "EBeneficial::None"
+    },
+    "HoldBreathPos75Effect": {
+      "Type": "EEffectType::HoldBreathDrain",
+      "ValueMin": "-75%",
+      "ValueMax": "-75%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "HoldBreathTemplate": {
+      "Type": "EEffectType::HoldBreathDrain",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "IdleSwayXModifierEffect": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::None"
+    },
+    "IdleSwayXPos10Effect": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "IdleSwayXPos15Effect": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "IdleSwayXPos20Effect": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "IdleSwayXTemplate": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "IdleSwayYModifierEffect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::None"
+    },
+    "IdleSwayYPos10Effect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::None"
+    },
+    "IdleSwayYPos15Effect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::None"
+    },
+    "IdleSwayYPos20Effect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::None"
+    },
+    "IdleSwayYTemplate": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::None"
+    },
+    "Jacket_Bandit_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "30.0%",
+      "ValueMax": "30.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Jemmy_Neutral_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Jemmy_Neutral_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Light_Bandit_Helmet_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Light_Duty_Helmet_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Light_Mercenaries_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Light_Mercenaries_Helmet_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Light_Military_Helmet_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Light_Neutral_Helmet_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionNeg10Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "MaxDispersionPos10Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionPos15Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionPos20Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionPos25Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-25%",
+      "ValueMax": "-25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionPos30Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-30%",
+      "ValueMax": "-30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionPos40Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-40%",
+      "ValueMax": "-40%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionPos50Effect": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "-50%",
+      "ValueMax": "-50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MaxDispersionTemplate": {
+      "Type": "EEffectType::DispersionMaxRadiusExtension",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MediumSuppressionDispersion": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "25",
+      "ValueMax": "25",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Middle_Bandit_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "30.0%",
+      "ValueMax": "30.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Middle_Bandit_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "MinBulletDistanceDamageEffect": {
+      "Type": "EEffectType::MinBulletDistanceDamage",
+      "ValueMin": "50.0%",
+      "ValueMax": "50.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Nasos_Neutral_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Nasos_Neutral_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Newbie_Neutral_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos10Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos15Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos20Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos25Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-25%",
+      "ValueMax": "-25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos30Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-30%",
+      "ValueMax": "-30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos5Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedPos7Effect": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-7%",
+      "ValueMax": "-7%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ProjectileSpeedTemplate": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "PsyPhantomPermanentBulletSpeedSlowdown": {
+      "Type": "EEffectType::BulletSpeedSlowdown",
+      "ValueMin": "92%",
+      "ValueMax": "92%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "RecoilDown10Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-10.0%",
+      "ValueMax": "-10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilDown15Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-15.0%",
+      "ValueMax": "-15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilDown20Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-20.0%",
+      "ValueMax": "-20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilDown25Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-25.0%",
+      "ValueMax": "-25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilDown30Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-30.0%",
+      "ValueMax": "-30.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilDown5Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-5.0%",
+      "ValueMax": "-5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilNeg15Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "RecoilNeg20Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "RecoilNeg25Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "RecoilNeg35Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "35%",
+      "ValueMax": "35%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "RecoilPos10Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilPos12Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-12%",
+      "ValueMax": "-12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilPos15Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilPos20Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilPos5Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilPos7Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-7%",
+      "ValueMax": "-7%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilRadiusNormalizationIntervalEffect": {
+      "Type": "EEffectType::RecoilRadiusNormalizationInterval",
+      "ValueMin": "100.0%",
+      "ValueMax": "100.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "RecoilTemplate": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Rook_Dolg_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Rook_Svoboda_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SEVA_Dolg_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SEVA_Dolg_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SEVA_Spark_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SEVA_Svoboda_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SEVA_Svoboda_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SciSEVA_Scientific_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SciSEVA_Scientific_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ScopeAimingMovementNeg10Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ScopeAimingMovementNeg5Effect": {
+      "Type": "EEffectType::AimingMovementSpeed",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ScopeAimingTimeNeg10Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "10%",
+      "ValueMax": "10%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ScopeAimingTimeNeg15Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ScopeAimingTimeNeg20Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ScopeAimingTimeNeg7Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "7%",
+      "ValueMax": "7%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "ScopeAimingTimePos10Effect": {
+      "Type": "EEffectType::AimingTime",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ScopeIdleSwayXModifierEffect": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "-0.2",
+      "ValueMax": "-0.2",
+      "Positive": "EBeneficial::None"
+    },
+    "ScopeIdleSwayYModifierEffect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "-0.2",
+      "ValueMax": "-0.2",
+      "Positive": "EBeneficial::None"
+    },
+    "ScopeRecoilPos10Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ScopeRecoilPos20Effect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Seva_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Seva_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Seva_Neutral_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "25.0%",
+      "ValueMax": "25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Seva_Neutral_Armor_wearing1": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "10.0%",
+      "ValueMax": "10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ShotRecoveryPos10Effect": {
+      "Type": "EEffectType::RecoilRadiusNormalizationInterval",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ShotRecoveryPos15Effect": {
+      "Type": "EEffectType::RecoilRadiusNormalizationInterval",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ShotRecoveryPos20Effect": {
+      "Type": "EEffectType::RecoilRadiusNormalizationInterval",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ShotRecoveryTemplate": {
+      "Type": "EEffectType::RecoilRadiusNormalizationInterval",
+      "ValueMin": "5%",
+      "ValueMax": "5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "ShowEquipmentTimeEffect": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::None"
+    },
+    "ShowEquipmentTimeEffectFast": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "50%",
+      "ValueMax": "50%",
+      "Positive": "EBeneficial::None"
+    },
+    "ShowEquipmentTimeEffectSlow": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "-50%",
+      "ValueMax": "-50%",
+      "Positive": "EBeneficial::None"
+    },
+    "Skin_Jacket_Bandit_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "SleepHideEquipmentTime": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::None"
+    },
+    "SleepShowEquipmentTime": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::None"
+    },
+    "SleepinessNegativeDispersionRadiusIncBy50": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "0.5",
+      "ValueMax": "0.5",
+      "Positive": "EBeneficial::Negative"
+    },
+    "SleepinessNegativeIdleSwayXModifierEffect": {
+      "Type": "EEffectType::IdleSwayXModifier",
+      "ValueMin": "0.4",
+      "ValueMax": "0.4",
+      "Positive": "EBeneficial::None"
+    },
+    "SleepinessNegativeIdleSwayYModifierEffect": {
+      "Type": "EEffectType::IdleSwayYModifier",
+      "ValueMin": "0.4",
+      "ValueMax": "0.4",
+      "Positive": "EBeneficial::None"
+    },
+    "SleepinessNegativeRecoilUpEffect": {
+      "Type": "EEffectType::Recoil",
+      "ValueMin": "55.0%",
+      "ValueMax": "55.0%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "StrongSuppressionDispersion": {
+      "Type": "EEffectType::Dispersion",
+      "ValueMin": "50",
+      "ValueMax": "50",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeaponWithdrawHideTemplate": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::None"
+    },
+    "WeaponWithdrawPos15HideEffect": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::None"
+    },
+    "WeaponWithdrawPos15ShowEffect": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "15%",
+      "ValueMax": "15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeaponWithdrawPos20HideEffect": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::None"
+    },
+    "WeaponWithdrawPos20ShowEffect": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeaponWithdrawPos25HideEffect": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::None"
+    },
+    "WeaponWithdrawPos25ShowEffect": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "25%",
+      "ValueMax": "25%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeaponWithdrawPos30HideEffect": {
+      "Type": "EEffectType::HideEquipmentTime",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::None"
+    },
+    "WeaponWithdrawPos30ShowEffect": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "30%",
+      "ValueMax": "30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeaponWithdrawShowTemplate": {
+      "Type": "EEffectType::ShowEquipmentTime",
+      "ValueMin": "100%",
+      "ValueMax": "100%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightDown10Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-10.0%",
+      "ValueMax": "-10.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightDown15Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-15.0%",
+      "ValueMax": "-15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightDown20Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-20.0%",
+      "ValueMax": "-20.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightDown25Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-25.0%",
+      "ValueMax": "-25.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightDown30Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-30.0%",
+      "ValueMax": "-30.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightDown5Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-5.0%",
+      "ValueMax": "-5.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightNeg20Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "20%",
+      "ValueMax": "20%",
+      "Positive": "EBeneficial::Negative"
+    },
+    "WeightPos10Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-10%",
+      "ValueMax": "-10%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightPos12Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-12%",
+      "ValueMax": "-12%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightPos15Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-15%",
+      "ValueMax": "-15%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightPos17Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-17%",
+      "ValueMax": "-17%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightPos20Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-20%",
+      "ValueMax": "-20%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightPos30Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-30%",
+      "ValueMax": "-30%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightPos50Effect": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-50%",
+      "ValueMax": "-50%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "WeightTemplate": {
+      "Type": "EEffectType::WeaponItemWeight",
+      "ValueMin": "-5%",
+      "ValueMax": "-5%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Zorya_Neutral_Armor_wearing": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "15.0%",
+      "ValueMax": "15.0%",
+      "Positive": "EBeneficial::Positive"
+    },
+    "Zorya_Neutral_Armor_wearing2": {
+      "Type": "EEffectType::MaxDurability",
+      "ValueMin": "20.0%",
+      "ValueMax": "20.0%",
+      "Positive": "EBeneficial::Positive"
+    }
+  }
+}

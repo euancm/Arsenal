@@ -541,6 +541,8 @@ class ConvertToRigifyByMappingOperator(bpy.types.Operator):
     """Convert character to rigify"""
     bl_idname = "object.arsenal_convert_to_rigify_by_mapping"
     bl_label = "Convert character to rigify by mapping"
+    bl_description = ('Build a Rigify control rig using the current bone mapping and rebind child meshes; '
+                      'keeps a hidden source skeleton for retargeting and export')
     bl_options = {'REGISTER', 'UNDO'}
 
     # example_prop: bpy.props.BoolProperty(name="Example prop", default=False)

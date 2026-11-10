@@ -9,7 +9,6 @@ Run with a normal Python (outside Unreal) to print the plan without importing an
 """
 import json
 import os
-import copy
 import re
 import shutil
 import sys
@@ -56,6 +55,7 @@ def build_plan(manifest, base_dir):
             entries[kind] = f'{match[1]}/{stem}' if match else None
         materials.append((material['name'], entries))
     return {
+        'ui_images': files([entry['file'] for entry in manifest.get('ui_images', [])]),
         'textures': textures,
         'materials': materials,
         'static_meshes': files(manifest['static_meshes']),
@@ -97,7 +97,13 @@ def notify_completion(error=None):
     status = 'failed' if error is not None else 'finished with warnings' if WARNINGS else 'complete'
     message = str(error) if error is not None else (
         f'{len(WARNINGS)} warnings. See the Output Log for details.' if WARNINGS
-        else 'Import finished. You can now package and test the mod.')
+        else 'Import finished.')
+    if error is None:
+        message += (
+            '\n\nBefore packaging: open your mod in the Mod Editor and update the AnimCollection '
+            'options to use your weapon\'s first-person collection. Localisation SIDs and translations '
+            'are imported automatically; resolve any localisation warnings in the Output Log. '
+            'Save the AnimCollection options, then package and test the mod.')
     if unreal is not None:
         category = (unreal.AppMsgCategory.ERROR if error is not None else
                     unreal.AppMsgCategory.WARNING if WARNINGS else unreal.AppMsgCategory.INFO)
@@ -203,6 +209,36 @@ def swap_magazine_sids(text, magazines, lines=None, label=''):
             lines.append(f'collection {label}: {match.group(0)} -> {new}')
         return new
     return MAGAZINE_SID.sub(swap, text)
+
+
+# SID-keyed maps of the anim collection's internal_animations. The game looks entries up by the CFG's
+# magazine/attachment SID, so a missing key means no animation and a stuck weapon state.
+COLLECTION_SID_MAPS = ('reloading', 'one_hand_reloading', 'attaching_by_sid')
+TEMPLATE_ATTACHMENT_PREFIXES = {'silencer': 'EN_Silen_', 'laser': 'EN_Laser_'}
+
+
+def new_attachment_sid(sid, attachments):
+    """Resolve a donor attachment SID to the configured attachment of the same kind."""
+    if any(item['sid'] == sid for item in attachments):
+        return None
+    for kind, prefix in TEMPLATE_ATTACHMENT_PREFIXES.items():
+        if sid.startswith(prefix):
+            targets = {item['sid'] for item in attachments if item.get('kind') == kind}
+            if len(targets) > 1:
+                raise ValueError(f'{sid} has multiple {kind} replacements: {", ".join(sorted(targets))}')
+            return next(iter(targets), None)
+    return None
+
+
+def planned_collection_sids(keys, magazines, attachments=None):
+    """{donor SID: configured SID} replacements, including obsolete duplicate keys."""
+    plan = {}
+    for key in sorted(str(key) for key in keys):
+        new = (new_magazine_sid(key, magazines) if MAGAZINE_SID.fullmatch(key)
+               else new_attachment_sid(key, attachments or []))
+        if new and new != key:
+            plan[key] = new
+    return plan
 
 
 class Importer:
@@ -313,6 +349,37 @@ class Importer:
             if self.manifest.get('virtual_textures', True):
                 texture.set_editor_property('virtual_texture_streaming', True)
             self.library.save_loaded_asset(texture)
+
+    def import_ui_images(self):
+        if not self.plan['ui_images']:
+            return
+        root = self.manifest['game_root'].rstrip('/')
+        if not re.fullmatch(r'/[A-Za-z0-9_]+', root) or root.lower() in ('/game', '/engine'):
+            raise RuntimeError(f'UI images require a mod-owned content mount, not {root!r}')
+        for _path, folder, _name in self.plan['ui_images']:
+            if not folder.startswith(root + '/UI/Arsenal/'):
+                raise RuntimeError(f'UI image is outside the mod-owned Arsenal image folder: {folder}')
+        planned = [(path, folder, name) for path, folder, name in self.plan['ui_images']
+                   if self.wanted(folder, name, replace=True)]
+        tasks = [self.task(path, folder, name) for path, folder, name in planned]
+        imported = {str(path).split('.', 1)[0] for path in self.import_tasks(tasks)}
+        missing = {f'{folder}/{name}' for _path, folder, name in planned} - imported
+        if missing:
+            raise RuntimeError('UI texture import failed; existing images were not refreshed: '
+                               + ', '.join(sorted(missing)))
+        for _path, folder, name in self.plan['ui_images']:
+            path = f'{folder}/{name}'
+            texture = self.library.load_asset(path)
+            if texture is None:
+                raise RuntimeError(f'UI texture import failed: {path}')
+            texture.set_editor_property('srgb', True)
+            texture.set_editor_property('compression_settings',
+                                        unreal.TextureCompressionSettings.TC_EDITOR_ICON)
+            texture.set_editor_property('lod_group', unreal.TextureGroup.TEXTUREGROUP_UI)
+            texture.set_editor_property('mip_gen_settings', unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS)
+            texture.set_editor_property('virtual_texture_streaming', False)
+            if not self.library.save_loaded_asset(texture):
+                raise RuntimeError(f'Could not save UI texture: {path}')
 
     def import_materials(self):
         folder = self.manifest['material_folder']
@@ -764,6 +831,53 @@ class Importer:
             f'{montage.get_name()}: plays {current.get_name()}'
             + (f', should play {new.get_name()}' if new is not None else ', no matching new animation'))
 
+    def sync_attachment_notifies(self, montage, report):
+        """Remap the donor item spawned/attached by montage notifies, not just collection keys."""
+        magazines = self.manifest.get('magazines') or []
+        attachments = self.manifest.get('attachments') or []
+        if not magazines and not attachments:
+            return False
+        mount = self.manifest['game_root'].rstrip('/')
+        if not re.fullmatch(r'/[A-Za-z0-9_]+', mount) or mount.lower() in ('/game', '/engine') or not (
+                self.package_of(montage).lower().startswith(mount.lower() + '/')):
+            raise RuntimeError('Attachment notifies must belong to a mod-owned montage.')
+        name = montage.get_name()
+        changes = []
+        try:
+            for event in unreal.AnimationLibrary.get_animation_notify_events(montage):
+                notify = event.get_editor_property('notify')
+                if notify is None or notify.get_class().get_name() != 'AnimNotify_AttachItem':
+                    continue
+                if self.package_of(notify) != self.package_of(montage):
+                    raise RuntimeError('Attachment notify is not owned by this montage.')
+                old = notify.get_editor_property('binded_attach_sid')
+                sid = str(old)
+                new = (new_magazine_sid(sid, magazines) if MAGAZINE_SID.fullmatch(sid)
+                       else new_attachment_sid(sid, attachments))
+                if new and new != sid:
+                    changes.append((notify, old, type(old)(new)))
+        except Exception as error:
+            warn(f'{name}: cannot plan attachment notify SIDs ({error}); set BindedAttachSid by hand.')
+            return False
+        if not changes:
+            return False
+        try:
+            for notify, old, new in changes:
+                notify.set_editor_property('binded_attach_sid', new)
+            if any(str(notify.get_editor_property('binded_attach_sid')) != str(new)
+                   for notify, old, new in changes):
+                raise RuntimeError('attachment notify SIDs did not read back correctly')
+            if not self.library.save_loaded_asset(montage):
+                raise RuntimeError('could not save attachment notify SIDs')
+        except Exception as error:
+            for notify, old, new in changes:
+                notify.set_editor_property('binded_attach_sid', old)
+            warn(f'{name}: attachment notify changes were restored ({error}); set BindedAttachSid by hand.')
+            return False
+        for notify, old, new in changes:
+            report['lines'].append(f'{name}: notify BindedAttachSid {old} -> {new}')
+        return True
+
     def montage_skeleton(self, montage):
         key = 'weapon_skeleton' if '/weapons/' in self.package_of(montage).lower() else 'player_skeleton'
         try:
@@ -931,6 +1045,95 @@ class Importer:
             self.library.save_loaded_asset(collection)
         return changed
 
+    def sync_collection_sids(self, collection, report):
+        """Replace donor SID keys, preserving values and existing configured entries."""
+        magazines = self.manifest.get('magazines') or []
+        attachments = self.manifest.get('attachments') or []
+        if not magazines and not attachments:
+            return False
+        name = collection.get_name()
+        try:
+            original = collection.get_editor_property('internal_animations')
+            internal = collection.get_editor_property('internal_animations')
+        except Exception as error:
+            warn(f'{name}: cannot read internal_animations ({error}); add magazine/attachment SIDs by hand.')
+            return False
+        replaced = {}
+        for field in COLLECTION_SID_MAPS:
+            try:
+                entries = internal.get_editor_property(field)
+                keys = list(entries.keys())
+            except Exception as error:
+                warn(f'{name}: cannot read {field} ({error}); add magazine/attachment SIDs by hand.')
+                continue
+            try:
+                plan = planned_collection_sids(
+                    keys, magazines, attachments if field == 'attaching_by_sid' else None)
+            except ValueError as error:
+                warn(f'{name}: cannot replace {field} SIDs ({error}); set them by hand.')
+                return False
+            if field == 'attaching_by_sid':
+                present = {str(key) for key in keys} | set(plan.values())
+                for item in attachments:
+                    if item.get('kind') == 'silencer' and item.get('sid') not in present:
+                        warn(f'{name}: the template has no silencer attach animation to copy for {item["sid"]}; '
+                             'attaching it from the quick menu will not animate.')
+            if not plan:
+                continue
+            by_name = {str(key): key for key in keys}
+            try:
+                for source, sid in plan.items():
+                    key = by_name[source]
+                    target = type(key)(sid)
+                    if target not in entries:
+                        entries[target] = entries[key]
+                    del entries[key]
+                internal.set_editor_property(field, entries)
+            except Exception as error:
+                warn(f'{name}: cannot replace {field} SID keys ({error}); changes were not applied.')
+                return False
+            replaced[field] = plan
+        if not replaced:
+            return False
+        try:
+            collection.set_editor_property('internal_animations', internal)
+            if not self.collection_sids_match(collection, original, replaced):
+                raise RuntimeError('magazine/attachment SID entries did not read back correctly')
+            if not self.library.save_loaded_asset(collection):
+                raise RuntimeError('could not save the replaced magazine/attachment SID entries')
+        except Exception as error:
+            collection.set_editor_property('internal_animations', original)
+            warn(f'{name}: magazine/attachment SID changes were restored ({error}); set them by hand.')
+            return False
+        for field, plan in replaced.items():
+            for source, sid in plan.items():
+                report['lines'].append(f'collection {field}: {source} -> {sid} (replaced)')
+        return True
+
+    @staticmethod
+    def collection_sids_match(collection, original, replaced):
+        """Check exact replacement keys/values, including preservation of existing targets."""
+        def text(value):
+            return value.export_text() if hasattr(value, 'export_text') else repr(value)
+
+        internal = collection.get_editor_property('internal_animations')
+        for field in COLLECTION_SID_MAPS:
+            try:
+                old_map = original.get_editor_property(field)
+            except Exception:
+                if field in replaced:
+                    return False
+                continue
+            before = {str(key): text(value) for key, value in old_map.items()}
+            after = {str(key): text(value) for key, value in internal.get_editor_property(field).items()}
+            expected = dict(before)
+            for source, sid in replaced.get(field, {}).items():
+                value = expected.pop(source)
+                expected.setdefault(sid, value)
+            if after != expected:
+                return False
+        return True
+
     def update_montages(self):
         """After the animations are imported, point the weapon's montages and anim collection at them."""
         weapon = self.manifest['weapon'].lower()
@@ -945,13 +1148,19 @@ class Importer:
             if not ours(package):
                 continue
             montage = self.library.load_asset(package)
-            if montage is not None and self.repoint_montage(montage, assets, report):
+            if montage is None:
+                continue
+            changed = self.repoint_montage(montage, assets, report)
+            if self.sync_attachment_notifies(montage, report) or changed:
                 updated += 1
         for package in sorted(assets['collection'].values()):
             if not ours(package):
                 continue
             collection = self.library.load_asset(package)
-            if collection is not None and self.repoint_collection(collection, assets, report):
+            if collection is None:
+                continue
+            changed = self.repoint_collection(collection, assets, report)
+            if self.sync_collection_sids(collection, report) or changed:
                 updated += 1
         for line in report['lines']:
             log('  ' + line)
@@ -974,7 +1183,9 @@ class Importer:
 
     def text_tool_asset(self):
         """The mod's localisation text asset (created if the mod has none)."""
-        mount = self.manifest['game_root']
+        mount = self.manifest['game_root'].rstrip('/')
+        if not re.fullmatch(r'/[A-Za-z0-9_]+', mount) or mount.lower() in ('/game', '/engine'):
+            raise RuntimeError(f'localisation requires a mod-owned content mount, not {mount!r}')
         mod = mount.strip('/')
         registry = unreal.AssetRegistryHelpers.get_asset_registry()
         found = []
@@ -985,6 +1196,9 @@ class Importer:
             if str(data.asset_name).lower() == f'{mod}TextToolAsset'.lower():
                 return data.get_asset()
         if found:
+            if len(found) != 1:
+                raise RuntimeError('multiple localisation text assets found; cannot choose safely: '
+                                   + ', '.join(str(data.package_name) for data in found))
             return found[0].get_asset()
         tools = unreal.AssetToolsHelpers.get_asset_tools()
         asset_class = getattr(unreal, 'LocalizationModTextToolAsset', None)
@@ -1006,7 +1220,7 @@ class Importer:
         """Python name of the asset's array of localised texts (the exposed name is not known in advance)."""
         own = sorted(set(dir(asset)) - set(dir(unreal.Object)))
         own = [n for n in own if not n.startswith('_')]
-        candidates = ['localized_texts', 'localised_texts', 'texts', 'localized_text', 'entries']
+        candidates = ['LocalizedTexts', 'localized_texts', 'localised_texts', 'texts', 'localized_text', 'entries']
         candidates += [n for n in own if 'text' in n.lower() and n not in candidates]
         for name in candidates:
             try:
@@ -1017,42 +1231,132 @@ class Importer:
         raise RuntimeError(f'no readable text array property on the text asset; its Python attributes are: {own}')
 
     @staticmethod
-    def language_value(key):
-        member = key.split('::')[-1]
-        name = re.sub(r'(?<!^)(?=[A-Z])', '_', member).upper()
-        return getattr(unreal.ELocalizationLanguage, name)
+    def localization_language(key):
+        member = re.split(r'(?:E?LocalizationLanguage)(?:::|\.)', str(key))[-1]
+        member = member.strip('<> ').split(':', 1)[0].strip()
+        if member.isupper() or '_' in member:
+            member = ''.join(word.title() for word in member.split('_'))
+        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', member):
+            raise ValueError(f'invalid localisation language: {key!r}')
+        return member
+
+    @classmethod
+    def localization_snapshot(cls, texts):
+        result = {}
+        for item in texts:
+            sid = str(item.get_editor_property('SID'))
+            languages = {}
+            for key, text in item.get_editor_property('LanguagesToLocalizedStrings').items():
+                member = cls.localization_language(key)
+                if member in languages:
+                    raise ValueError(f'duplicate localisation language for {sid}: {member}')
+                languages[member] = str(text)
+            if not sid and all(not text.strip() or text == 'UNLOCALIZED MOD STRING'
+                               for text in languages.values()):
+                # ZoneKit replaces blank-row translations with this sentinel on array assignment.
+                continue
+            if not sid or sid in result:
+                raise ValueError(f'empty or duplicate localisation SID in asset: {sid!r}')
+            result[sid] = {'languages': languages, 'text': item.export_text()}
+        return result
+
+    @staticmethod
+    def localization_struct_text(sid, languages):
+        def escape(text):
+            return (text.replace('\\', '\\\\').replace('"', '\\"').replace('\r', '\\r')
+                    .replace('\n', '\\n').replace('\t', '\\t'))
+
+        values = ','.join(f'({language},"{escape(text)}")' for language, text in languages.items())
+        return f'(SID="{escape(sid)}",LanguagesToLocalizedStrings=({values}))'
+
+    @classmethod
+    def validate_localization(cls, texts, before, source):
+        after = cls.localization_snapshot(texts)
+        if set(after) != set(before) | set(source):
+            raise RuntimeError('localisation SID set differs from the planned update')
+        for sid, original in before.items():
+            if sid not in source and after[sid] != original:
+                raise RuntimeError(f'unrelated localisation entry changed: {sid}')
+        for sid, translations in source.items():
+            expected = dict(before[sid]['languages']) if sid in before else {}
+            expected.update(translations)
+            if after[sid]['languages'] != expected:
+                raise RuntimeError(f'localisation translations differ from the planned update: {sid}')
 
     def import_localization(self):
-        """Write the weapon's name and description into the mod's localisation text asset."""
+        """Upsert weapon and purchasable attachment text into the mod's localisation asset."""
         entries = self.manifest.get('localization') or []
         if not entries:
-            log('No weapon name or description to import.')
+            log('No weapon or attachment name or description to import.')
             return
+        log('Weapon and attachment localisation entries (SID and language values for copy/paste):')
+        for entry in entries:
+            log(entry['SID'])
+            for language, text in entry['LanguagesToLocalizedStrings'].items():
+                log(f'  {language}')
+                log(str(text).replace('\r', '\\r').replace('\n', '\\n'))
         try:
+            source = {}
+            for entry in entries:
+                sid = entry['SID']
+                if not isinstance(sid, str) or not re.fullmatch(r'sid_[A-Za-z0-9_]+', sid) or sid in source:
+                    raise ValueError(f'invalid or duplicate localisation SID: {sid!r}')
+                languages = {}
+                for key, text in entry['LanguagesToLocalizedStrings'].items():
+                    member = self.localization_language(key)
+                    if member in languages or not isinstance(text, str) or not text.strip():
+                        raise ValueError(f'invalid or duplicate translation for {sid}: {key}')
+                    languages[member] = text
+                if not languages:
+                    raise ValueError(f'no translations supplied for {sid}')
+                source[sid] = languages
             asset = self.text_tool_asset()
             prop = self.texts_property(asset)
-            current = list(asset.get_editor_property(prop))
-            sids = [str(item.get_editor_property('sid')) for item in current]
-            for entry in entries:
-                struct = getattr(unreal, 'ModTextToolLocalizedText', None)
-                if struct is not None:
-                    item = struct()
-                elif current:
-                    item = copy.deepcopy(current[0])
+            original = asset.get_editor_property(prop)
+            before = self.localization_snapshot(original)
+            current = original.copy()
+            indices = {str(item.get_editor_property('SID')): index for index, item in enumerate(current)
+                       if str(item.get_editor_property('SID'))}
+            empty_indices = [index for index, item in enumerate(current)
+                             if not str(item.get_editor_property('SID'))]
+            changed = 0
+            for sid, translations in source.items():
+                merged = dict(before[sid]['languages']) if sid in before else {}
+                merged.update(translations)
+                if sid in before and merged == before[sid]['languages']:
+                    continue
+                if sid in before:
+                    index = indices[sid]
+                elif empty_indices:
+                    index = empty_indices.pop(0)
                 else:
-                    raise RuntimeError('the ModTextToolLocalizedText struct is not exposed to Python')
-                item.set_editor_property('sid', entry['SID'])
-                item.set_editor_property('languages_to_localized_strings', {
-                    self.language_value(key): text for key, text in entry['LanguagesToLocalizedStrings'].items()})
-                if entry['SID'] in sids:
-                    current[sids.index(entry['SID'])] = item
-                else:
-                    current.append(item)
-                    sids.append(entry['SID'])
-                log(f'  text {entry["SID"]}')
-            asset.set_editor_property(prop, current)
-            self.library.save_loaded_asset(asset)
-            self.count('text entries')
+                    index = len(current)
+                    # Native TArray resizing constructs even unexposed structs, without a template entry.
+                    current.resize(index + 1)
+                item = current[index]
+                if not item.import_text(self.localization_struct_text(sid, merged)):
+                    raise RuntimeError(f'ZoneKit rejected localisation text for {sid}')
+                current[index] = item
+                changed += 1
+            self.validate_localization(current, before, source)
+            if not changed:
+                log(f'  localisation unchanged ({len(source)} entries); no save needed')
+                return
+            asset.modify()
+            try:
+                asset.set_editor_property(prop, current)
+                self.validate_localization(asset.get_editor_property(prop), before, source)
+                if not self.library.save_loaded_asset(asset):
+                    raise RuntimeError('could not save the localisation text asset')
+            except Exception as error:
+                try:
+                    asset.set_editor_property(prop, original)
+                except Exception as restore_error:
+                    raise RuntimeError(f'{error}; could not restore the original localisation entries: '
+                                       f'{restore_error}') from error
+                raise
+            self.counts['text entries'] = changed
+            log(f'  saved localisation: {changed} entries updated, other entries and translations preserved')
         except Exception as error:
             warn(f'Could not write the localisation text asset from Python ({error}). Add the entries from '
                  'Localization/*-localization.json in the export folder with the Mod Editor text tool instead.')
@@ -1076,7 +1380,16 @@ class Importer:
             warn(f'Could not find the mod folder on disk; copy "{source}" into the mod\'s Content folder by hand.')
             return
         copied = 0
-        for folder, _dirs, files in os.walk(source):
+        mod = self.manifest['game_root'].strip('/').split('/')[0]
+        mod_data = os.path.join(source, 'ModGameData')
+        for folder, dirs, files in os.walk(source):
+            if os.path.normcase(folder) == os.path.normcase(mod_data):
+                for name in list(dirs):
+                    if name != mod:
+                        dirs.remove(name)
+                        warn(f'Skipped CFG folder for another mod: {os.path.join(folder, name)}. '
+                             f'Only ModGameData/{mod} belongs to this import; old exports must not '
+                             'override the current weapon settings.')
             destination = os.path.join(target_root, 'GameLite', os.path.relpath(folder, source))
             os.makedirs(destination, exist_ok=True)
             for name in files:
@@ -1107,6 +1420,7 @@ class Importer:
         self.copy_game_data()
         self.import_skeletal_mesh()
         self.import_textures()
+        self.import_ui_images()
         self.import_materials()
         self.import_static_meshes()
         self.import_animations(self.plan['player_animations'], self.manifest['player_skeleton'])
@@ -1123,6 +1437,10 @@ def print_plan(manifest, base_dir):
         print(f'{key}: {len(items)}')
         for item in items:
             print('   ', item)
+    entries = manifest.get('localization') or []
+    print(f'localization: {len(entries)}')
+    for entry in entries:
+        print('   ', entry['SID'])
 
 
 def _main(argv=None):

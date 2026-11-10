@@ -159,21 +159,21 @@ def write_unreal_import(context):
     else:
         weapon_skeleton = f'{mount}/_STALKER2/SkeletalMeshes/weapons/pt/{animation_name}/SK_{animation_name}'
 
-    localization = []
-    magazines = []
-    try:
-        from . import weapon_cfg
-        info = weapon_cfg.build_context(context)
-        localization = weapon_cfg.localization_entries(info)
-        magazines = [{'sid': f'Gun{info["weapon_id"]}_Mag{magazine["name"]}', 'name': magazine['name'],
-                      'preinstalled': bool(magazine['preinstalled'])} for magazine in info['magazines']]
-    except Exception as error:
-        print(f'[Arsenal export] No localisation or magazines in the import script: {error}')
+    from . import inventory_images, weapon_cfg
+    info = weapon_cfg.build_context(context)
+    localization = weapon_cfg.localization_entries(info)
+    magazines = [{'sid': f'Gun{info["weapon_id"]}_Mag{magazine["name"]}', 'name': magazine['name'],
+                  'preinstalled': bool(magazine['preinstalled'])} for magazine in info['magazines']]
+    ui_images = inventory_images.export_images(info)
+    from . import weapon_upgrades
+    ui_images.extend(weapon_upgrades.export_images(info))
 
     manifest = {
         'version': MANIFEST_VERSION,
         'localization': localization,
+        'ui_images': ui_images,
         'magazines': magazines,
+        'attachments': weapon_cfg.compatible_attachment_sids(info),
         'weapon': animation_name,
         'template_weapon': context.scene.stalker2_animation_importer.weapon_name.strip(),
         'replace_existing_assets': True,

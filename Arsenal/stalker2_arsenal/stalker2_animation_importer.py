@@ -765,6 +765,9 @@ class STALKER2_OT_import_weapon(bpy.types.Operator):
             current = "Convert to Rigify"
             _select_only_object(context, master)
             step(current, bpy.ops.object.arsenal_convert_to_rigify_by_mapping)
+            current = "Sync inventory render geometry"
+            from . import inventory_images
+            inventory_images.sync_geometry(context, context.scene)
         except Exception as error:
             return fail(current, error)
 

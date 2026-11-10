@@ -91,6 +91,18 @@ Select that action and control, restore the intended pose, and key **Location, R
 Scale**. For example, an error naming `upper_arm_ik.R` needs keys on that control, not just
 `hand_ik.R` or the IK/FK switch. Then re-export.
 
+**Export All stops if any selected action fails.** It clears the copied import-script path and
+does not generate a new import script. Successfully written FBXs and older files may still exist
+in the output folder; do not run an old import script or package those files as a successful export.
+Fix every reported action, then export again.
+
+Hip-fire recovery (`shoot_end`) and aimed-fire recovery (`shoot_aim_end`) are separate actions.
+Repairing keys in one does not repair the other. If only aimed recovery throws the elbow out,
+compare its `upper_arm_ik.R` transforms with the intended aimed pose in `idle_aim`/`shoot_aim`;
+the hand can stay on the gun while an unkeyed upper-arm orientation changes the elbow drastically.
+Restore the intended upper-arm pose and key Location, Rotation and Scale in `shoot_aim_end`,
+including its end pose. Do not copy the whole idle action over the recovery animation.
+
 This check is a safety net, not proof that every edit is keyed: it does not validate all FK,
 finger, camera, constraint or other custom-property changes. If an FBX differs from the viewport,
 check those keys too.
@@ -110,6 +122,8 @@ One FBX is written per mesh to `<output>/_Stalker_2/weapons/<Weapon Category>/p_
 ### World model
 
 The same button also writes the non-animated world model into the parent folder of `AnimMesh`: `<output>/_Stalker_2/weapons/<category>/p_<weapon>/SM_<weapon>.FBX` for the whole main mesh (not split per bone), and `SM_<weapon>_<object name>.FBX` for every other mesh (for example `SM_e9_magazine_full.FBX`). These are all positioned relative to the head of the `Weapon` root bone, so the assembled parts stay aligned with each other.
+
+World models exclude bullet and shell geometry. Separate meshes weighted only to mapped `bullet` / `shell` joints are omitted; faces embedded in the main weapon or an attachment are removed when their highest summed vertex weight belongs to one of those joints. Keep ammunition weighted to the correct mapped joint. Magazines and other weapon parts remain, and the first-person `AnimMesh` exports still include ammunition for animations.
 
 ### Skeletal carrier mesh
 
@@ -204,7 +218,42 @@ the template rate too (30 FPS for UDP). A scene saved at 25 FPS plays the same k
 
 ### Animation montages
 
-Export the template weapon's montages from ZoneKit along with its animations, and have them in your mod's Content (named for your weapon, e.g. `MG_monkeygun_fp_reload`). After the animations are imported, the script repoints every slot in your weapon's montages, and every montage and sequence in its `AnimCollection`, from the template's animation (e.g. `AS_udp_fp_reload`) to the matching new one (`AS_monkeygun_fp_reload`). The match swaps the template weapon's name for yours in the folder and file name; if that fails it falls back to a unique match on the rest of the name. Anything with no matching new animation is listed as a warning and keeps the template animation. The `AnimCollection`'s magazine SIDs (the template's `Gun<Template>_Mag...`) are also replaced with your weapon's magazine SIDs from the Magazines section: a normal template magazine becomes your preinstalled (default) magazine and an extended one (name containing extend/increase/big/large/long/drum) becomes your first other magazine. Check the log lines starting `collection` to confirm the swaps. The step is safe to re-run. The editor's Python can't edit a montage's slot tracks, so the script repoints the `AnimCollection` and lists any montages still playing template animations. The ZoneKit setup script (Set Up panel) renames the montages together with the animations, which keeps their references correct.
+Export the template weapon's montages from ZoneKit along with its animations, and have them in your mod's Content (named for your weapon, e.g. `MG_monkeygun_fp_reload`). After the animations are imported, the script repoints every slot in your weapon's montages, and every montage and sequence in its `AnimCollection`, from the template's animation (e.g. `AS_udp_fp_reload`) to the matching new one (`AS_monkeygun_fp_reload`). The match swaps the template weapon's name for yours in the folder and file name; if that fails it falls back to a unique match on the rest of the name. Anything with no matching new animation is listed as a warning and keeps the template animation. The editor's Python can't edit a montage's slot tracks, so the script repoints the `AnimCollection` and lists any montages still playing template animations. The ZoneKit setup script (Set Up panel) renames the montages together with the animations, which keeps their references correct.
+
+The collection's `Reloading`, `OneHandReloading` (used while holding a detector),
+and `AttachingBySID` magazine keys are **replaced**, not duplicated. A normal
+donor magazine becomes your preinstalled magazine; an extended donor magazine
+(name containing extend/increase/big/large/long/drum) becomes your first other
+magazine. `AttachingBySID` silencer/laser keys are similarly replaced with the
+configured attachment SID of the same kind, including custom IDs. For example,
+`EN_Silen_1` becomes `EN_Silen_2`, and the obsolete `EN_Silen_1` entry is removed.
+The full animation structs are retained, not rebuilt from text. If the target
+SID already exists, its value is preserved and only the obsolete donor entry
+is removed. This also cleans up duplicates created by earlier importer versions.
+Unrelated entries remain unchanged. Ambiguous same-kind attachment replacements
+produce a warning rather than choosing a target arbitrarily.
+
+Check `collection <map>: <donor SID> -> <your SID> (replaced)` in the log.
+The exact resulting keys and values are checked before saving; failed readback
+or save restores the original collection. If the template has no silencer attach
+entry to copy, a warning says so. Detaching a silencer has no animation, matching
+the base game. The step is safe to re-run.
+
+The importer also updates `BindedAttachSid` on the mod montages' `AnimNotify_AttachItem`
+notifies. These select the item joined to the hand and then attached to the weapon; adding
+an `AttachingBySID` collection entry alone does not update them. Donor magazine SIDs are
+mapped by magazine role, and donor silencer/laser SIDs to the configured attachment of
+the same kind (including custom attachment IDs). For a UDP-based weapon using
+`EN_Silen_2`, both silencer notifies change from `EN_Silen_1` to `EN_Silen_2`.
+Check the `notify BindedAttachSid` log lines. Other notify properties, timing, sounds,
+and the CFG's mounted mesh overrides are left unchanged. Readback/save failures restore
+the previous SIDs and produce a warning. Multiple configured attachments of the same
+kind cannot be resolved to a single notify target automatically; set those notifies
+on separate attachment-specific montages by hand.
+
+After updating the add-on, re-export to regenerate the embedded import script, run it
+in ZoneKit, and repackage. Check both the in-hand attachment model during the animation
+and the mounted model afterwards in game.
 
 Running the script with a normal Python prints the import plan without needing Unreal (`--dry-run`).
 

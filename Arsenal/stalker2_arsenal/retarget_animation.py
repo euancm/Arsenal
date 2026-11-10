@@ -407,6 +407,8 @@ class RetargetAnimationOperator(bpy.types.Operator):
     """Retarget source actions onto the selected Rigify rig."""
     bl_idname = 'object.arsenal_retarget_animation'
     bl_label = 'Retarget animation'
+    bl_description = ('Bake imported source actions onto the selected Rigify controls using the bone mapping; '
+                      'the Remove original actions option deletes the source actions afterwards')
     bl_options = {'REGISTER', 'UNDO'}
 
     set_anim_length: bpy.props.BoolProperty(name='Set animation length', default=True)

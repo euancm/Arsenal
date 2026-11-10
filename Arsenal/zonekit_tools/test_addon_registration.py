@@ -7,6 +7,7 @@ import importlib
 from pathlib import Path
 import sys
 import unittest
+from types import SimpleNamespace
 
 import bpy
 
@@ -19,7 +20,7 @@ class AddonRegistrationTests(unittest.TestCase):
     def test_registration_reload_and_unregister(self):
         properties = (
             'stalker2_animation_importer', 'arsenal_export', 'arsenal_cfg',
-            'arsenal_setup', 'arsenal_ui',
+            'arsenal_setup', 'arsenal_ui', 'arsenal_inventory',
         )
         for _ in range(2):
             addon.register()
@@ -49,7 +50,36 @@ class AddonRegistrationTests(unittest.TestCase):
                     for name in names:
                         self.assertTrue((package / (name + '.py')).is_file(), (source.name, name))
 
+    def test_all_addon_operators_have_useful_tooltips(self):
+        for cls in addon.classes:
+            if issubclass(cls, bpy.types.Operator):
+                with self.subTest(operator=cls.bl_idname):
+                    self.assertGreater(len(cls.bl_description), 30)
+                    self.assertNotIn('Undocumented', cls.bl_description)
+
+    def test_multi_action_tooltips_explain_the_actual_button(self):
+        from stalker2_arsenal import inventory_images, weapon_cfg, export_animation
+        image = inventory_images.ARSENAL_OT_InventoryImage
+        self.assertIn('Clear', image.description(None, SimpleNamespace(clear=True)))
+        self.assertIn('camera MagazineStandalone', image.description(
+            None, SimpleNamespace(clear=False, family='standalone', magazine_index=1)))
+        self.assertIn('camera Standard', image.description(
+            None, SimpleNamespace(clear=False, family='standalone', magazine_index=-1)))
+        self.assertIn('camera Upgrade', image.description(
+            None, SimpleNamespace(clear=False, family='upgrade', magazine_index=-1)))
+        attachment = weapon_cfg.ARSENAL_OT_CfgAttachmentEdit
+        self.assertIn('Remove', attachment.description(None, SimpleNamespace(remove=True)))
+        self.assertIn('Add', attachment.description(None, SimpleNamespace(remove=False)))
+        select = export_animation.ARSENAL_OT_ExportSelect
+        self.assertIn('Deselect', select.description(None, SimpleNamespace(enabled=False)))
+
+    def test_inventory_scene_controls_are_not_registered(self):
+        self.assertNotIn('arsenal.inventory_scene',
+                         {cls.bl_idname for cls in addon.classes if issubclass(cls, bpy.types.Operator)})
+        self.assertNotIn('ARSENAL_PT_InventoryScene', {cls.__name__ for cls in addon.classes})
+
     def test_required_mapping_resources(self):
+        self.assertTrue((Path(addon.__file__).parent / 'resources' / 'inventory_scene.blend').is_file())
         reference = dict(map_bones.load_mapping('uemannequin_rigify'))
         self.assertEqual(reference['hand_l'], 'hand.L')
         self.assertTrue(map_bones.load_mapping('rigify_uemannequin', anim=True))

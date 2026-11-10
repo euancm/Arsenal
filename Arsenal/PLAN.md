@@ -16,7 +16,7 @@ Legacy-only character tools and their resources have also been removed: Mixamo/D
 
 ```text
 Blender panel 1 "Set Up"   choose template + weapon name + folders  -> writes zonekit_setup_<weapon>.py
-ZoneKit (Python bar)       run the setup script: exports template assets, checks out copies into the mod,
+ZoneKit (Python bar)       run the setup script: exports template assets, creates mod-owned copies,
                            batch-renames them to the new weapon name, tidies redirectors, writes a report
 Blender panel 2 "Import"   imports skeletal mesh (full quality), attachments (all magazines), animations,
                            materials/textures, sockets; Detect Magazines runs automatically
@@ -35,13 +35,15 @@ ZoneKit Mod Editor         package (cook) the mod, then install/replace the pak 
 |---|---|
 | Template selection (Pistol, SMG, Rifle, Shotgun, Sniper) and setup-script generation | Done. Verified offline for all five templates. |
 | ZoneKit export of sequences, additive sequences, skeletal/static meshes, magazines, sockets, textures | Done; ran in ZoneKit for the pistol. Socket API names are guesses. |
-| ZoneKit checkout + batch rename | Done. Falls back to `duplicate_asset` when checkout is unavailable. |
+| ZoneKit mod copy + batch rename | Done. Uses `duplicate_asset` directly; revision-control checkout does not create a mod copy and caused unnecessary warning dialogs. |
 | Blender import (pairing, LOD1/collision skip, smoothing, vertex-group attachments, DirectX normals, RMA split) | Done; materials tested with synthetic data only. |
 | Rigify conversion, retargeting, weapon/camera controls | Done and validated in Blender 5.2.2. |
 | Animation / mesh / CFG / localisation export | Done. |
+| Inventory image rendering/export | Asset-free three-camera/sun/sky/compositor template; automatic scene creation/recreation, rest-mesh refresh and camera assignment; packed previews. Standard for inventory layers and standalone accessories, Upgrade for large upgrade layers, MagazineStandalone for standalone magazines. Authored transforms and clipping retained; no fitting or scene-management controls. Manual edits via Blender's scene selector. Temporary weapon holdouts for attachment layers. Export PNGs and inventory CFG references; import mod-owned UI textures. Custom magazine/silencer/laser localisation. PDA/module close-ups and per-class dimensions remain pending. |
+| Selected images / custom upgrade trees | Image-file selection creates resized, packed RGBA previews without changing source files. Unchecked base-tree option seeds all five templates' upgrade entries; editable layout, text, module images, dependencies and existing/custom numerical effects export with mod-owned SIDs. Shared donor assets/CFGs untouched. 64 focused Blender and 67 importer tests pass; technician layout and effects still need in-game verification. |
 | ZoneKit import script | Done; sequences and collections update, additive idles are resynchronised, montages keep their slots/notifies (header-patched at setup). |
 | Reference repointing (montages, AnimCollection, AnimBP, sequences) | **Automated in the setup script** (header patching, D6, extended by D11); gameplay-confirmed with LadybugMod. |
-| Localisation into the mod | **Automated** by the import script (writes `<Mod>TextToolAsset`); falls back to the Mod Editor text tool with the exported JSON if the editor's Python cannot edit the asset. |
+| Localisation into the mod | **Automated native text upserts** by the import script: reuses the mod's text asset or creates `<Mod>TextToolAsset`, supports empty arrays without exposed entry/enum classes, preserves other SIDs/languages, verifies before saving and skips unchanged saves. Offline regression coverage; live ZoneKit/in-game verification of this path pending. Export All must regenerate older import scripts. |
 | Weapon visible and fireable in game | **Verified in Ladybug by the user:** visible model, CFG stats, normal/extended magazines, firing, reloading, edited reload fingers and fire/aim transitions all work. Bird (blank-slate rerun) reproduced the same result, and confirmed the aim pose, crouch lean (D22) and aim transitions (D24). |
 | Fire, equip, empty click, offset aim and weapon-only clips in Blender | **Done (D25, D26)**; gameplay-confirmed with Bird. |
 
@@ -69,6 +71,17 @@ History of the sprint → aim fix: sprint comes from the shared pistol collectio
 The mesh-space additive conversion tried for these (D21) made things much worse and is rolled back. Measuring Bird's export against the donor found the cause the plan below predicted: the lower spine's local frames were twisted 19° and stretched, which only the game's procedural spine layers expose (D22). A second bug, one clip's control edits leaking into other clips, was found and fixed on the way (D23).
 
 ## Known issues
+
+E9 aimed-fire recovery investigation (2026-11-05): a read-only Blender/ZoneKit comparison found
+`shoot_aim_end` missing `upper_arm_ik.R` transform keys while the aimed idle/fire use about
+0.992179 rad local Y rotation. Saved recovery differs from aimed idle by about 54.41 degrees at
+the right upper arm; the hand IK keys alone do not repair it. An in-memory test copying that
+control's intended frame-1 transforms from `idle_aim` reduces the end-pose upper-arm difference
+to 0.617 degrees. No weapon project or mod assets were saved. The failed clip's older FBX was
+still discovered by the next import script: Export All now stops before generating the script
+when any selected animation fails. Camera recovery is separately exposed as delay/time controls,
+preserving the old 0.0/0.06-second output; UDP uses the same values. Manual action repair and
+fresh export/import/package/in-game verification remain required.
 
 1. **Fixed and gameplay-confirmed (D6/D11).** The mod's `MG_fp_<weapon>_*` copies used to reference the `/Game` `AS_*` sequences, so the weapon animated with the original animation. Python in ZoneKit (UE 5.5.4) cannot edit montage slots, composite sections or notifies, so references are rewritten on disk instead (the one-off montage probes have been removed; see git history).
 2. **Fixed (D13).** Attachment mesh names had a doubled `SM_` and kept the template name (`SM_wpn_jaguargun_SM_SM_pt_udp_mag_full`), and the export check reported every template-named file left in the output folder by earlier exports.
@@ -115,6 +128,27 @@ The mesh-space additive conversion tried for these (D21) made things much worse 
 | D24 | `DEF-upper_arm.L/R` copies `ORG-upper_arm` (full twist) instead of Rigify's twist-free `upper_arm_tweak`. Applied by conversion and by **Repair Deformation Preview**; export refuses an unrepaired rig. | The game's `jnt_*_arm` carries the arm's twist; ours lacked it, which was invisible alone but bent local-space blends with vanilla clips. Locking the export to the donor's twist instead (tried first) moved edited-reload upper-arm skin up to 11 cm from the viewport. With the rig change, viewport, export and donor agree. |
 | D25 | Setup exports every additive sequence except the `*_add` idle companions, which the import script rebuilds (`export_additive_overlays`). The Blender importer also reads `AS_FP_Player_<w>_*` (offset aim) and pairs a one-sided clip with the other side's `idle` as a stand-in; export writes only the real half (status "weapon only" / "character only") and keeps the template's filename with the weapon token swapped. Overlays are exported like every other clip, edited or not. | Supersedes "export only edited overlays" in the plan below: reload, melee, `break_bullet` and the aim transitions are overlays (local and mesh space) and have always been exported unedited, game-confirmed. Fire, equip and offset aim follow the same path, so one rule covers all. `idle_boltlock` / `break_bullet_idle` place the weapon object exactly like the weapon idle, so the player idle is a valid stand-in. |
 | D26 | **Import New Animations** (Import panel) imports and retargets only the clips a converted blend does not have yet; existing actions are untouched. The importer reveals the master armature (kept in a hidden collection after conversion) while it bakes. The retarget rests every control on a fresh output action before baking and keys each limb's `IK_FK` to FK. | A hidden armature is not evaluated, so the visual-keyed bake recorded the idle instead of the clip (weapon `idle_boltlock` came out equal to idle). An unkeyed control posed by another clip was baked in as compensation (a posed `tweak_spine.003` changed the fresh `idle` curves by up to 5.8), and an unkeyed IK switch left at IK by an edited reload would play the new clip's arm through rest IK controls. |
+| D27 | The import script (`sync_collection_sids`) replaces donor magazine SID keys in `reloading`, `one_hand_reloading` and `attaching_by_sid`, and donor silencer/laser SID keys in `attaching_by_sid`, using manifest magazines/attachments. It moves the full struct value to the configured SID and removes the donor key. An existing target value is preserved; obsolete donor duplicates from earlier imports are removed. Explicit nested editor properties and `export_text` readback verify the exact keys and values before saving; readback/save failures restore the original. It never uses `import_text`. | E9Mod's donor magazine and silencer SIDs caused stuck reload/attach states. The initial insert-only approach left obsolete keys behind; the user reported these duplicate entries did not work properly. Replacement, rather than adding aliases, is required. `dir()` in ZoneKit does not list the internal map fields. Silencer detach remains unanimated, matching the base game. |
+
+### Attachment notify SID follow-up (D27)
+
+- E9Mod's exported UDP player silencer montage backup contains two
+  `AnimNotify_AttachItem` objects with `BindedAttachSid = EN_Silen_1`, for
+  `JoinAttachToHand` and `RemoveAttachFromHandAndAttachToWeapon`. Adding the
+  `EN_Silen_2` collection key does not change these donor bindings. The exported
+  CFG uses attachment `EN_Silen_2` with mounted mesh override `EN_Silen_5`, as
+  the base-game Integral does.
+- `sync_attachment_notifies` remaps donor magazine and silencer/laser notify SIDs
+  on mod-owned montages, even when animation references already need no changes.
+  Only the notify's SID changes; failed readback/save restores the original.
+  Ambiguous same-kind attachment targets warn instead of choosing arbitrarily.
+  The mounted mesh override remains unchanged. Check the hand-to-weapon model
+  transition in game after re-export/import/package.
+- A read-only ZoneKit probe confirmed `AnimMontage.notifies` is protected and
+  cannot be read with `get_editor_property`, while `binded_attach_sid` is
+  writable on a transient `AnimNotify_AttachItem`. The importer therefore uses
+  `AnimationLibrary.get_animation_notify_events` (the public AnimSequenceBase
+  API) to retrieve events rather than reading the protected property.
 
 ### D6 test record
 

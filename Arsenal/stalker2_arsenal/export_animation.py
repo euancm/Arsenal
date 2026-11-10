@@ -881,7 +881,7 @@ def _run_static_export(context):
 class ARSENAL_OT_ExportRefresh(bpy.types.Operator):
     bl_idname = 'object.arsenal_export_refresh'
     bl_label = 'Refresh'
-    bl_description = 'List the actions on the rig that can be exported'
+    bl_description = 'Refresh exportable rig actions, preserving existing action selections, templates and folders'
 
     def execute(self, context):
         export = context.scene.arsenal_export
@@ -903,9 +903,13 @@ class ARSENAL_OT_ExportRefresh(bpy.types.Operator):
 class ARSENAL_OT_ExportSelect(bpy.types.Operator):
     bl_idname = 'object.arsenal_export_select'
     bl_label = 'Select'
-    bl_description = 'Tick or untick every action'
+    bl_description = 'Select or deselect every listed animation action for the next export'
 
     enabled: bpy.props.BoolProperty(default=True)
+
+    @classmethod
+    def description(cls, context, properties):
+        return 'Select every listed action for export' if properties.enabled else 'Deselect every listed action for export'
 
     def execute(self, context):
         for item in context.scene.arsenal_export.actions:
@@ -960,8 +964,8 @@ def _report_static(operator, result):
 class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
     bl_idname = 'object.arsenal_export_all'
     bl_label = 'Export All'
-    bl_description = ('Export the ticked animations, the static meshes, the weapon CFG files and the Unreal import '
-                      'script, then copy the script\'s path to the clipboard to paste into the ZoneKit Python bar')
+    bl_description = ('Export selected animations, meshes, CFGs, rendered PNGs and weapon/attachment text; '
+                      'copy the fresh Unreal import script path for ZoneKit; animation failures block script generation')
 
     @completion('Export')
     def execute(self, context):
@@ -977,6 +981,14 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
                 summary, failed = _report_animation(self, context, result)
                 parts.append(summary)
                 warn = warn or failed
+                if failed:
+                    names = ', '.join(name for name, _message in result[1])
+                    export.summary = f'Export blocked: animation export failed for {names}.'
+                    context.window_manager.clipboard = ''
+                    raise RuntimeError(
+                        f'{export.summary} Fix the reported animation errors and export again. '
+                        'No new Unreal import script was generated. Do not run an older import script: '
+                        'it may import stale FBXs left by a previous export.')
             else:
                 report(self, {'WARNING'}, 'No actions are ticked; exporting static meshes only.')
                 warn = True

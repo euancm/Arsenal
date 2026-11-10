@@ -3,6 +3,8 @@ import os
 import sys
 import unittest
 from unittest.mock import patch
+from unittest.mock import Mock
+from types import SimpleNamespace
 
 import bpy
 
@@ -93,6 +95,29 @@ class ExportIKControlsTests(unittest.TestCase):
         self.assertEqual(bpy.context.scene.frame_current, 9)
         self.assertEqual(bpy.context.scene.frame_subframe, 0.25)
         self.assertEqual(self.rig.animation_data.action, self.action)
+
+    def test_export_all_blocks_import_script_when_any_animation_failed(self):
+        for written in ([], ['fresh_shoot.fbx']):
+            with self.subTest(written=written):
+                settings = SimpleNamespace(actions=[SimpleNamespace(enabled=True)], summary='')
+                context = SimpleNamespace(
+                    scene=SimpleNamespace(arsenal_export=settings),
+                    window_manager=SimpleNamespace(clipboard='old_import.py'))
+                operator = SimpleNamespace(report=Mock())
+                with patch.object(ex, '_build_static_plan'), patch.object(
+                        ex, '_run_animation_export', return_value=(
+                            written, [('shoot_aim_end', 'upper_arm_ik.R is not keyed')], 2)), \
+                        patch.object(ex, '_run_static_export') as static_export, \
+                        patch('stalker2_arsenal.export_unreal.write_unreal_import') as script:
+                    result = ex.ARSENAL_OT_ExportAllRun.execute(operator, context)
+                self.assertEqual(result, {'CANCELLED'})
+                self.assertEqual(context.window_manager.clipboard, '')
+                self.assertIn('shoot_aim_end', settings.summary)
+                static_export.assert_not_called()
+                script.assert_not_called()
+                messages = '\n'.join(str(call.args[1]) for call in operator.report.call_args_list)
+                self.assertIn('upper_arm_ik.R', messages)
+                self.assertIn('stale FBXs', messages)
 
 
 if __name__ == '__main__':

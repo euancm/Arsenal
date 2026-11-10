@@ -26,7 +26,15 @@ if "bpy" in locals():
     importlib.reload(export_animation)
     importlib.reload(export_unreal)
     importlib.reload(weapon_presets)
+    if "weapon_upgrades" in locals():
+        importlib.reload(weapon_upgrades)
+    else:
+        from . import weapon_upgrades
     importlib.reload(weapon_cfg)
+    if "inventory_images" in locals():
+        importlib.reload(inventory_images)
+    else:
+        from . import inventory_images
     importlib.reload(debug_report)
     importlib.reload(setup_panel)
 else:
@@ -44,7 +52,9 @@ else:
     from . import export_animation
     from . import export_unreal
     from . import weapon_presets
+    from . import weapon_upgrades
     from . import weapon_cfg
+    from . import inventory_images
     from . import debug_report
     from . import setup_panel
 import bpy
@@ -82,6 +92,7 @@ classes = (
     *export_animation.CLASSES,
     *export_unreal.CLASSES,
     *weapon_cfg.CLASSES,
+    *inventory_images.CLASSES,
     *debug_report.CLASSES,
 )
 
@@ -95,6 +106,7 @@ def register():
     bpy.types.Scene.arsenal_export = bpy.props.PointerProperty(type = export_animation.ARSENAL_ExportProps)
     bpy.types.Scene.arsenal_cfg = bpy.props.PointerProperty(type = weapon_cfg.ARSENAL_WeaponCfg)
     bpy.types.Scene.arsenal_setup = bpy.props.PointerProperty(type = setup_panel.ARSENAL_SetupProps)
+    bpy.types.Scene.arsenal_inventory = bpy.props.PointerProperty(type=inventory_images.ARSENAL_InventoryProps)
 
     bpy.types.Scene.arsenal_ui = bpy.props.PointerProperty(type = mapping_editor.ARSENAL_IU_Props)
 
@@ -103,6 +115,7 @@ def unregister():
     del bpy.types.Scene.arsenal_export
     del bpy.types.Scene.arsenal_cfg
     del bpy.types.Scene.arsenal_setup
+    del bpy.types.Scene.arsenal_inventory
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 

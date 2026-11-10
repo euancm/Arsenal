@@ -193,6 +193,8 @@ class GenerateMappingGuessOperator(bpy.types.Operator):
     """Generate a best-guess mapping from the active armature."""
     bl_idname = "object.arsenal_generate_mapping_guess"
     bl_label = "Guess mapping from armature"
+    bl_description = ('Guess source-to-Rigify bone pairs from the active armature names; '
+                      'rebuilds the editable mapping, so review missing or incorrect pairs before conversion')
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -315,6 +317,8 @@ class SnapWeaponRigOperator(bpy.types.Operator):
     """Move the weapon rig and its meshes so the 'Weapon' root bone sits on the character's jnt_offset."""
     bl_idname = "object.arsenal_snap_weapon_rig"
     bl_label = "Snap weapon rig to jnt_offset"
+    bl_description = ('Move the weapon rig and its meshes to the selected character\'s jnt_offset socket; '
+                      'use this to align separate imported rigs before conversion')
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -352,6 +356,8 @@ class GenerateWeaponMappingGuessOperator(bpy.types.Operator):
     """Add mapping entries pairing the weapon rig's bones with the character skeleton's weapon bones."""
     bl_idname = "object.arsenal_generate_weapon_mapping_guess"
     bl_label = "Guess weapon mapping from armature"
+    bl_description = ('Add or update weapon-bone mapping guesses using the weapon rig and selected character; '
+                      'review blank source entries before conversion')
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -411,6 +417,8 @@ class CreateMappingOperator(bpy.types.Operator):
     """Select two armatures. And set relations between bones."""
     bl_idname = "object.arsenal_create_mapping"
     bl_label = "Create mapping"
+    bl_description = ('Build a new editable bone mapping from the two selected armatures; '
+                      'replaces the displayed mapping entries but does not save the new preset')
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -454,6 +462,7 @@ class MappingRemoveEntryOperator(bpy.types.Operator):
     """Remove entry"""
     bl_idname = "object.arsenal_mapping_remove_entry"
     bl_label = "Remove entry"
+    bl_description = 'Remove this bone pair from the mapping and save the revised custom mapping'
     # bl_options = {'REGISTER', 'UNDO'}
 
     index: bpy.props.IntProperty()
@@ -470,6 +479,7 @@ class MappingAddEntryOperator(bpy.types.Operator):
     """Add entry"""
     bl_idname = "object.arsenal_mapping_add_entry"
     bl_label = "Add entry"
+    bl_description = 'Add a blank source/target bone pair to the current mapping for manual editing'
     # bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -482,6 +492,7 @@ class SaveMappingOperator(bpy.types.Operator):
     """Save mapping"""
     bl_idname = "object.arsenal_save_mapping"
     bl_label = "Owerwrite mapping?"
+    bl_description = 'Save the completed bone pairs as the named mapping preset; confirms before overwriting a preset'
     # bl_options = {'REGISTER', 'UNDO'}
 
     # name: bpy.props.StringProperty()
@@ -509,6 +520,7 @@ class RemoveMappingOperator(bpy.types.Operator):
     """Remove mapping"""
     bl_idname = "object.arsenal_remove_mapping"
     bl_label = "Remove mapping?"
+    bl_description = 'Delete the selected custom mapping preset after confirmation; does not delete armature bones'
     # bl_options = {'REGISTER', 'UNDO'}
 
     # name: bpy.props.StringProperty()
@@ -527,6 +539,7 @@ class AddPrefixOperator(bpy.types.Operator):
     """Add prefix"""
     bl_idname = "armature.arsenal_add_prefix"
     bl_label = "Add prefix"
+    bl_description = 'Prepend the specified prefix to every bone name in the active armature; this changes bone names'
     bl_options = {'REGISTER', 'UNDO'}
 
     prefix: bpy.props.StringProperty(default = 'DEF-')

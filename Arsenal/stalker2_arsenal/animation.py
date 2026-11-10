@@ -11,6 +11,7 @@ class AddKeyFrameOperator(bpy.types.Operator):
     """Add keyframe to retargeted animation"""
     bl_idname = "anim.arsenal_add_keyframe"
     bl_label = "add keyframe"
+    bl_description = 'Apply the evaluated pose to the selected bones and key Location, Rotation and Scale at this frame'
     bl_options = {'REGISTER', 'UNDO'}
 
     # example_prop: bpy.props.BoolProperty(name="Example prop", default=False)
@@ -33,6 +34,8 @@ class BakeAnimationOperator(bpy.types.Operator):
     """Bake whole animation before export"""
     bl_idname = "anim.arsenal_bake_animation"
     bl_label = "Bake animation for deform bones"
+    bl_description = ('Bake the scene frame range onto deform bones, clear their constraints and delete '
+                      'non-deform controls; use a disposable rig copy, not your editable weapon rig')
     bl_options = {'REGISTER', 'UNDO'}
 
     #example_prop: bpy.props.BoolProperty(name="Example prop", default=False)

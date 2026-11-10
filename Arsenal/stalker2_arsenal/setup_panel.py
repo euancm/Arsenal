@@ -92,7 +92,7 @@ class ARSENAL_SetupProps(bpy.types.PropertyGroup):
     export_additive: bpy.props.BoolProperty(
         name='Export Additive Idles', default=False,
         description='Also export the additive idle companions (*_idle_add). The add-on does not use them: '
-                    'the import script rebuilds them from your idle, so they are only checked out and renamed. '
+                    'the import script rebuilds them from your idle, so they are only copied and renamed. '
                     'Shoot, equip and other additive overlays are always exported')
     status: bpy.props.StringProperty(default='')
 
@@ -158,9 +158,8 @@ def write_setup_script(context):
 class ARSENAL_OT_CreateSetupScript(bpy.types.Operator):
     bl_idname = 'object.arsenal_create_setup_script'
     bl_label = 'Create ZoneKit Setup Script'
-    bl_description = ('Write the script that exports the template weapon\'s files, checks the other assets '
-                      'out into your mod and renames them. Its path is copied to the clipboard for ZoneKit\'s '
-                      'Python bar')
+    bl_description = ('Write a ZoneKit script to export donor files and create renamed mod-owned asset copies; '
+                      'shared game assets are not saved; copy the script path into ZoneKit\'s Python bar')
 
     def execute(self, context):
         try:

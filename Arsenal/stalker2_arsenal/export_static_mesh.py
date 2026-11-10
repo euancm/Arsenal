@@ -96,30 +96,44 @@ def weapon_meshes(rig, scene):
     return result
 
 
-def split_by_bone(rig, backup, obj, bone_joints):
-    """Split obj into one rest-pose mesh per weapon bone, positioned relative to the
-    bone head in the game skeleton's units. Returns {bone name: (bmesh, materials)}."""
-    group_bone = {group.index: group.name for group in obj.vertex_groups if group.name in bone_joints}
-    if not group_bone:
-        return {}
-
-    source = bmesh.new()
-    source.from_mesh(obj.data)
-    deform = source.verts.layers.deform.active
+def face_bones(mesh, obj, bone_joints):
+    """Assign faces to the mapped bone with the greatest summed vertex weight."""
+    names = {group.index: group.name for group in obj.vertex_groups if group.name in bone_joints}
+    deform = mesh.verts.layers.deform.active
     if deform is None:
-        source.free()
         return {}
-
-    owner = {}
-    for face in source.faces:
+    owners = {}
+    for face in mesh.faces:
         totals = {}
         for vert in face.verts:
-            for group_index, weight in vert[deform].items():
-                name = group_bone.get(group_index)
+            for index, weight in vert[deform].items():
+                name = names.get(index)
                 if name:
                     totals[name] = totals.get(name, 0.0) + weight
         if totals:
-            owner[face.index] = max(totals, key=totals.get)
+            owners[face.index] = max(totals, key=totals.get)
+    return owners
+
+
+def world_meshes(main, main_bones, others, bone_joints):
+    """Keep weapon/attachment objects, not objects weighted only to ammunition joints."""
+    return [obj for obj, bones in [(main, main_bones)] + others
+            if any(not ammunition_joint(bone_joints[bone]) for bone in bones)]
+
+
+def ammunition_joint(joint):
+    return bool(re.search(r'(?i)(?:^|_)(?:bullet|shell)\d*(?:_|$)', joint))
+
+
+def split_by_bone(rig, backup, obj, bone_joints):
+    """Split obj into one rest-pose mesh per weapon bone, positioned relative to the
+    bone head in the game skeleton's units. Returns {bone name: (bmesh, materials)}."""
+    source = bmesh.new()
+    source.from_mesh(obj.data)
+    owner = face_bones(source, obj, bone_joints)
+    if not owner:
+        source.free()
+        return {}
 
     to_source_units = backup.matrix_world.to_3x3().inverted_safe()
     object_matrix = obj.matrix_world
@@ -177,10 +191,15 @@ def classify_meshes(rig, scene, bone_joints):
     return main, main_bones, weighted[1:]
 
 
-def extract_whole(rig, backup, obj, bone_name):
+def extract_whole(rig, backup, obj, bone_name, world_joints=None):
     """Return (bmesh, materials) of the entire mesh, positioned relative to bone_name's head."""
     part = bmesh.new()
     part.from_mesh(obj.data)
+    if world_joints is not None:
+        owners = face_bones(part, obj, world_joints)
+        unwanted = [face for face in part.faces if face.index in owners
+                    and ammunition_joint(world_joints[owners[face.index]])]
+        bmesh.ops.delete(part, geom=unwanted, context='FACES')
     head_world = rig.matrix_world @ rig.data.bones[bone_name].head_local
     to_source_units = backup.matrix_world.to_3x3().inverted_safe()
     for vert in part.verts:
@@ -209,7 +228,7 @@ def plan_static_meshes(rig, bone_joints, category, output_root, scene):
         stem = attachment_stem(weapon_name, obj.name, template)
         plan.append((obj.name, stem, os.path.join(folder, stem + '.FBX')))
     world_folder = os.path.dirname(folder)
-    for obj in [main] + [obj for obj, _bones in sorted(others, key=lambda item: item[0].name)]:
+    for obj in world_meshes(main, main_bones, sorted(others, key=lambda item: item[0].name), bone_joints):
         stem = f'SM_{weapon_name}' if obj is main else world_attachment_stem(weapon_name, obj.name, template)
         plan.append((WORLD_PREFIX + obj.name, stem, os.path.join(world_folder, stem + '.FBX')))
     stems = [stem for _label, stem, _path in plan]
@@ -239,8 +258,8 @@ def export_static_meshes(context, rig, backup, bone_joints, category, output_roo
         part, materials = extract_whole(rig, backup, obj, dominant)
         jobs.append((obj.name, [(part, materials, obj)]))
     root_bone = 'Weapon' if 'Weapon' in rig.data.bones else max(main_bones, key=main_bones.get)
-    for obj in [main] + [obj for obj, _bones in others]:
-        part, materials = extract_whole(rig, backup, obj, root_bone)
+    for obj in world_meshes(main, main_bones, others, bone_joints):
+        part, materials = extract_whole(rig, backup, obj, root_bone, bone_joints)
         jobs.append((WORLD_PREFIX + obj.name, [(part, materials, obj)]))
 
     written = []

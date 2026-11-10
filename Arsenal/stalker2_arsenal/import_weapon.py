@@ -562,6 +562,8 @@ def import_rigged_weapon(context, root, weapon_name):
 
     _select_only(context, [rig], rig)
     context.scene.arsenal_ui.weapon_rig = rig
+    from . import inventory_images
+    inventory_images.ensure_scene(context, context.scene)
     return rig, main, skipped
 
 

@@ -45,3 +45,13 @@ Weapon names and descriptions use `sid_items_<ItemSID>_name` and
 `export_unreal.py`; the generated `unreal_import.py` script writes the mod's text asset.
 See `Arsenal/doc/cfg_export.md` and the existing importer before adding localization logic.
 Do not assume external TypeScript localization utilities or retail text catalogs exist here.
+
+## Configuration files
+
+Stalker 2 configuration files are available for reference at X:\STALKER2ZoneKit\Stalker2\Content\GameLite\GameData
+
+## Zonekit
+The zonekit is available for testing at X:\STALKER2ZoneKit
+
+## Blender
+Blender is available for testing at C:\Program Files\Blender Foundation\Blender 5.2

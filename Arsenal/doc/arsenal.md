@@ -18,7 +18,18 @@ Use the **STALKER 2** tab in the 3D View sidebar:
 4. **Create Your Custom Weapon**: edit the meshes and animations, and set the weapon's stats, magazines, name and description.
 5. **Export**: write the animations, meshes, CFG files, localisation and the ZoneKit import script.
 
+Weapon import also creates an isolated inventory render scene using the bundled camera, sun lighting,
+sky world and compositor template. Panel 4 provides render/clear previews for the weapon and its
+magazines. Scene creation, geometry refresh and camera assignment are automatic; use Blender's
+scene selector for manual camera or lighting edits. See [inventory image previews](inventory_images.md).
+The images are packed into the blend and exported as PNGs by Export All. The generated importer
+creates mod-owned UI textures; CFG inventory references and custom attachment localisation are
+generated alongside them. Standard is shared for inventory layers, Upgrade for large upgrade layers,
+and MagazineStandalone for standalone magazine icons; authored framing and clipping are retained.
+
 The [README](../../README.md) walks through the full workflow.
+
+Setup creates mod-owned copies directly; it does not use revision-control checkout to create them or save shared base-game assets. Older generated setup scripts may report "not in the mod after checkout; copying it instead" and revision-control checkout dialogs: that is the fallback to duplication, not by itself evidence of a failed setup. A missing mod copy or stale-reference warning still needs investigation. Generate a fresh setup script to use the direct-copy behavior; re-export to refresh the embedded import script after updating the add-on.
 
 ## Documentation
 
@@ -28,3 +39,4 @@ The [README](../../README.md) walks through the full workflow.
 - [Animation retargeting](./animation.md)
 - [Exporting animations and meshes](./exporting_animations.md)
 - [Weapon CFG files](cfg_export.md)
+- [Inventory image previews](inventory_images.md)

@@ -122,6 +122,12 @@ class ZoneKitNotificationTests(unittest.TestCase):
                     status = 'finished with warnings' if warning else 'complete'
                     self.assertEqual(call.args[0], f'Arsenal {title} {status}')
                     self.assertEqual(call.kwargs['message_category'], 'warning' if warning else 'info')
+                    if module is importer:
+                        for text in ('AnimCollection', 'localisation', 'SID', 'package'):
+                            self.assertIn(text, call.args[1])
+                        self.assertIn('imported automatically', call.args[1])
+                        self.assertNotIn('Review/update the localisation', call.args[1])
+                        self.assertNotIn('copy/paste', call.args[1])
 
     def test_failures_notify_and_reraise_for_both_scripts(self):
         for module in (setup, importer):

@@ -134,10 +134,22 @@ Animations are exported at the template's 30 FPS. If your blend is set to anothe
 
 See [exporting animations](Arsenal/doc/exporting_animations.md) and [CFG export](Arsenal/doc/cfg_export.md) for the details.
 
+Panel 4 also has [inventory image previews](Arsenal/doc/inventory_images.md): weapon import creates
+an isolated render scene using Arsenal's bundled camera, sun lighting, sky and compositor template.
+The Standard camera supplies inventory layers, Upgrade supplies large upgrade layers, and
+MagazineStandalone supplies standalone magazine icons. Authored framing and clipping are retained. Attachment layers
+use a weapon holdout. Render/clear weapon, magazine and custom silencer/laser images there;
+save the blend to keep them. Export All writes the PNGs and inventory CFG references, and the
+generated importer creates mod-owned UI textures. Attachment text uses the same automatic
+localisation workflow as the weapon.
+Each preview also has **Select Image** for existing artwork. Uncheck **Use Base Weapon Upgrade Tree**
+to edit template-seeded, mod-owned upgrades, effects, prerequisites, text and module illustrations;
+see [CFG export](Arsenal/doc/cfg_export.md#custom-upgrade-tree).
+
 ### 5. Import into ZoneKit, package and test
 
 1. In ZoneKit, select your mod, paste the import script's path into the Python bar and run it. It imports the textures, materials, static and skeletal meshes, and the animations. It preserves additive playback settings across animation reimport, recovers missing overlay settings from the template, refreshes the additive idle animations from your edited idles, repoints the weapon's montages and animation collection at your animations, and writes the weapon's name and description into the mod's text asset. Check the Output Log for warnings. Always use the script from the latest export: an older script contains older import code.
-2. Package the mod in ZoneKit, then replace the installed pak and test in game.
+2. Before packaging, open the mod's Mod Editor options and update the AnimCollection selection to your weapon's first-person collection. Localisation SIDs and translations are added or updated automatically, preserving unrelated entries and existing translations in other languages; no routine manual SID entry is needed. The import completion dialog reminds you to resolve any localisation warnings in the Output Log. Save the AnimCollection options, package the mod in ZoneKit, then replace the installed pak and test in game.
 3. When you close ZoneKit after packaging it may ask to save `SK_<weapon>` (save it; it's your mod's mesh) and to check out `SK_stalker_Skeleton` (decline; that's the base game's shared skeleton).
 
 Re-exporting under a new weapon name doesn't remove assets imported under the old name. Archive old mod-owned packages outside `Content` first; never delete or check out base-game assets.
