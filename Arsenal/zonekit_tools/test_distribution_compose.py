@@ -205,8 +205,8 @@ class CompositionTests(unittest.TestCase):
                 self.assertEqual(len(group['PossibleItems']), 3)
                 self.assert_shares(group, {row['sid']: 1 / 3 for row in records})
 
-    def test_all_templates_support_combined_hundred_percent_rules(self):
-        for template in distribution.PRESETS:
+    def test_legacy_templates_support_combined_hundred_percent_rules(self):
+        for template in ('TemplatePistol', 'TemplateSMG', 'TemplateRifle', 'TemplateShotgun', 'TemplateSniper'):
             rules = []
             for name, _ in distribution.FACTIONS:
                 rule = faction(name, role_percent=100, rank_percent=100)

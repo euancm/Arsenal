@@ -52,6 +52,19 @@ class SetupSelectionTests(unittest.TestCase):
         copied = setup.copied(selection)
         self.assertEqual(len(copied), 7)
 
+    def test_static_part_alias_does_not_select_another_skeletal_mesh(self):
+        weapon = '/Game/_STALKER2/SkeletalMeshes/weapons/pt/gp37'
+        parts = '/Game/_Stalker_2/weapons/sturm_riffle/SM_ar_gp3/AnimMesh'
+        assets = [
+            (weapon + '/SK_gp37', 'SkeletalMesh'), (weapon + '/SK_gp3', 'SkeletalMesh'),
+            (parts + '/SM_wpn_gp3_SM_offset', 'StaticMesh'),
+            (parts + '/SM_wpn_gp3a_SM_offset', 'StaticMesh'),
+        ]
+        selection = setup.select_assets(assets, {
+            'anim_tokens': ['gp37'], 'mesh_tokens': ['gp37'], 'part_tokens': ['gp3']})
+        self.assertEqual(selection['skeletal_meshes'], [weapon + '/SK_gp37'])
+        self.assertEqual(selection['static_meshes'], [parts + '/SM_wpn_gp3_SM_offset'])
+
 
 class SetupCopyTests(unittest.TestCase):
     def test_existing_renamed_target_never_creates_an_old_donor_copy(self):

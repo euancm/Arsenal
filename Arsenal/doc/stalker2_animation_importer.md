@@ -24,7 +24,9 @@ refresh, reset and socket-only ZoneKit imports.
 5. Retarget the animations from panel 3. Keyframes are cleaned automatically afterwards.
 6. Save the `.blend` file after reviewing the generated actions and scene.
 
-**Import New Animations** (panel 2, Object Mode) adds clips to a blend that has already been converted, for example one deleted by mistake. It imports only the pairs whose key no action has yet (an action named after the key, or a retargeted action whose `arsenal_source_action` is the key), retargets them onto the rig, renames them to the key and removes the source actions. Existing actions are never changed, and running it again does nothing.
+There is no **Import New Animations** button or registered operator. Normal projects import the
+template's matching clips in one pass. The internal `import_new_animations` development helper
+is retained for regression work on disposable converted blends; it leaves existing actions alone.
 
 The individual operators (Import Rigged Weapon, Create Base Skeleton, Scan Animations, Import All, the guess buttons) still exist but are no longer shown in the panel. Fingers are in separate `Fingers.L` / `Fingers.R` bone collections (plus Detail collections).
 
@@ -49,7 +51,7 @@ It identifies files by filename stem, not by directory name:
 
 Matching is case-insensitive. Suffixes are compared after `casefold()`, and the character-side spelling is used for the generated action name. Matching suffixes present on both sides form pairs. A suffix with more than one file on either side is ambiguous and skipped.
 
-A suffix found on only one side (`idle_boltlock` and `break_bullet_idle` are weapon-only, the offset aim clips character-only) is paired with the other side's `idle` as a **stand-in** (`stand_in_half`). The bake runs for the real half's length, and export writes only the real half; the Export panel shows "(weapon only)" or "(character only)". `*_add` keys have no stand-in: those additive idles are rebuilt by the ZoneKit import script and stay unpaired.
+A suffix found on only one side (`idle_boltlock` and `break_bullet_idle` are weapon-only, the offset aim clips character-only) is paired with the other side's `idle` as a **stand-in** (`stand_in_half`). The bake runs for the real half's length, and export writes only the real half. `*_add` keys have no stand-in: those additive idles are rebuilt by the ZoneKit import script and stay unpaired.
 
 The idle pair used to create the base skeleton is found through the same scan and must have the suffix `idle`. The exact expected files are `AS_fp_udp_idle.FBX` and `AS_udp_fp_idle.FBX`.
 

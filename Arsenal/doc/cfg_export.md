@@ -1,9 +1,8 @@
 # Weapon CFG files
 
 Panel **4. Create Your Custom Weapon** configures the CFG files a weapon mod needs.
-**Export All** writes them. A CFG-writing failure is reported as a warning, and later manifest
-generation may also fail on invalid settings. Do not package a warning/error export until the
-reported problems are resolved; old CFG files can remain in the output folder.
+**Export All** writes them. A CFG-writing failure blocks the export and new import-script
+generation. Do not run an older script after a failed export; old CFG files can remain in the output folder.
 
 Files are written under the Output Folder, in `GameLite/ModGameData/<Mod>/`:
 
@@ -26,7 +25,7 @@ Custom upgrade trees additionally write `UpgradePrototypes/<ID>UpgradePrototypes
 ## You set (panel)
 
 - Name & Description is the first section, above Weapon.
-- Template: Pistol (UDP), SMG (Viper), Rifle (AK-74), Shotgun (M860) or Sniper (Three-Line). Choosing one fills in every stat below from that base game weapon (the refresh button next to it resets your edits). Everything you enter is stored in the .blend, so sharing the file shares the settings.
+- Template (in Set Up): choose an individual standard base-game firearm. The 38 donors cover pistols, SMGs, rifles, shotguns, DMRs/snipers, the machine gun and launcher; named/unique variants are excluded. Choosing one fills in its stats, donor asset names, export category and trader/NPC defaults. The refresh button resets stats. Everything you enter is stored in the .blend. Only the pistol replacement workflow has been tested end to end; other donors are experimental.
 - Weapon: ID, base weapon, name SID, cost, weight, durability.
 - **Weapon SID** in **Weapon** and **Magazine SID** for the selected entry in
   **Ammo & Magazines** show the exact exported item identifiers. Use the copy
@@ -215,8 +214,9 @@ different ranks/difficulties; CFG regression tests do not establish runtime spaw
 
 **Use Base Weapon Upgrade Tree** retains the existing behaviour: the weapon references the
 template's unmodified upgrades. Uncheck it to populate an editable tree from that template
-(UDP, Viper, AK74, M860 or Three-Line). All template upgrades appear, with their original effects,
+(the selected individual weapon). All template upgrades appear, with their original effects,
 costs, weapon parts, positions, prerequisites and mutually exclusive branches.
+Weapons with no base upgrades, such as Gauss and RPG-7, seed an empty tree.
 
 Select an upgrade to edit:
 
@@ -287,7 +287,7 @@ does not guarantee that its settings win when two files define the same SID.
 
 ## Set automatically
 
-- Mod name (the **Mod Name** in the Export panel, e.g. `MonkeyMod`; STALKER 2 repeats it as `GameLite/ModGameData/<Mod>`), weapon ID (or the weapon's English name), all SIDs (`Gun<ID>_...`), projectile SID (from caliber).
+- Mod name (the **Mod Name** in Set Up, e.g. `MonkeyMod`; STALKER 2 repeats it as `GameLite/ModGameData/<Mod>`), weapon ID (or the weapon's English name), all SIDs (`Gun<ID>_...`), projectile SID (from caliber).
 - Mesh names and paths (from the mesh object names), static mesh parts and sockets (from the weapon bones), magazine sockets (from weights).
 - AnimBP path (from the exported weapon animation folder), category.
 

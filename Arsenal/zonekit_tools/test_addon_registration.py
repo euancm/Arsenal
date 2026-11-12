@@ -6,6 +6,7 @@ import ast
 import importlib
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -58,25 +59,61 @@ class AddonRegistrationTests(unittest.TestCase):
                     self.assertNotIn('Undocumented', cls.bl_description)
 
     def test_multi_action_tooltips_explain_the_actual_button(self):
-        from stalker2_arsenal import inventory_images, weapon_cfg, export_animation
+        from stalker2_arsenal import inventory_images, weapon_cfg
         image = inventory_images.ARSENAL_OT_InventoryImage
         self.assertIn('Clear', image.description(None, SimpleNamespace(clear=True)))
-        self.assertIn('camera MagazineStandalone', image.description(
-            None, SimpleNamespace(clear=False, family='standalone', magazine_index=1)))
-        self.assertIn('camera Standard', image.description(
-            None, SimpleNamespace(clear=False, family='standalone', magazine_index=-1)))
-        self.assertIn('camera Upgrade', image.description(
-            None, SimpleNamespace(clear=False, family='upgrade', magazine_index=-1)))
+        self.assertIn('Render an inventory image', image.description(None, SimpleNamespace(clear=False)))
+        self.assertIn('Scene_ArsenalInventory', image.description(None, SimpleNamespace(clear=False)))
         attachment = weapon_cfg.ARSENAL_OT_CfgAttachmentEdit
         self.assertIn('Remove', attachment.description(None, SimpleNamespace(remove=True)))
         self.assertIn('Add', attachment.description(None, SimpleNamespace(remove=False)))
-        select = export_animation.ARSENAL_OT_ExportSelect
-        self.assertIn('Deselect', select.description(None, SimpleNamespace(enabled=False)))
 
     def test_inventory_scene_controls_are_not_registered(self):
         self.assertNotIn('arsenal.inventory_scene',
                          {cls.bl_idname for cls in addon.classes if issubclass(cls, bpy.types.Operator)})
         self.assertNotIn('ARSENAL_PT_InventoryScene', {cls.__name__ for cls in addon.classes})
+
+    def test_simplified_workflow_panels(self):
+        from stalker2_arsenal import export_animation, setup_panel, stalker2_animation_importer
+
+        class Layout:
+            def __init__(self):
+                self.properties, self.operators = [], []
+
+            def prop(self, _owner, name, **_kwargs):
+                self.properties.append(name)
+
+            def operator(self, name, **_kwargs):
+                self.operators.append(name)
+                return SimpleNamespace()
+
+            def label(self, **_kwargs):
+                pass
+
+            def row(self, **_kwargs):
+                return self
+
+            def column(self, **_kwargs):
+                return self
+
+        addon.register()
+        try:
+            layout = Layout()
+            from unittest.mock import patch
+            with patch.object(export_animation, 'find_export_rig', return_value=(None, None)):
+                export_animation.ARSENAL_PT_ExportPanel.draw(SimpleNamespace(layout=layout), bpy.context)
+            self.assertEqual(layout.properties, ['output_folder'])
+            self.assertEqual(layout.operators, ['object.arsenal_export_all'])
+            setup_panel.ARSENAL_PT_SetupPanel.draw(SimpleNamespace(layout=layout), bpy.context)
+            self.assertNotIn('dry_run', layout.properties)
+            self.assertNotIn('export_additive', layout.properties)
+            stalker2_animation_importer.STALKER2_PT_animation_importer.draw(
+                SimpleNamespace(layout=layout), bpy.context)
+            self.assertNotIn('stalker2.import_new_animations', layout.operators)
+            self.assertNotIn('stalker2.import_new_animations',
+                             {cls.bl_idname for cls in addon.classes if issubclass(cls, bpy.types.Operator)})
+        finally:
+            addon.unregister()
 
     def test_required_mapping_resources(self):
         self.assertTrue((Path(addon.__file__).parent / 'resources' / 'inventory_scene.blend').is_file())
@@ -115,6 +152,42 @@ class AddonRegistrationTests(unittest.TestCase):
     def test_shape_library_exists(self):
         with bpy.data.libraries.load(import_weapon.SHAPE_LIBRARY, link=False) as (source, _destination):
             self.assertTrue(source.objects)
+
+    def test_gp37_finds_gp3_static_parts_but_keeps_gp37_skeleton(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'SK_gp37.FBX').touch()
+            parts = root / 'AnimMesh'
+            parts.mkdir()
+            (parts / 'SM_wpn_gp3_SM_offset.FBX').touch()
+            (parts / 'SM_wpn_gp3a_SM_offset.FBX').touch()
+            skeleton, found = import_weapon.find_donor_files(folder, 'gp37')
+            self.assertEqual(Path(skeleton).name, 'SK_gp37.FBX')
+            self.assertEqual([(Path(path).name, joint) for path, joint in found],
+                             [('SM_wpn_gp3_SM_offset.FBX', 'offset')])
+
+    def test_templates_drive_setup_assets_and_ignore_legacy_category_override(self):
+        from stalker2_arsenal import export_animation, setup_panel
+        from stalker2_arsenal.weapon_presets import PRESETS
+        addon.register()
+        try:
+            for key, preset in PRESETS.items():
+                with self.subTest(template=key):
+                    bpy.context.scene.arsenal_cfg.setup_template = key
+                    setup_panel.apply_template_defaults(bpy.context.scene, key)
+                    bpy.context.scene.arsenal_export.static_category = 'old_manual_category'
+                    config = setup_panel.build_config(bpy.context)
+                    self.assertEqual(config['anim_tokens'], [preset['animation']])
+                    self.assertEqual(config['mesh_tokens'], [preset['mesh']])
+                    self.assertEqual(export_animation.static_category(bpy.context.scene), preset['category'])
+                    self.assertFalse(config['dry_run'])
+                    self.assertFalse(config['export_additive'])
+            for number, key in enumerate(
+                    ('TemplatePistol', 'TemplateSMG', 'TemplateRifle', 'TemplateShotgun', 'TemplateSniper')):
+                bpy.context.scene.arsenal_cfg['setup_template'] = number
+                self.assertEqual(bpy.context.scene.arsenal_cfg.setup_template, key)
+        finally:
+            addon.unregister()
 
 
 if __name__ == '__main__':

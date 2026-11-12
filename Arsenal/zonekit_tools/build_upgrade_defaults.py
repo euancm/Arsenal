@@ -1,6 +1,7 @@
 """Extract structured upgrade defaults from ZoneKit CFGs; no game assets are copied.
 
-python build_upgrade_defaults.py GAME_DATA_FOLDER OUTPUT.json
+python build_upgrade_defaults.py GAME_DATA_FOLDER OUTPUT.json [PREVIOUS.json]
+Reuse the previous catalogue's enum numbers, including when writing to a new path.
 """
 import importlib.util
 import json
@@ -46,7 +47,7 @@ def resolve(blocks, sid, seen=()):
     return result
 
 
-def build(folder, destination):
+def build(folder, destination, previous=None):
     spec = importlib.util.spec_from_file_location(
         'weapon_presets', Path(__file__).parents[1] / 'stalker2_arsenal' / 'weapon_presets.py')
     presets = importlib.util.module_from_spec(spec)
@@ -54,6 +55,10 @@ def build(folder, destination):
     upgrades = parse(folder / 'UpgradePrototypes.cfg')
     effects = parse(folder / 'EffectPrototypes.cfg')
     result = {'templates': {}, 'effects': {}}
+    previous = previous or destination
+    old_effects = json.loads(previous.read_text(encoding='utf-8-sig'))['effects'] if previous.exists() else {}
+    effect_ids = {sid: row.get('enum_id', index) for index, (sid, row) in enumerate(old_effects.items())}
+    next_id = max(effect_ids.values(), default=-1) + 1
     effect_sids = {'DamagePos20Effect', 'RecoilDown20Effect'}
     for template, preset in presets.PRESETS.items():
         rows = []
@@ -81,10 +86,14 @@ def build(folder, destination):
     for sid in sorted(effect_sids):
         block = resolve(effects, sid)
         result['effects'][sid] = {key: block[key] for key in ('Type', 'ValueMin', 'ValueMax', 'Positive')}
+        if sid not in effect_ids:
+            effect_ids[sid] = next_id
+            next_id += 1
+        result['effects'][sid]['enum_id'] = effect_ids[sid]
     destination.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print('Extracted', sum(map(len, result['templates'].values())), 'upgrades and',
           len(result['effects']), 'effect defaults')
 
 
 if __name__ == '__main__':
-    build(Path(sys.argv[1]), Path(sys.argv[2]))
+    build(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]) if len(sys.argv) > 3 else None)

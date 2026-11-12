@@ -31,7 +31,7 @@ INHERITED_FIELDS = ('MinDurability', 'MaxDurability', 'AmmoMinCount', 'AmmoMaxCo
 
 
 def slot(cfg):
-    return 'WeaponPistol' if cfg.setup_template == 'TemplatePistol' else 'WeaponPrimary'
+    return PRESETS[cfg.setup_template]['slot']
 
 
 def available_roles(faction):

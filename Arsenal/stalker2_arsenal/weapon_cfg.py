@@ -22,18 +22,16 @@ from . import weapon_distribution
 PISTOL = PRESETS['TemplatePistol']
 SAFE_ID = re.compile(r'^[A-Za-z0-9_]+$')
 GAME_ICONS = '/Game/GameLite/FPS_Game/UIRemaster/UITextures/Inventory/WeaponAndAttachments'
-SETUP_TEMPLATES = (
-    ('TemplatePistol', 'Pistol', 'Values from the UDP (GunUDP_HG)'),
-    ('TemplateSMG', 'SMG', 'Values from the Viper (GunViper_PP)'),
-    ('TemplateRifle', 'Rifle', 'Values from the AK-74 (GunAK74_ST)'),
-    ('TemplateShotgun', 'Shotgun', 'Values from the M860 (GunM860_SG)'),
-    ('TemplateSniper', 'Sniper', 'Values from the Three-Line (GunThreeLine_SP_GS)'),
-)
+SETUP_TEMPLATES = tuple(
+    (key, preset['label'], f'Use the models, animations and settings of {preset["base_weapon"]}',
+     preset['enum_id'])
+    for key, preset in sorted(PRESETS.items(), key=lambda row: row[1]['label'].casefold()))
 # Settings that follow the template; everything else in PRESETS is written to the files as-is.
 PRESET_PROPERTIES = tuple(key for key, value in PISTOL.items()
                           if isinstance(value, (int, float, str)) and key not in (
                               'recoil_pattern', 'recoil_blend', 'camera_shake', 'aim_loop_start',
-                              'hip_loop_start')) + ('fire_modes',)
+                              'hip_loop_start', 'label', 'enum_id', 'category', 'animation', 'mesh',
+                              'general_ref', 'settings_ref', 'slot')) + ('fire_modes',)
 FIRE_MODES = (
     ('SemiAutomatic', 'Semi-automatic', 'One shot per trigger pull', 1),
     ('Queue', 'Burst', 'A fixed number of shots per trigger pull', 2),
@@ -78,6 +76,7 @@ CALIBERS = (
     ('A918', '9x18', ''), ('A919', '9x19', ''), ('A045', '.45 ACP', ''), ('A545', '5.45x39', ''),
     ('A556', '5.56x45', ''), ('A762NATO', '7.62x51 NATO', ''), ('A762Sniper', '7.62x54R', ''),
     ('A939', '9x39', ''), ('A012', '12 gauge', ''),
+    ('AGA', 'Gauss', ''), ('APG7V', 'RPG-7 rocket', ''),
 )
 MAG_SUFFIX = re.compile(r'(?i)[_\-. ]*(full|empty)[_\-. ]*')
 # Game culture code, ELocalizationLanguage member used in the mod text assets, label.
@@ -176,7 +175,8 @@ def _set_text_description(self, value):
 class ARSENAL_CfgMagazine(bpy.types.PropertyGroup):
     use_existing: bpy.props.BoolProperty(
         name='Reference Existing Magazine',
-        description='Use a magazine item defined elsewhere; do not export its meshes, item, text or images')
+        description='Make this weapon compatible with a magazine already defined by the game or another mod; '
+                    'do not create a new magazine item or export its meshes, text or images')
     existing_sid: bpy.props.StringProperty(name='Existing Magazine SID')
     extra_weapon_sids: bpy.props.StringProperty(
         name='Extra Weapon SIDs',
@@ -276,7 +276,7 @@ class ARSENAL_CfgUpgrade(bpy.types.PropertyGroup):
     horizontal: bpy.props.IntProperty(name='Column', default=0, min=0)
     vertical: bpy.props.EnumProperty(name='Position', items=[(v, v, '') for v in ('None', 'Top', 'Down')])
     target_part: bpy.props.EnumProperty(
-        name='Weapon Part', items=[(v, v, '') for v in ('Barrel', 'Body', 'PistolGrip', 'Stock')])
+        name='Weapon Part', items=[(v, v, '') for v in ('Barrel', 'Body', 'PistolGrip', 'Stock', 'Handguard')])
     modification: bpy.props.BoolProperty(name='Modification')
     hidden_without_item: bpy.props.BoolProperty(name='Hide Without Required Item')
     keep_restrictions: bpy.props.BoolProperty(
@@ -448,8 +448,8 @@ class ARSENAL_WeaponCfg(bpy.types.PropertyGroup):
         description='Weapon description shown in the inventory, in the selected language. Type \\n for a line break')
     setup_template: bpy.props.EnumProperty(
         name='Template', items=SETUP_TEMPLATES, default='TemplatePistol', update=_template_changed,
-        description='Weapon type. Choosing one fills every value below from a base game weapon: '
-                    'UDP (pistol), Viper (SMG), AK74 (rifle), M860 (shotgun), Three-Line (sniper)')
+        description='Base-game weapon to build from. Sets its models, animations, stats and inventory defaults; '
+                    'only the pistol replacement workflow has been tested end to end')
     localization_sid: bpy.props.StringProperty(
         name='Text Key Override',
         description='Advanced. Normally the name and description are stored under the weapon\'s own SID '
@@ -582,7 +582,7 @@ def mod_name(export):
     """The mod folder name: the first part of the Mod Content Path (ModGameData/<Mod> repeats the mod's name)."""
     parts = [part for part in export.unreal_mount.strip().split('/') if part]
     if not parts:
-        raise RuntimeError('Set the Mod Name (for example MonkeyMod) in the Export panel.')
+        raise RuntimeError('Set the Mod Name (for example MonkeyMod) in 1. Set Up.')
     return parts[0]
 
 
@@ -726,7 +726,7 @@ def build_context(context):
         raise RuntimeError('No weapon mesh is weighted to the mapped weapon bones.')
     output_root = bpy.path.abspath(export.output_folder).strip()
     mesh_name = static_mesh.weapon_mesh_name(main, context.scene)
-    category = static_mesh.validate_names(mesh_name, export.static_category.strip()).replace(os.sep, '/')
+    category = static_mesh.validate_names(mesh_name, animation_export.static_category(context.scene)).replace(os.sep, '/')
     weapon_id, sid = weapon_names(context.scene, export, cfg)
     mod_name(export)
     mount = animation_export.mod_mount(export)
@@ -910,7 +910,8 @@ def player_settings(info):
     cfg = info['cfg']
     writer = Writer()
     writer.begin(info['player_sid'],
-                 f'{{refurl=@BaseGame/WeaponData/CharacterWeaponSettingsPrototypes.cfg;refkey={cfg.setup_template}}}')
+                 '{refurl=@BaseGame/WeaponData/CharacterWeaponSettingsPrototypes/PlayerWeaponSettingsPrototypes.cfg;'
+                 f'refkey={PRESETS[cfg.setup_template]["settings_ref"]}}}')
     writer.line('//Base info')
     writer.line(f'SID = {info["player_sid"]}')
     writer.line('//Durability')
@@ -968,15 +969,16 @@ def general_setup(info):
     preset = PRESETS[cfg.setup_template]
     projectile = 'P' + cfg.caliber[1:]
     writer = Writer()
-    writer.begin(info['sid'], f'{{refurl=@BaseGame/WeaponData/WeaponGeneralSetupPrototypes.cfg;refkey={cfg.setup_template}}}')
+    writer.begin(info['sid'], '{refurl=@BaseGame/WeaponData/WeaponGeneralSetupPrototypes.cfg;'
+                 f'refkey={preset["general_ref"]}}}')
     writer.line('//Base info')
     writer.line(f'SID = {info["sid"]}')
     writer.line()
     writer.line('//Ammo')
     writer.line(f'MaxAmmo = {cfg.max_ammo}')
     writer.line(f'AmmoCaliber = EAmmoCaliber::{cfg.caliber}')
-    writer.begin('AmmoTypeProjectiles')
-    for index, ammo_type in enumerate(('Default', 'ArmorPiercing', 'Expanding')):
+    writer.begin('AmmoTypeProjectiles', '{bskipref}')
+    for index, ammo_type in enumerate(preset['ammo_types']):
         writer.begin(f'[{index}]')
         writer.line(f'AmmoType = EAmmoType::{ammo_type}')
         writer.line(f'ProjectilePrototypeSID = {projectile}')

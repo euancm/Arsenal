@@ -139,7 +139,8 @@ class DistributionTests(unittest.TestCase):
             cfg = self.info(template)['cfg']
             cfg.firing_sound_donor = 'APB'
             self.assertEqual(distribution.slot(cfg),
-                             'WeaponPistol' if template == 'TemplatePistol' else 'WeaponPrimary')
+                             'WeaponPistol' if distribution.PRESETS[template]['base_weapon'].endswith('_HG')
+                             else 'WeaponPrimary')
 
     def test_trader_selector_has_unique_stable_enum_numbers(self):
         ids = [row[3] for row in distribution.TRADER_ITEMS]
@@ -419,9 +420,9 @@ class DistributionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'has no Heavy loadout'):
             distribution.files(self.info(factions=[faction('Scientists', 'Heavy')]))
 
-    def test_all_supported_templates_factions_roles_ranks_generate_without_mutating_catalogue(self):
+    def test_legacy_templates_support_all_factions_roles_ranks_without_mutating_catalogue(self):
         before = copy.deepcopy(distribution.DEFAULTS)
-        for template in distribution.PRESETS:
+        for template in ('TemplatePistol', 'TemplateSMG', 'TemplateRifle', 'TemplateShotgun', 'TemplateSniper'):
             rules = []
             for name, _label in distribution.FACTIONS:
                 row = faction(name)
@@ -442,6 +443,24 @@ class DistributionTests(unittest.TestCase):
                 self.assertIn('GunTest_HG', distribution.distribution_compose.compose([
                     distribution.payload(self.info(template, traders=[trader(sid)]))]))
         self.assertEqual(distribution.DEFAULTS, before)
+
+    def test_all_weapon_templates_support_their_actual_distribution_defaults(self):
+        for template in distribution.PRESETS:
+            with self.subTest(template=template):
+                rules = []
+                for name, _label in distribution.FACTIONS:
+                    row = faction(name)
+                    defaults = distribution.faction_defaults(template, name)
+                    for collection in ('roles', 'ranks'):
+                        for key, values in defaults[collection].items():
+                            item = getattr(row, collection)[key]
+                            item.enabled, item.percent = values
+                    rules.append(row)
+                distribution.distribution_compose.compose([distribution.payload(self.info(template, rules))])
+
+    def test_new_template_without_rank_donor_fails_explicitly(self):
+        with self.assertRaisesRegex(RuntimeError, 'No GunRhino_HG condition/ammo defaults'):
+            distribution.inherited_defaults('TemplateRhino', {'PossibleItems': {}}, 'Newbie', 'Neutral')
 
 
 class CatalogueBuilderTests(unittest.TestCase):

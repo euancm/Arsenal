@@ -110,17 +110,18 @@ def find_animation_files(output_root, weapon_name):
 def validated_unreal_path(value, label):
     if not UNREAL_PATH.match(value):
         if label == 'Mod Name':
-            raise RuntimeError('Set the Mod Name (Export panel) to the name of your mod in ZoneKit, e.g. MonkeyMod.')
+            raise RuntimeError('Set the Mod Name in 1. Set Up to the name of your mod in ZoneKit, e.g. MonkeyMod.')
         raise RuntimeError(f'{label} must be an Unreal path such as /Game/..., not "{value}".')
     return value.rstrip('/')
 
 
-def write_unreal_import(context):
+def write_unreal_import(context, *, animation_paths=None):
     export = context.scene.arsenal_export
     rig, backup, bone_joints, plan = animation_export._build_static_plan(context)
     output_root = bpy.path.abspath(export.output_folder).strip()
-    category = static_mesh.validate_names('x', export.static_category.strip())
-    mesh_name, _plan = static_mesh.plan_static_meshes(rig, bone_joints, export.static_category.strip(), output_root, context.scene)
+    category = static_mesh.validate_names('x', animation_export.static_category(context.scene))
+    mesh_name, _plan = static_mesh.plan_static_meshes(
+        rig, bone_joints, category, output_root, context.scene)
     animation_name = animation_export.weapon_name(context.scene)
     mount = validated_unreal_path(animation_export.mod_mount(export), 'Mod Name')
 
@@ -128,6 +129,13 @@ def write_unreal_import(context):
     if not static_files:
         raise RuntimeError('No static meshes found in the output folder; export them first.')
     animation_files = find_animation_files(output_root, animation_name)
+    if animation_paths is not None:
+        expected = {relative(path, output_root) for path in animation_paths}
+        found = {path for paths in animation_files.values() for path in paths}
+        if expected - found:
+            raise RuntimeError('Fresh animation files are missing from the export: ' + ', '.join(sorted(expected - found)))
+        animation_files = {kind: [path for path in paths if path in expected]
+                           for kind, paths in animation_files.items()}
 
     main, main_bones, others = static_mesh.classify_meshes(rig, context.scene, bone_joints)
     managed, game = collect_materials([main] + [obj for obj, _bones in others])

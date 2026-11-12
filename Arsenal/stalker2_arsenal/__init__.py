@@ -88,7 +88,6 @@ classes = (
     stalker2_animation_importer.STALKER2_OT_scan_animations,
     stalker2_animation_importer.STALKER2_OT_import_animations,
     stalker2_animation_importer.STALKER2_OT_import_weapon,
-    stalker2_animation_importer.STALKER2_OT_import_new_animations,
     stalker2_animation_importer.STALKER2_PT_animation_importer,
     generate_metarig.GenerateMetarigOperator,
     convert_to_rigify.ConvertToRigifyByMappingOperator,

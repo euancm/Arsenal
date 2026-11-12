@@ -1,6 +1,7 @@
 """Run with Blender --background --factory-startup --python-exit-code 1 --python this_file."""
 import os
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -13,6 +14,7 @@ import bpy
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from stalker2_arsenal import export_animation as ex
+from stalker2_arsenal import weapon_cfg
 
 
 class ExportIKControlsTests(unittest.TestCase):
@@ -169,7 +171,9 @@ class ExportIKControlsTests(unittest.TestCase):
                     scene=SimpleNamespace(arsenal_export=settings),
                     window_manager=SimpleNamespace(clipboard='old_import.py'))
                 operator = SimpleNamespace(report=Mock())
-                with patch.object(ex, '_build_static_plan'), patch.object(
+                with patch.object(ex, '_build_static_plan'), \
+                        patch.object(weapon_cfg, 'build_context'), \
+                        patch('stalker2_arsenal.export_check.name_warnings', return_value=[]), patch.object(
                         ex, '_run_animation_export', return_value=(
                             written, [('shoot_aim_end', 'upper_arm_ik.R is not keyed')], 2)), \
                         patch.object(ex, '_run_static_export') as static_export, \
@@ -185,6 +189,77 @@ class ExportIKControlsTests(unittest.TestCase):
                 self.assertIn('upper_arm_ik.R', messages)
                 self.assertIn('stale FBXs', messages)
                 self.assertIn('upper_arm_ik.R is not keyed', operator.report.call_args.args[1])
+
+    def test_automatic_plan_ignores_old_selections_and_overrides(self):
+        import stalker2_arsenal as addon
+        addon.register()
+        try:
+            export = bpy.context.scene.arsenal_export
+            self.action.name = 'idle'
+            item = export.actions.add()
+            item.name, item.enabled, item.template, item.folder = 'idle', False, 'reload', 'wrong'
+            with tempfile.TemporaryDirectory() as output:
+                root = os.path.join(output, 'donor')
+                pair = ('idle', os.path.join(root, '_STALKER2', 'Animations', 'Player', 'pt',
+                                             'udp', 'AS_fp_udp_idle.fbx'),
+                        os.path.join(root, '_STALKER2', 'Animations', 'Weapons', 'pt',
+                                     'udp', 'AS_udp_fp_idle.fbx'))
+                basics = (export, SimpleNamespace(weapon_name='udp'), self.rig, self.rig,
+                          'custom', os.path.join(output, 'export'), root)
+                with patch.object(ex, '_export_basics', return_value=basics), \
+                        patch.object(ex.importer, '_scan_library', return_value=([pair], [], [], [])):
+                    _rig, _backup, plans, problems = ex._build_plans(bpy.context)
+                    self.assertEqual(problems, 0)
+                    self.assertEqual(len(plans), 1)
+                    self.assertEqual(plans[0][0], self.action)
+                    self.assertTrue(all('wrong' not in path for _kind, _donor, path in plans[0][2]))
+                    self.action.name = 'new_feature'
+                    _rig, _backup, plans, problems = ex._build_plans(bpy.context)
+                    self.assertEqual(problems, 1)
+                    self.assertFalse(plans)
+                    self.assertIn('does not match an original animation', export.actions[0].status)
+                    self.action.name = 'idle'
+                    with patch.object(ex.importer, '_scan_library', return_value=([], [], [], ['idle'])):
+                        _rig, _backup, plans, problems = ex._build_plans(bpy.context)
+                    self.assertEqual(problems, 1)
+                    self.assertIn('Ambiguous donor files', export.actions[0].status)
+        finally:
+            addon.unregister()
+
+    def test_no_actions_blocks_export_with_retarget_instructions(self):
+        with patch.object(ex, '_build_plans', return_value=(self.rig, self.rig, [], 0)):
+            with self.assertRaisesRegex(RuntimeError, 'Retarget Animation'):
+                ex._run_animation_export(bpy.context)
+
+    def test_cfg_failure_blocks_import_script_and_clears_old_clipboard(self):
+        settings = SimpleNamespace(actions=[], summary='')
+        context = SimpleNamespace(scene=SimpleNamespace(arsenal_export=settings),
+                                  window_manager=SimpleNamespace(clipboard='old_import.py'))
+        with patch.object(ex, '_build_static_plan'), patch.object(
+                weapon_cfg, 'build_context', side_effect=RuntimeError('Magazine needs a mesh')), \
+                patch('stalker2_arsenal.export_unreal.write_unreal_import') as script:
+            result = ex.ARSENAL_OT_ExportAllRun.execute(SimpleNamespace(report=Mock()), context)
+        self.assertEqual(result, {'CANCELLED'})
+        self.assertEqual(context.window_manager.clipboard, '')
+        self.assertIn('Magazine needs a mesh', settings.summary)
+        script.assert_not_called()
+
+    def test_export_all_passes_only_fresh_animation_paths_to_manifest(self):
+        settings = SimpleNamespace(actions=[], summary='')
+        context = SimpleNamespace(scene=SimpleNamespace(arsenal_export=settings),
+                                  window_manager=SimpleNamespace(clipboard='old_import.py'))
+        with patch.object(ex, '_build_static_plan'), patch.object(weapon_cfg, 'build_context'), \
+                patch('stalker2_arsenal.export_check.name_warnings', return_value=[]), \
+                patch.object(ex, '_run_animation_export', return_value=(['fresh_idle.fbx'], [], 1)), \
+                patch.object(ex, '_run_static_export', return_value=(['mesh.fbx'], [])), \
+                patch.object(weapon_cfg, 'export_cfg_files', return_value=(['weapon.cfg'], {})), \
+                patch('stalker2_arsenal.export_check.path_warnings', return_value=[]), \
+                patch('stalker2_arsenal.export_unreal.write_unreal_import',
+                      return_value=('fresh_import.py', {'game_materials': []})) as script:
+            result = ex.ARSENAL_OT_ExportAllRun.execute(SimpleNamespace(report=Mock()), context)
+        self.assertEqual(result, {'FINISHED'})
+        self.assertEqual(context.window_manager.clipboard, 'fresh_import.py')
+        script.assert_called_once_with(context, animation_paths=['fresh_idle.fbx'])
 
 
 if __name__ == '__main__':

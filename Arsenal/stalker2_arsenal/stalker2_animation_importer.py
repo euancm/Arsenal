@@ -848,48 +848,11 @@ def import_new_animations(context, rig, backup, root, weapon_name):
     return names, failures
 
 
-class STALKER2_OT_import_new_animations(bpy.types.Operator):
-    bl_idname = "stalker2.import_new_animations"
-    bl_label = "Import New Animations"
-    bl_description = ("Import and retarget the clips in the exported files folder that this blend does not have "
-                      "yet (for example after a newer setup exported more of them). Existing actions are not changed")
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT"
-
-    @completion('New animation import')
-    def execute(self, context):
-        from . import export_animation
-        settings = context.scene.stalker2_animation_importer
-        rig, backup = export_animation.find_export_rig(context)
-        if rig is None:
-            report(self, {"ERROR"}, "No converted weapon rig found. Use Import Weapon first.")
-            return {"CANCELLED"}
-        root = bpy.path.abspath(settings.animation_root).strip()
-        try:
-            names, failures = import_new_animations(context, rig, backup, root, settings.weapon_name)
-        except Exception as error:
-            report(self, {"ERROR"}, str(error))
-            return {"CANCELLED"}
-        for suffix, error in failures:
-            report(self, {"WARNING"}, f"Failed {suffix}: {error}")
-        if not names and not failures:
-            settings.scan_summary = "No new animations found."
-            report(self, {"INFO"}, settings.scan_summary)
-        else:
-            settings.scan_summary = f"Added {len(names)} animations."
-            if names:
-                report(self, {"INFO"}, f"Added {len(names)} animations: {', '.join(sorted(names))}")
-        return {"FINISHED"}
-
-
 STEPS = (
     'Fill in the details below: working folder, ZoneKit mod name, your weapon name and the template.',
     'Press "Create ZoneKit Setup Script". The script path is copied to your clipboard.',
     'In ZoneKit, make sure your mod is selected, then paste the path into the Python bar and run it. '
-    'It exports the template weapon\'s files, checks the assets that stay in ZoneKit out into your mod and '
+    'It exports the template weapon\'s files, creates copies of the ZoneKit assets in your mod and '
     'renames them to your weapon name. Check the report it writes to the ZoneKit Export folder.',
     'Back in Blender, press Import Weapon in the next panel.',
 )
@@ -930,7 +893,6 @@ class STALKER2_PT_animation_importer(bpy.types.Panel):
         if not settings.animation_root.strip():
             layout.label(text="Set the working folder in 1. Set Up first.", icon="INFO")
         layout.operator("stalker2.import_weapon", icon="IMPORT")
-        layout.operator("stalker2.import_new_animations", icon="ADD")
         layout.label(text=settings.scan_summary)
 
 
@@ -940,7 +902,6 @@ CLASSES = (
     STALKER2_OT_scan_animations,
     STALKER2_OT_import_animations,
     STALKER2_OT_import_weapon,
-    STALKER2_OT_import_new_animations,
     STALKER2_PT_animation_importer,
     STALKER2_PT_animation_importer_help,
 )

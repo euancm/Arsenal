@@ -10,7 +10,7 @@ with open(os.path.join(os.path.dirname(__file__), 'resources', 'upgrade_defaults
     DEFAULTS = json.load(handle)
 
 EFFECT_ITEMS = tuple((sid, f'{value["Type"].split("::")[-1]}: {sid}',
-                      f'Base values: {value["ValueMin"]} to {value["ValueMax"]}')
+                      f'Base values: {value["ValueMin"]} to {value["ValueMax"]}', value['enum_id'])
                      for sid, value in DEFAULTS['effects'].items())
 NON_NUMERIC = {'FlagEffect', 'ChangeCaliber', 'ChangeAmmoTypes'}
 

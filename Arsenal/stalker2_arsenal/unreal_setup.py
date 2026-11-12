@@ -60,7 +60,7 @@ def select_assets(assets, config, additive_of=None):
     assets: iterable of (package, class_name). additive_of(package) -> True/False/None for sequences.
     """
     anim_pattern = token_pattern(config['anim_tokens'])
-    mesh_pattern = token_pattern(config['mesh_tokens'])
+    mesh_pattern = token_pattern(config['mesh_tokens'] + config.get('part_tokens', []))
     anim_tokens = [t.lower() for t in config['anim_tokens']]
     mesh_tokens = [t.lower() for t in config['mesh_tokens']]
     result = {'sequences': [], 'additive': [], 'montages': [], 'collections': [], 'anim_blueprints': [],

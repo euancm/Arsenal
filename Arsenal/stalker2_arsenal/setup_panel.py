@@ -4,34 +4,19 @@ import re
 import bpy
 
 from . import export_animation as animation_export
+from .weapon_presets import PRESETS
 
 SETUP_TEMPLATE_NAME = 'unreal_setup.py'
 ZONEKIT_FOLDER = 'ZoneKit Export'
 BLENDER_FOLDER = 'Blender Export'
 
-# Names the template weapon's files use. Animations and meshes are not always named alike (SMG: viper / vip).
-_ATTACH = '/Game/_Stalker_2/weapons/attachments/'
-_LASER = _ATTACH + 'ls/SM_ls01_en_laser_01/SM_ls01_en_laser_01'
-# Silencer and laser meshes (from MeshPrototypes.cfg via each weapon's CompatibleAttachments).
-TEMPLATE_DEFAULTS = {
-    'TemplatePistol': {'animation': 'udp', 'mesh': 'udp', 'category': 'pistol',
-                       'attachments': [_ATTACH + 'sc/SM_sc01_en_silen_1/SM_sc01_en_silen_1', _LASER]},
-    'TemplateSMG': {'animation': 'viper', 'mesh': 'vip', 'category': 'pistol_mashine_gun',
-                    'attachments': [_ATTACH + 'sc/SM_sc02_en_silen_2/SM_sc02_en_silen_2', _LASER]},
-    'TemplateRifle': {'animation': 'ak74', 'mesh': 'ak74', 'category': 'sturm_riffle',
-                      'attachments': [_ATTACH + 'sc/SM_sc02_ru_silen_2/SM_sc02_ru_silen_2']},
-    'TemplateShotgun': {'animation': 'm860', 'mesh': 'm86000', 'category': 'shotgun', 'attachments': [_LASER]},
-    'TemplateSniper': {'animation': 'threeline', 'mesh': 'threeline', 'category': 'sniper_riffle',
-                       'attachments': []},
-}
+TEMPLATE_DEFAULTS = PRESETS
 MOD_NAME = re.compile(r'^[A-Za-z0-9_]+$')
 
 
 def apply_template_defaults(scene, template):
     """Point the importer and static-mesh category at the files of the chosen template weapon."""
-    defaults = TEMPLATE_DEFAULTS.get(template)
-    if not defaults:
-        return
+    defaults = TEMPLATE_DEFAULTS[template]
     importer = scene.stalker2_animation_importer
     importer.weapon_name = defaults['animation']
     importer.mesh_name = '' if defaults['mesh'] == defaults['animation'] else defaults['mesh']
@@ -81,19 +66,11 @@ class ARSENAL_SetupProps(bpy.types.PropertyGroup):
                     f'Blender exports in "{BLENDER_FOLDER}"')
     mod_name: bpy.props.StringProperty(
         name='Mod Name', get=_get_mod_name, set=_set_mod_name,
-        description='The name of your mod in ZoneKit (e.g. MonkeyMod). Same as Mod Name in the Export panel')
+        description='The name of your existing mod in ZoneKit (e.g. MonkeyMod)')
     weapon_name: bpy.props.StringProperty(
         name='Weapon Name', get=_get_weapon_name, set=_set_weapon_name,
         description='Your weapon\'s name, as players see it (English). File and asset names are made from it, '
                     'lower-case without spaces')
-    dry_run: bpy.props.BoolProperty(
-        name='Dry Run', default=False,
-        description='Only write the report of what the ZoneKit script would export and rename; change nothing')
-    export_additive: bpy.props.BoolProperty(
-        name='Export Additive Idles', default=False,
-        description='Also export the additive idle companions (*_idle_add). The add-on does not use them: '
-                    'the import script rebuilds them from your idle, so they are only copied and renamed. '
-                    'Shoot, equip and other additive overlays are always exported')
     status: bpy.props.StringProperty(default='')
 
 
@@ -128,9 +105,10 @@ def build_config(context):
         'export_dir': os.path.join(bpy.path.abspath(setup.working_folder).strip(), ZONEKIT_FOLDER),
         'anim_tokens': [animation],
         'mesh_tokens': [mesh],
-        'attachment_meshes': list(TEMPLATE_DEFAULTS.get(scene.arsenal_cfg.setup_template, {}).get('attachments', [])),
-        'dry_run': setup.dry_run,
-        'export_additive': setup.export_additive,
+        'part_tokens': list(TEMPLATE_DEFAULTS[scene.arsenal_cfg.setup_template]['part_tokens']),
+        'attachment_meshes': list(TEMPLATE_DEFAULTS[scene.arsenal_cfg.setup_template]['attachments']),
+        'dry_run': False,
+        'export_additive': False,
         'export': True,
         'checkout': True,
     }
@@ -185,7 +163,6 @@ class ARSENAL_PT_SetupPanel(bpy.types.Panel):
         layout = self.layout
         setup = context.scene.arsenal_setup
         cfg = context.scene.arsenal_cfg
-        importer = context.scene.stalker2_animation_importer
 
         layout.label(text='Template')
         row = layout.row(align=True)
@@ -196,10 +173,6 @@ class ARSENAL_PT_SetupPanel(bpy.types.Panel):
         col.prop(setup, 'weapon_name')
         col.prop(setup, 'mod_name')
         col.prop(setup, 'working_folder')
-
-        col = layout.column(align=True)
-        col.prop(setup, 'export_additive')
-        col.prop(setup, 'dry_run')
 
         problems = setup_problems(context)
         for problem in problems[:2]:

@@ -485,11 +485,8 @@ class ARSENAL_OT_InventoryImage(bpy.types.Operator):
     def description(cls, context, properties):
         if properties.clear:
             return 'Clear this image assignment; the next export will omit it, but old exported PNGs are not deleted'
-        camera = ('Upgrade' if properties.family == 'upgrade' else
-                  'MagazineStandalone' if properties.family == 'standalone' and properties.magazine_index >= 0
-                  else 'Standard')
-        return (f'Render this image using shared camera {camera} and pack it into the blend, replacing the preview; '
-                'save the blend to keep it and use Export All to write the PNG')
+        return ('Render an inventory image. Edit the Scene_ArsenalInventory scene if you prefer different lighting. '
+                'Save your blend to keep the image; Export All writes the PNG')
 
     def execute(self, context):
         source = source_scene(context.scene)

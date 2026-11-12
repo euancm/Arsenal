@@ -769,6 +769,11 @@ def mod_mount(export):
     return '/' + name if name else ''
 
 
+def static_category(scene):
+    from .weapon_presets import PRESETS
+    return PRESETS[scene.arsenal_cfg.setup_template]['category']
+
+
 class ARSENAL_ExportProps(bpy.types.PropertyGroup):
     output_folder: bpy.props.StringProperty(name='Output Folder', subtype='DIR_PATH')
     static_category: bpy.props.StringProperty(
@@ -783,16 +788,7 @@ class ARSENAL_ExportProps(bpy.types.PropertyGroup):
                     'It is also the Unreal mount path /<Mod Name> and the ModGameData/<Mod Name> folder',
         default='')
     active_index: bpy.props.IntProperty()
-    summary: bpy.props.StringProperty(default='Refresh the list, then validate or export.')
-
-
-class ARSENAL_UL_ExportActions(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        row = layout.row(align=True)
-        row.prop(item, 'enabled', text='')
-        row.label(text=item.name)
-        if item.status:
-            row.label(text=item.status)
+    summary: bpy.props.StringProperty(default='Export checks and writes all matching rig animations automatically.')
 
 
 def _settings(context):
@@ -820,23 +816,33 @@ def _export_basics(context):
 def _build_plans(context):
     export, importer_settings, rig, backup, new_name, output_root, library_root = _export_basics(context)
     old_name = importer_settings.weapon_name.strip()
-    pairs, _player_only, _weapon_only, _ambiguous = importer._scan_library(library_root, old_name)
+    pairs, _player_only, _weapon_only, ambiguous = importer._scan_library(library_root, old_name)
+    keys = {pair[0].casefold() for pair in pairs}
 
     plans = []
     problems = 0
-    for item in export.actions:
-        if not item.enabled:
-            continue
-        action = bpy.data.actions.get(item.name)
-        slot = rig_action_slot(action, rig) if action else None
-        if not slot:
-            item.status = 'Action not found'
-            problems += 1
-            continue
+    export.actions.clear()
+    targets = set()
+    for action in exportable_actions(rig):
+        item = export.actions.add()
+        item.name = action.name
+        slot = rig_action_slot(action, rig)
         try:
+            if action.name.casefold() in ambiguous:
+                raise ValueError(f'Ambiguous donor files for "{action.name}"; remove duplicate donor exports')
+            if action.name.casefold() not in keys:
+                raise ValueError(
+                    f'"{action.name}" does not match an original animation. '
+                    'Use the original action name when replacing an animation; new weapon features are not supported')
             outputs, status = plan_export(
-                item.name, item.template.strip(), item.folder.strip(), pairs,
+                item.name, '', '', pairs,
                 old_name, new_name, output_root, library_root)
+            for _kind, _template, target in outputs:
+                if target is not None:
+                    normalized = os.path.normcase(os.path.abspath(target))
+                    if normalized in targets:
+                        raise ValueError(f'Multiple actions would write {target}; keep one action per original name')
+                    targets.add(normalized)
         except ValueError as error:
             item.status = str(error)
             problems += 1
@@ -852,7 +858,7 @@ def _build_static_plan(context):
     bone_joints = static_mesh.weapon_bone_joints(rig, mapping)
     if not bone_joints:
         raise RuntimeError('No weapon rig bones are mapped to game joints, so there are no static meshes to export.')
-    category = export.static_category.strip()
+    category = static_category(context.scene)
     try:
         _weapon, plan = static_mesh.plan_static_meshes(rig, bone_joints, category, output_root, context.scene)
     except ValueError as error:
@@ -865,9 +871,11 @@ def _build_static_plan(context):
 def _run_animation_export(context):
     rig, backup, plans, problems = _build_plans(context)
     if problems:
-        raise RuntimeError(f'{problems} actions have problems; use Validate to see them.')
+        details = '\n'.join(f'{item.name}: {item.status}' for item in context.scene.arsenal_export.actions
+                            if item.status and not item.status.startswith('Matches an original animation'))
+        raise RuntimeError(f'{problems} animation actions cannot be exported:\n{details}')
     if not plans:
-        raise RuntimeError('No actions are ticked.')
+        raise RuntimeError('No editable rig animations found. Use Retarget Animation in panel 3 first.')
     written, failures = run_exports(context, rig, backup, plans)
     return written, failures, len(plans)
 
@@ -877,50 +885,11 @@ def _run_static_export(context):
     rig, backup, bone_joints, _plan = _build_static_plan(context)
     written, skipped = static_mesh.export_static_meshes(
         context, rig, backup, bone_joints,
-        export.static_category.strip(), bpy.path.abspath(export.output_folder).strip())
+        static_category(context.scene), bpy.path.abspath(export.output_folder).strip())
     if not written:
         raise RuntimeError('No weapon geometry is weighted to the mapped weapon bones.')
     written.append(export_skeleton.export_weapon_skeleton(context))
     return written, skipped
-
-
-class ARSENAL_OT_ExportRefresh(bpy.types.Operator):
-    bl_idname = 'object.arsenal_export_refresh'
-    bl_label = 'Refresh'
-    bl_description = 'Refresh exportable rig actions, preserving existing action selections, templates and folders'
-
-    def execute(self, context):
-        export = context.scene.arsenal_export
-        rig, _backup = find_export_rig(context)
-        if not rig:
-            self.report({'ERROR'}, 'No Rigify rig with a retarget backup found.')
-            return {'CANCELLED'}
-        previous = {item.name: (item.enabled, item.template, item.folder) for item in export.actions}
-        export.actions.clear()
-        for action in exportable_actions(rig):
-            item = export.actions.add()
-            item.name = action.name
-            if action.name in previous:
-                item.enabled, item.template, item.folder = previous[action.name]
-        export.summary = f'{len(export.actions)} actions found.'
-        return {'FINISHED'}
-
-
-class ARSENAL_OT_ExportSelect(bpy.types.Operator):
-    bl_idname = 'object.arsenal_export_select'
-    bl_label = 'Select'
-    bl_description = 'Select or deselect every listed animation action for the next export'
-
-    enabled: bpy.props.BoolProperty(default=True)
-
-    @classmethod
-    def description(cls, context, properties):
-        return 'Select every listed action for export' if properties.enabled else 'Deselect every listed action for export'
-
-    def execute(self, context):
-        for item in context.scene.arsenal_export.actions:
-            item.enabled = self.enabled
-        return {'FINISHED'}
 
 
 class ARSENAL_OT_ExportValidate(bpy.types.Operator):
@@ -973,8 +942,8 @@ def _report_static(operator, result):
 class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
     bl_idname = 'object.arsenal_export_all'
     bl_label = 'Export All'
-    bl_description = ('Export selected animations, meshes, CFGs, rendered PNGs and weapon/attachment text; '
-                      'copy the fresh Unreal import script path for ZoneKit; animation failures block script generation')
+    bl_description = ('Check and export all matching animations, meshes, weapon settings and inventory images. '
+                      'Copy the new ZoneKit import script path; fix any reported errors before continuing')
 
     @completion('Export')
     def execute(self, context):
@@ -982,52 +951,46 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
         parts = []
         warn = False
         written = []
+        context.window_manager.clipboard = ''
         try:
             _build_static_plan(context)
-            if any(item.enabled for item in export.actions):
-                result = _run_animation_export(context)
-                written += result[0]
-                summary, failed = _report_animation(self, context, result)
-                parts.append(summary)
-                warn = warn or failed
-                if failed:
-                    names = ', '.join(name for name, _message in result[1])
-                    details = '\n'.join(f'{name}: {message}' for name, message in result[1])
-                    export.summary = f'Export blocked: animation export failed for {names}.'
-                    context.window_manager.clipboard = ''
-                    raise RuntimeError(
-                        f'{export.summary} Fix the reported animation errors and export again. '
-                        'No new Unreal import script was generated. Do not run an older import script: '
-                        f'it may import stale FBXs left by a previous export.\n{details}')
-            else:
-                report(self, {'WARNING'}, 'No actions are ticked; exporting static meshes only.')
+            from . import weapon_cfg, export_check
+            cfg_info = weapon_cfg.build_context(context)
+            for problem in export_check.name_warnings(cfg_info):
+                report(self, {'WARNING'}, problem)
                 warn = True
+            result = _run_animation_export(context)
+            animation_written = list(result[0])
+            written += animation_written
+            summary, failed = _report_animation(self, context, result)
+            parts.append(summary)
+            if failed:
+                names = ', '.join(name for name, _message in result[1])
+                details = '\n'.join(f'{name}: {message}' for name, message in result[1])
+                raise RuntimeError(
+                    f'Animation export failed for {names}. Fix the reported animation errors and export again. '
+                    'No new Unreal import script was generated. Do not run an older import script: '
+                    f'it may import stale FBXs left by a previous export.\n{details}')
             result = _run_static_export(context)
             written += result[0]
             summary, skipped = _report_static(self, result)
             parts.append(summary)
             warn = warn or skipped
-            try:
-                from . import weapon_cfg
-                written_cfgs, cfg_info = weapon_cfg.export_cfg_files(self, context)
-                parts.append('the CFG files')
-                from . import export_check
-                problems = export_check.name_warnings(cfg_info) + export_check.path_warnings(
-                    cfg_info, written_cfgs, written + list(written_cfgs))
-                for problem in problems:
-                    report(self, {'WARNING'}, problem)
-                    print(f'[Arsenal export] CHECK: {problem}')
-                warn = warn or bool(problems)
-            except Exception as error:
-                report(self, {'WARNING'}, f'CFG files not written: {error}')
-                warn = True
+            written_cfgs, cfg_info = weapon_cfg.export_cfg_files(self, context)
+            parts.append('the CFG files')
+            problems = export_check.path_warnings(cfg_info, written_cfgs, written + list(written_cfgs))
+            for problem in problems:
+                report(self, {'WARNING'}, problem)
+                print(f'[Arsenal export] CHECK: {problem}')
+            warn = warn or bool(problems)
             from . import export_unreal
-            script_path, manifest = export_unreal.write_unreal_import(context)
+            script_path, manifest = export_unreal.write_unreal_import(context, animation_paths=animation_written)
             parts.append('the Unreal import script')
             if manifest['game_materials']:
                 print('[Arsenal export] Slots left to the game\'s own materials: ' + ', '.join(manifest['game_materials']))
             context.window_manager.clipboard = script_path
         except Exception as error:
+            export.summary = f'Export blocked: {error}'
             report(self, {'ERROR'}, str(error))
             return {'CANCELLED'}
         export.summary = 'Wrote ' + ' and '.join(parts) + '.'
@@ -1048,36 +1011,20 @@ class ARSENAL_PT_ExportPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         export = context.scene.arsenal_export
-        layout.prop(export, 'unreal_mount')
         layout.prop(export, 'output_folder')
-        layout.prop(export, 'static_category')
-        row = layout.row(align=True)
-        row.operator('object.arsenal_export_refresh', icon='FILE_REFRESH')
-        row.operator('object.arsenal_export_select', text='All').enabled = True
-        row.operator('object.arsenal_export_select', text='None').enabled = False
-        layout.template_list('ARSENAL_UL_ExportActions', '', export, 'actions', export, 'active_index', rows=6)
-        if 0 <= export.active_index < len(export.actions):
-            item = export.actions[export.active_index]
-            layout.prop(item, 'template')
-            layout.prop(item, 'folder')
+        layout.label(text='All matching animations are exported.')
         layout.label(text=export.summary)
         rig, _backup = find_export_rig(context)
         if rig and deformation_preview_issues(rig):
             layout.label(text='Viewport deformation needs repair', icon='ERROR')
             layout.operator('object.arsenal_repair_deformation_preview', icon='MOD_ARMATURE')
-        layout.operator('object.arsenal_export_validate', icon='CHECKMARK')
         layout.operator('object.arsenal_export_all', icon='EXPORT')
-        layout.separator()
-        layout.operator('object.arsenal_debug_report', icon='TEXT')
 
 
 CLASSES = (
     ARSENAL_OT_RepairDeformationPreview,
     ARSENAL_ExportAction,
     ARSENAL_ExportProps,
-    ARSENAL_UL_ExportActions,
-    ARSENAL_OT_ExportRefresh,
-    ARSENAL_OT_ExportSelect,
     ARSENAL_OT_ExportValidate,
     ARSENAL_OT_ExportAllRun,
     ARSENAL_PT_ExportPanel,

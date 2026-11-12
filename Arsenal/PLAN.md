@@ -8,7 +8,7 @@ One Blender 5.2.2+ add-on that lets a 3D artist, with minimal technical input, t
 2. **Simple editing** of weapon, mesh and animation data (Rigify rig, retargeting, controls).
 3. **Seamless re-export and packaging** (FBX, ZoneKit import script, CFG, localisation, mod assets).
 
-This repository is dedicated to the add-on, its resources, developer tools and documentation. The add-on lives in `Arsenal/stalker2_arsenal/`; install it by zipping that folder. Weapon projects, extracted template libraries, generated exports and packaged mods belong in separate working folders, not in this checkout. The former standalone Glock/custom-pistol assets have been removed; named mods below are historical test cases, not bundled examples.
+This repository is dedicated to the add-on, its resources, developer tools and documentation. The add-on lives in `Arsenal/stalker2_arsenal/`; install the prepared zip from GitHub Releases. Weapon projects, extracted template libraries, generated exports and packaged mods belong in separate working folders, not in this checkout. The former standalone Glock/custom-pistol assets have been removed; named mods below are historical test cases, not bundled examples.
 
 Legacy-only character tools and their resources have also been removed: Mixamo/DAZ presets, mannequin pose and reverse skeleton conversion (including the neck2 mapping/templates), rig reset/scale, weight-paint shortcuts and vertex placement. The STALKER importer still uses mapping-based Rigify conversion and metarig generation. Keep `mappings/uemannequin_rigify.json`, `animation_mappings/rigify_uemannequin.json` and the weapon shape library: these are live workflow dependencies, despite the inherited mannequin names. Generated STALKER mappings now live in Blender's `DATAFILES/stalker2_arsenal/mappings` user directory, not the addon; existing checkout copies were migrated there. Bundled references remain read-only.
 
@@ -35,7 +35,7 @@ ZoneKit Mod Editor         package (cook) the mod, then install/replace the pak 
 
 | Stage | State |
 |---|---|
-| Template selection (Pistol, SMG, Rifle, Shotgun, Sniper) and setup-script generation | Done. Verified offline for all five templates. |
+| Template selection and setup-script generation | 38 individual standard base-game firearms, using installed CFG donor asset/stat/upgrade definitions. Original five enum numbers preserved. Named/unique variants excluded. Only the pistol replacement workflow is tested end to end; other donors remain experimental. |
 | ZoneKit export of sequences, additive sequences, skeletal/static meshes, magazines, sockets, textures | Done; ran in ZoneKit for the pistol. Native socket reference frames and mod-owned writes have disposable ZoneKit coverage; cooked gameplay acceptance remains separate. |
 | ZoneKit mod copy + batch rename | Done. Uses `duplicate_asset` directly; revision-control checkout does not create a mod copy and caused unnecessary warning dialogs. |
 | Blender import (pairing, LOD1/collision skip, smoothing, vertex-group attachments, DirectX normals, RMA split) | Done; materials tested with synthetic data only. |
@@ -63,7 +63,56 @@ and catalogue were not supplied; all other cases pass. Two manifest-export test 
 updated to supply the rig/context data required by world magazine sockets and distribution.
 Python syntax, JSON catalogues, local documentation links/anchors, Git LFS integrity and
 whitespace checks pass. This does not revalidate native ZoneKit persistence, cooking or gameplay.
-See the README's developer-validation section for runtimes and external fixture requirements.
+See the [developer validation guide](doc/arsenal.md#developer-validation) for runtimes and external fixture requirements.
+
+### Artist workflow and release packaging
+
+Set Up has one Mod Name and no Dry Run or Export Additive Idles toggles. Additive idle
+companions remain rebuilt automatically. Import New Animations is no longer a registered
+operator; its missing-clip helper remains development-only.
+
+Export All automatically discovers the rig's actions, requires original donor action names,
+infers category/folders and runs checks. The action-selection list, per-action Template/Folder,
+Refresh/All/None, duplicate Mod Name, Validate and Debug Output buttons are removed from the
+normal panel. Internal validation/debug operators remain developer diagnostics. Animation and
+CFG failures block fresh script generation; the manifest lists only freshly written animations.
+
+The weapon catalogue covers all 38 standard firearm definitions in the installed data, including
+machine gun and launcher. Donor animation, skeletal and static-part names are distinct metadata
+(GP37 uses `gp37` animations/skeleton but `gp3` static parts). The original five template IDs and
+323 existing upgrade-effect enum numbers are preserved for saved blends. The expanded upgrade
+catalogue includes handguard sections. An unsupported NPC rank still fails explicitly when the
+donor has no condition/ammo defaults; no unrelated weapon is substituted.
+
+The release builder writes a deterministic, ready-to-install Python add-on zip and SHA-256
+checksum outside the checkout, with both real LFS Blender libraries and legal notices.
+Matching version tags trigger a GitHub Actions build and **draft** GitHub Release; publication
+remains an explicit maintainer action. See [building a release](doc/arsenal.md#building-a-release).
+
+Release validation: 187 plain-Python tests pass. Eight focused Blender 5.2.2 suites run 136
+tests, with one optional external-donor socket case skipped and no failures. The actual zip
+installs in an isolated Blender profile, enables/disables twice and exposes all 38 templates
+and readable Blender libraries. Syntax, JSON, local documentation links/anchors, original
+upgrade-effect enum IDs, Git LFS and whitespace checks pass. GitHub Actions publication has
+not run locally; native ZoneKit import, cooking and non-pistol gameplay remain unverified.
+
+### Known non-pistol import issues
+
+Only replacing a pistol has been tested end to end. Testing more weapon types is planned.
+The following user-reported issues are tracked for follow-up, **not fixed by the UI/release work**:
+
+- **Shotgun**: attachments import in incorrect positions; the pump mesh is missing.
+  Aim-to-idle is split into character `idle_aim_to_idle` and weapon `aim_to_idle` actions.
+  Custom bone shapes are chosen incorrectly; the user plans to add more shapes.
+- **Rifle**: attachments are correctly placed, but custom bone shapes are chosen incorrectly
+  (more shapes to be added by the user).
+  - Hands animate but weapon does not: `Attach-RuColimScope02_01`,
+    `Idle_IdleToOffsetAim_01`, `Idle_OffsetAim-Idle_01`, `Idle_OffsetAimToIdle_01`,
+    `reload_renewal_GrenLauncher`, `reload_renewal_tactical_GrenLauncher`,
+    `shoot_aim_colim_scope_end`.
+  - Weapon animates but hands do not: `mag_paired_detach_shift`, `ReloadRenewal_GL`,
+    `ReloadRenewal_tactical_GL`, `shoot_GrenLauncher`, `shoot_GrenLauncher_end`.
+- **Sniper**: custom bone shapes are chosen incorrectly; the user plans to add more shapes.
 
 ### Automatic custom attachment stock (2026-11-12)
 
@@ -305,7 +354,7 @@ fresh export/import/package/in-game verification remain required.
 | D23 | Before exporting each action, every pose channel that action does not key is reset to rest, and the pose is restored afterwards. An unkeyed `IK_FK` switch counts as FK (1.0), the mode retargeted clips are baked in (amended by D26; a muted curve still counts as keyed). | Blender leaves unkeyed controls where the previous action left them, so a reload-only finger edit leaked into idle, aim and every later clip. |
 | D24 | `DEF-upper_arm.L/R` copies `ORG-upper_arm` (full twist) instead of Rigify's twist-free `upper_arm_tweak`. Applied by conversion and by **Repair Deformation Preview**; export refuses an unrepaired rig. | The game's `jnt_*_arm` carries the arm's twist; ours lacked it, which was invisible alone but bent local-space blends with vanilla clips. Locking the export to the donor's twist instead (tried first) moved edited-reload upper-arm skin up to 11 cm from the viewport. With the rig change, viewport, export and donor agree. |
 | D25 | Setup exports every additive sequence except the `*_add` idle companions, which the import script rebuilds (`export_additive_overlays`). The Blender importer also reads `AS_FP_Player_<w>_*` (offset aim) and pairs a one-sided clip with the other side's `idle` as a stand-in; export writes only the real half (status "weapon only" / "character only") and keeps the template's filename with the weapon token swapped. Overlays are exported like every other clip, edited or not. | Supersedes "export only edited overlays" in the plan below: reload, melee, `break_bullet` and the aim transitions are overlays (local and mesh space) and have always been exported unedited, game-confirmed. Fire, equip and offset aim follow the same path, so one rule covers all. `idle_boltlock` / `break_bullet_idle` place the weapon object exactly like the weapon idle, so the player idle is a valid stand-in. |
-| D26 | **Import New Animations** (Import panel) imports and retargets only the clips a converted blend does not have yet; existing actions are untouched. The importer reveals the master armature (kept in a hidden collection after conversion) while it bakes. The retarget rests every control on a fresh output action before baking and keys each limb's `IK_FK` to FK. | A hidden armature is not evaluated, so the visual-keyed bake recorded the idle instead of the clip (weapon `idle_boltlock` came out equal to idle). An unkeyed control posed by another clip was baked in as compensation (a posed `tweak_spine.003` changed the fresh `idle` curves by up to 5.8), and an unkeyed IK switch left at IK by an edited reload would play the new clip's arm through rest IK controls. |
+| D26 | The development-only missing-clip import helper imports and retargets clips a converted blend does not have yet; its former Import New Animations panel button/operator has been removed. Existing actions are untouched. The importer reveals the master armature (kept in a hidden collection after conversion) while it bakes. The retarget rests every control on a fresh output action before baking and keys each limb's `IK_FK` to FK. | A hidden armature is not evaluated, so the visual-keyed bake recorded the idle instead of the clip (weapon `idle_boltlock` came out equal to idle). An unkeyed control posed by another clip was baked in as compensation (a posed `tweak_spine.003` changed the fresh `idle` curves by up to 5.8), and an unkeyed IK switch left at IK by an edited reload would play the new clip's arm through rest IK controls. |
 | D27 | The import script (`sync_collection_sids`) replaces donor magazine SID keys in `reloading`, `one_hand_reloading` and `attaching_by_sid`, and donor silencer/laser SID keys in `attaching_by_sid`, using manifest magazines/attachments. It moves the full struct value to the configured SID and removes the donor key. An existing target value is preserved; obsolete donor duplicates from earlier imports are removed. Explicit nested editor properties and `export_text` readback verify the exact keys and values before saving; readback/save failures restore the original. It never uses `import_text`. | E9Mod's donor magazine and silencer SIDs caused stuck reload/attach states. The initial insert-only approach left obsolete keys behind; the user reported these duplicate entries did not work properly. Replacement, rather than adding aliases, is required. `dir()` in ZoneKit does not list the internal map fields. Silencer detach remains unanimated, matching the base game. |
 
 ### Attachment notify SID follow-up (D27)
@@ -967,14 +1016,14 @@ Ordered by value to an artist. "Needs test" means it cannot be validated without
 5. **Silencer and laser attachments**: mesh import/placement, custom definitions and socket-marker
    authoring are implemented. Verify cooked placement, attach/detach behaviour and effects in game;
    moving markers does not automatically reposition Blender attachment-preview geometry.
-6. **Pre-flight validation panel**: single "Check Everything" button covering skeleton/bone names, action coverage per montage, attachment list, naming rules, CFG sanity, and the montage status; output as a plain-language checklist.
+6. **Pre-flight checks**: current checks run automatically in Export All. Expand skeleton/bone, montage-action coverage and attachment checks as needed without adding another required workflow button.
 7. **Weapon control editor** (create controls from selected weapon bones) and **arbitrary cameras** from the previous plan.
-8. **Regression matrix and release**: run the animation matrix on all five templates (only the pistol has been tested in game); produce the release zip only when the user decides (zips are git-ignored).
+8. **Regression matrix and release**: expand real-donor animation/gameplay testing beyond the pistol to the individual weapon templates. Installable release packaging is implemented; zips stay outside the checkout and publication uses reviewed GitHub Releases.
 9. **Completion notifications (implemented)**: Blender import, retarget and Export All show one completion popup per operation, including warnings or failure; nested import steps do not create extra popups. Generated ZoneKit setup/export and import scripts show an OK dialog using `EditorDialog`, with success/warning/error categories. Detailed reports and exceptions remain available. Background Blender runs log instead of opening a popup; Unreal's unattended mode handles dialogs without waiting. ZoneKit dialogs still need an interactive editor check.
 
 ## Acceptance criteria
 
 - An artist can go from "choose template and name" to a packaged, working weapon following only the panel instructions, with no manual file renaming.
 - No step crashes ZoneKit; every ZoneKit script is idempotent and reports what it did and what remains manual.
-- Blender-side tests pass headless on Blender 5.2.2 for all five templates.
+- Blender-side tests pass headless on Blender 5.2.2; expanded template metadata/CFG checks do not replace real-donor animation and gameplay acceptance.
 - Documentation in `Arsenal/doc/` matches the panels.

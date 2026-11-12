@@ -1,9 +1,9 @@
-"""Check Import New Animations on a converted blend, in Blender.
+"""Check the development-only missing-clip import helper on a converted blend.
 
 blender --background --factory-startup --python-exit-code 1 --python test_new_animations.py -- <blend> [library] [clip]
 
 The blend must contain an Arsenal rig and backup. <clip> (default idle) must be an unedited clip the blend
-already has: it is renamed away so the operator imports it again, and the fresh retarget has to reproduce the
+already has: it is renamed away so the helper imports it again, and the fresh retarget has to reproduce the
 original action. Before running, the rig is left with posed unkeyed controls and the left arm switched to IK, as
 editing another clip leaves it; none of it may leak into the new actions. Nothing is saved.
 """
@@ -85,7 +85,8 @@ def main():
             curve.mute = True
     rig.pose.bones['upper_arm_parent.L']['IK_FK'] = 0.0
 
-    assert bpy.ops.stalker2.import_new_animations() == {'FINISHED'}
+    _names, failures = importer.import_new_animations(context, rig, backup, library, settings.weapon_name)
+    assert not failures, failures
     after = {action.name: action for action in bpy.data.actions}
     added = sorted(set(after) - set(before))
     assert clip in added, f'{clip} was not imported again'
@@ -138,7 +139,8 @@ def main():
             assert error < 0.01, f'{name}: weapon-only export differs from the donor by {error}'
             print(f'{name}: weapon-only export matches the donor ({error:.2e})')
 
-    assert bpy.ops.stalker2.import_new_animations() == {'FINISHED'}
+    _names, failures = importer.import_new_animations(context, rig, backup, library, settings.weapon_name)
+    assert not failures, failures
     assert len(bpy.data.actions) == len(after), 'Second run imported again'
     print(f'PASS: imported {len(added)} new clips: {", ".join(added)}')
 

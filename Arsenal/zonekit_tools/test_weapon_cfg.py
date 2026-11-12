@@ -465,7 +465,7 @@ class FireModeTests(unittest.TestCase):
         self.assertIn('WeaponType-APB.WeaponType-APB', text)
         self.assertNotIn('SFX_UDP_Oneshot', text)
         self.assertIn('SFX_WeaponUnload_Auto_UDP', text)
-        self.assertIn('refkey=TemplatePistol', text)
+        self.assertIn('refkey=GunUDP_HG', text)
         self.assertIn('FireInterval = 0.08', text)
         self.assertEqual(self.cfg.setup_template, 'TemplatePistol')
         self.assertTrue(weapon_cfg.has_automatic_audio(self.cfg))
@@ -898,11 +898,27 @@ class FireModeTests(unittest.TestCase):
                 files = weapon_cfg.cfg_files(info)
                 distribution = weapon_cfg.weapon_distribution
                 self.assertTrue(any(path.endswith('Distribution.cfg') for path in files))
+                preset = weapon_cfg.PRESETS[template]
+                general = weapon_cfg.general_setup(info)
+                self.assertIn(f'refkey={preset["general_ref"]}', general)
+                self.assertIn(f'refkey={preset["settings_ref"]}', weapon_cfg.player_settings(info))
                 text = distribution.distribution_compose.compose([distribution.payload(info)])
-                self.assertIn('ItemPrototypeSID = GunTest', text)
+                has_stock = any(row.enabled for row in self.cfg.traders) or any(
+                    role.enabled and role.percent > 0 for row in self.cfg.npc_factions for role in row.roles)
+                self.assertEqual('ItemPrototypeSID = GunTest' in text, has_stock)
                 for sid, row in ((row.name, row) for row in self.cfg.traders):
                     self.assertEqual(row.enabled, weapon_cfg.weapon_distribution.trader_defaults(
                         template, sid)['enabled'])
+
+    def test_special_donors_keep_their_existing_ammo_types(self):
+        for template, expected in (('TemplateArev', ['Default', 'ArmorPiercing', 'Supersonic', 'Expanding']),
+                                   ('TemplateGauss', ['Default']), ('TemplateRPG7', ['Default'])):
+            with self.subTest(template=template), patch('stalker2_arsenal.setup_panel.apply_template_defaults'):
+                self.cfg.setup_template = template
+                text = weapon_cfg.general_setup(self.info)
+                self.assertIn('AmmoTypeProjectiles : struct.begin {bskipref}', text)
+                self.assertEqual(
+                    [line.split('::')[1] for line in text.splitlines() if 'AmmoType = ' in line], expected)
 
     def test_template_change_resets_all_distribution_overrides(self):
         self.cfg.trader_chance = 12

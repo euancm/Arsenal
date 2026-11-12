@@ -1,8 +1,10 @@
 """Weapon stat presets copied from base game weapons (Content/GameLite/GameData).
 
-Pistol: GunUDP_HG, SMG: GunViper_PP, Rifle: GunAK74_ST, Shotgun: GunM860_SG,
-Sniper: GunThreeLine_SP (general setup GunThreeLine_SP_GS).
+The original five identifiers and defaults remain compatible with saved blends.
+Additional donors and asset metadata come from the structured weapon catalogue.
 """
+import json
+from pathlib import Path
 
 PRESETS = {'TemplatePistol': {'base_weapon': 'GunUDP_HG',
                     'cost': 1425.0,
@@ -336,3 +338,14 @@ PRESETS = {'TemplatePistol': {'base_weapon': 'GunUDP_HG',
                                  'GunThreeLine_Upgrade_Stock_1_1',
                                  'GunThreeLine_Upgrade_Stock_1_2',
                                  'GunThreeLine_Upgrade_Attachment_Offset_Stock']}}
+
+with (Path(__file__).parent / 'resources' / 'weapon_templates.json').open(encoding='utf-8') as _handle:
+    TEMPLATES = json.load(_handle)
+
+for _key, _preset in TEMPLATES.items():
+    if _key in PRESETS:
+        for _field in ('label', 'enum_id', 'category', 'animation', 'mesh', 'part_tokens', 'ammo_types', 'attachments',
+                       'general_ref', 'settings_ref', 'slot'):
+            PRESETS[_key][_field] = _preset[_field]
+    else:
+        PRESETS[_key] = dict(_preset, fire_modes=set(_preset['fire_modes']))

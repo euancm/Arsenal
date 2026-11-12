@@ -1,0 +1,40 @@
+name: Build Blender release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test release and asset-free workflows
+        run: >-
+          python -B -m unittest
+          Arsenal.zonekit_tools.test_build_release
+          Arsenal.zonekit_tools.test_unreal_setup
+          Arsenal.zonekit_tools.test_animation_import
+          Arsenal.zonekit_tools.test_completion_notifications
+          Arsenal.zonekit_tools.test_weapon_distribution
+          Arsenal.zonekit_tools.test_distribution_compose
+          Arsenal.zonekit_tools.test_weapon_sockets
+          Arsenal.zonekit_tools.test_world_mesh_sockets
+      - name: Build installable zip with real LFS resources
+        run: python -B Arsenal/zonekit_tools/build_release.py "$RUNNER_TEMP/arsenal-release" --tag "$GITHUB_REF_NAME"
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/arsenal-release/*.zip "$RUNNER_TEMP"/arsenal-release/*.sha256 \
+            --verify-tag --draft --title "STALKER 2 Arsenal $GITHUB_REF_NAME" --generate-notes \
+            --notes "Install the stalker2_arsenal zip in Blender, not the Source code archives. Only the pistol replacement workflow has been tested end to end; other weapon workflows remain experimental."

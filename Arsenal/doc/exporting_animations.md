@@ -5,12 +5,15 @@ The **5. Export** panel turns the actions on the Rigify rig back into STALKER 2 
 ## Steps
 
 1. Select the generated rig (the one with the hidden retarget backup).
-2. Enter the weapon's English **Name** (4. Create Your Custom Weapon > Name & Description); the weapon name used in file and folder names is made from it (lowercase, letters and digits only, e.g. "Cool Pistol" becomes `coolpistol`). In the Export panel set the **Mod Name** (the name of your mod in ZoneKit) and choose an **Output Folder**. The library folder and the original weapon name are taken from the import panel, so keep them set.
-3. Press **Refresh**, then tick the actions to export (**All** / **None** help). New actions are listed too.
-4. Optional, for the highlighted action:
-   - **Template**: the original animation to copy the skeleton and unmapped bones from. Empty means the animation with the same name, or `idle` for a new action.
-   - **Folder**: the category folder below the weapon folder, for example `Reload/TwoHands`. Empty copies the template folder.
-5. **Validate** checks everything and prints the files it would write (see the system console). **Export All** writes the animations, the static meshes (see below), the CFG files and the import script.
+2. Enter the weapon's English **Name** (4. Create Your Custom Weapon > Name & Description); file names use its lowercase letters and digits, e.g. "Cool Pistol" becomes `coolpistol`. Enter **Mod Name** in **1. Set Up**. The working folder supplies the default **Output Folder**, which can still be changed in Export.
+3. Keep each edited or replacement action's original name. Every editable rig action must match a donor animation; unknown names, duplicate destinations and ambiguous donor files block export. New weapon features are outside this workflow.
+4. Press **Export All**. Checks run automatically; there is no Refresh, All/None list, Template/Folder override or separate Validate step. Old saved action selections/overrides are ignored.
+
+The template supplies the weapon category and original animation folders. All matching rig
+actions export, even unedited ones. An animation absent from the blend stays as the setup copied
+it in ZoneKit. At least one retargeted rig action is required. The import manifest includes only
+animation files written by this successful export, not stale FBXs left in the output folder.
+CFG or animation failures block generation of the new import script and clear the clipboard.
 
 **Export All** shows one completion popup. Its title distinguishes success, warnings and failure;
 details remain in Blender's report log and system console. Imports and retargeting use the same
@@ -119,7 +122,7 @@ check those keys too.
 Static FBXs are written to `<output>/_Stalker_2/weapons/<Weapon Category>/p_<weapon>/AnimMesh/`.
 The main mesh name supplies the weapon namespace (falling back to the custom weapon name
 when it is still named after the donor); mapped joints and attachment object names supply
-the part names. The weapon category (default `pistol`) is a field in the panel.
+the part names. The weapon category is inferred from the selected template, not entered manually.
 
 - Every mesh bound to the weapon rig (parented to it, or with an Armature modifier pointing at it) is exported.
 - The **main weapon mesh** is the one weighted to the most weapon bones. Its object name is the weapon name (`e9`), and it is split per bone: each face goes to the bone with the highest summed vertex weight, and the file is `SM_wpn_e9_SM_<joint>` (for example `Weapon` → `jnt_offset` → `SM_wpn_e9_SM_offset`). Bones with no faces are skipped with a warning.
@@ -128,7 +131,7 @@ the part names. The weapon category (default `pistol`) is a field in the panel.
 - Attachment names drop an existing `SM_` prefix and Blender's `.001` suffix, and replace a
   standalone donor token with the weapon namespace. For example, `SM_pt_udp_mag_full.001`
   becomes `SM_wpn_e9_SM_pt_e9_mag_full`, not a doubled-prefix or donor-named asset.
-- Object names must be unique after naming; collisions are reported by Validate.
+- Object names must be unique after naming; collisions block Export All.
 - Meshes are taken from the rest pose, so the current pose does not matter.
 - Each object's origin is its bone head, with vertices stored relative to it (translation only, no rotation).
 
@@ -224,7 +227,7 @@ reference (for most, the mod's exported idle), so the game shows the pose you se
 weapon-only clips (`idle_boltlock`, `break_bullet_idle`) and the character-only offset aim clips write
 just their own half.
 
-Clips you untick in the Export panel stay as the setup copied them, as described next.
+Clips absent from the blend stay as the setup copied them, as described next.
 
 ### Copied overlays left unexported
 
@@ -310,7 +313,10 @@ Files mirror the library: `<output>/_STALKER2/Animations/Player/AnimSequences/pt
 
 ## Debug output
 
-The **Debug Output** button at the bottom of the Export panel writes a plain-text summary of every setting (export, importer and weapon CFG), the rigs and meshes in the scene, the static mesh plan, the derived weapon data and the last import manifest. It goes to the clipboard, the system console and a text block called "Arsenal Debug". Paste it when reporting a problem.
+Debug output is a developer diagnostic, not an Export-panel button. In Blender's Python Console,
+run `bpy.ops.object.arsenal_debug_report()` to write a plain-text summary of settings,
+rigs/meshes, static plans, derived weapon data and the last import manifest. It goes to the
+clipboard, system console and an "Arsenal Debug" text block.
 
 ## How it works
 

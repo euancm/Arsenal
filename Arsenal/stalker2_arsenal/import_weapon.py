@@ -116,7 +116,12 @@ def find_donor_files(root, weapon_name):
     if not root or not os.path.isdir(root):
         raise FileNotFoundError('Choose the Exported Files folder (containing _STALKER2 and _Stalker_2) first')
     skeleton_name = f'sk_{name}.fbx'.casefold()
-    part_pattern = re.compile(rf'sm_(?!amm_)(?:wpn_)?(?:[a-z0-9]+_)*?{re.escape(name)}_sm_(.+)\.fbx', re.IGNORECASE)
+    from .weapon_presets import PRESETS
+    tokens = next((preset['part_tokens'] for preset in PRESETS.values()
+                   if preset['mesh'].casefold() == name.casefold()), [name])
+    part_names = '|'.join(re.escape(token) for token in {name, *tokens})
+    part_pattern = re.compile(
+        rf'sm_(?!amm_)(?:wpn_)?(?:[a-z0-9]+_)*?(?:{part_names})_sm_(.+)\.fbx', re.IGNORECASE)
 
     skeletons = list(_walk_find(root, lambda _d, f: f.casefold() == skeleton_name))
     if not skeletons:

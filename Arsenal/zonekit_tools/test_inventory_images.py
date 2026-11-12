@@ -611,6 +611,11 @@ class InventoryTests(unittest.TestCase):
             self.source.arsenal_export.output_folder = folder
             static = os.path.join(folder, 'SM_Test.fbx')
             Path(static).touch()
+            animations = Path(folder, '_STALKER2', 'Animations', 'Weapons', 'pt', 'test', 'AnimSequences', 'fp')
+            animations.mkdir(parents=True)
+            fresh = animations / 'AS_test_fp_idle.fbx'
+            fresh.touch()
+            (animations / 'AS_test_fp_stale_reload.fbx').touch()
             world_sockets = {'version': 1, 'units': 'cm', 'mesh': '/TestMod/SM_test',
                              'entries': [{'name': 'jnt_magazine', 'location': [0, 0, -3],
                                           'rotation': [0, 0, 0], 'scale': [1, 1, 1]}]}
@@ -623,9 +628,13 @@ class InventoryTests(unittest.TestCase):
                     patch.object(export_unreal.static_mesh, 'classify_meshes', return_value=(self.body, [], [])), \
                     patch.object(export_unreal.export_skeleton, 'plan_skeleton', side_effect=ValueError('no donor')), \
                     patch.object(weapon_cfg, 'build_context', return_value=info):
-                export_unreal.write_unreal_import(bpy.context)
+                export_unreal.write_unreal_import(bpy.context, animation_paths=[str(fresh)])
+                with self.assertRaisesRegex(RuntimeError, 'Fresh animation files are missing'):
+                    export_unreal.write_unreal_import(bpy.context, animation_paths=[str(fresh) + '.missing'])
             manifest = json.loads(Path(folder, 'import_test.json').read_text(encoding='utf-8'))
             self.assertEqual(len(manifest['ui_images']), 2)
+            self.assertEqual(manifest['animations']['player'], [])
+            self.assertEqual(manifest['animations']['weapon'], [fresh.relative_to(folder).as_posix()])
             self.assertEqual(manifest['world_mesh_sockets'], world_sockets)
             self.assertEqual(manifest['magazines'], [
                 {'sid': 'SharedMagazine30', 'name': 'Extended', 'preinstalled': False}])
