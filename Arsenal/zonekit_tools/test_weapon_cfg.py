@@ -75,6 +75,8 @@ class FireModeTests(unittest.TestCase):
         for cls_type in (weapon_cfg.ARSENAL_CfgText, weapon_cfg.ARSENAL_CfgMagazine,
                          weapon_cfg.ARSENAL_CfgAttachment,
                          weapon_cfg.ARSENAL_CfgUpgradeEffect, weapon_cfg.ARSENAL_CfgUpgrade,
+                         weapon_cfg.ARSENAL_CfgTrader, weapon_cfg.ARSENAL_CfgDistributionWeight,
+                         weapon_cfg.ARSENAL_CfgFaction,
                          weapon_cfg.ARSENAL_WeaponCfg):
             bpy.utils.register_class(cls_type)
         bpy.types.Scene.test_arsenal_cfg = bpy.props.PointerProperty(type=weapon_cfg.ARSENAL_WeaponCfg)
@@ -82,7 +84,9 @@ class FireModeTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         del bpy.types.Scene.test_arsenal_cfg
-        for cls_type in (weapon_cfg.ARSENAL_WeaponCfg, weapon_cfg.ARSENAL_CfgUpgrade,
+        for cls_type in (weapon_cfg.ARSENAL_WeaponCfg, weapon_cfg.ARSENAL_CfgFaction,
+                         weapon_cfg.ARSENAL_CfgDistributionWeight, weapon_cfg.ARSENAL_CfgTrader,
+                         weapon_cfg.ARSENAL_CfgUpgrade,
                          weapon_cfg.ARSENAL_CfgUpgradeEffect, weapon_cfg.ARSENAL_CfgAttachment,
                          weapon_cfg.ARSENAL_CfgMagazine, weapon_cfg.ARSENAL_CfgText):
             bpy.utils.unregister_class(cls_type)
@@ -91,7 +95,8 @@ class FireModeTests(unittest.TestCase):
         self.scene = bpy.data.scenes.new('FireModeTest')
         self.addCleanup(bpy.data.scenes.remove, self.scene)
         self.cfg = self.scene.test_arsenal_cfg
-        self.info = {'cfg': self.cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'parts': [], 'magazines': []}
+        self.info = {'cfg': self.cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'parts': [],
+                     'magazines': [], 'attachments': []}
 
     def test_attachment_localization_uses_own_sids_and_language_settings(self):
         magazine = self.cfg.magazines.add()
@@ -143,6 +148,252 @@ class FireModeTests(unittest.TestCase):
             weapon_cfg.ARSENAL_PT_CfgAmmo.draw(panel, context)
             self.assertEqual(draw.call_args.args[1], magazine)
 
+    def test_weapon_and_magazine_panels_show_exact_export_sids_and_copy_values(self):
+        item = self.cfg.magazines.add()
+        item.name = 'Extended'
+        export = SimpleNamespace(unreal_mount='TestMod')
+        scene = SimpleNamespace(arsenal_cfg=self.cfg, arsenal_export=export,
+                                arsenal_inventory=SimpleNamespace(source_scene=object()))
+        context = SimpleNamespace(scene=scene)
+        for name, template, expected_weapon, expected_magazine in (
+                ('E9', 'TemplatePistol', 'Gune9_HG', 'Gune9_MagExtended'),
+                ('E18 Custom', 'TemplateRifle', 'Gune18custom_ST', 'Gune18custom_MagExtended')):
+            with self.subTest(name=name):
+                self.cfg.text_language = 'en'
+                self.cfg.text_name = name
+                with patch('stalker2_arsenal.setup_panel.apply_template_defaults'):
+                    self.cfg.setup_template = template
+                weapon = SimpleNamespace(layout=Mock(), props=Mock())
+                magazine = SimpleNamespace(layout=Mock(), props=Mock())
+                with patch('stalker2_arsenal.inventory_images.draw_images'):
+                    weapon_cfg.ARSENAL_PT_CfgIdentity.draw(weapon, context)
+                    weapon_cfg.ARSENAL_PT_CfgAmmo.draw(magazine, context)
+                weapon_row = weapon.layout.box.return_value.row.return_value
+                magazine_row = magazine.layout.row.return_value
+                weapon_row.label.assert_called_with(text=f'Weapon SID: {expected_weapon}')
+                magazine_row.label.assert_called_with(text=f'Magazine SID: {expected_magazine}')
+                self.assertEqual(weapon_row.operator.return_value.sid, expected_weapon)
+                self.assertEqual(magazine_row.operator.return_value.sid, expected_magazine)
+                self.assertEqual(weapon_cfg.weapon_names(scene, export, self.cfg)[1], expected_weapon)
+                self.assertEqual(weapon_cfg.magazine_sid(
+                    {'weapon_id': weapon_cfg.animation_export.weapon_name(scene)},
+                    {'name': item.name}), expected_magazine)
+        item.name = 'Increased'
+        magazine = SimpleNamespace(layout=Mock(), props=Mock())
+        with patch('stalker2_arsenal.inventory_images.draw_images'):
+            weapon_cfg.ARSENAL_PT_CfgAmmo.draw(magazine, context)
+        magazine.layout.row.return_value.label.assert_called_with(
+            text='Magazine SID: Gune18custom_MagIncreased')
+        item.use_existing = True
+        item.existing_sid = ' SharedMagazine30 '
+        self.cfg.text_name = ''
+        magazine = SimpleNamespace(layout=Mock(), props=Mock())
+        with patch('stalker2_arsenal.inventory_images.draw_images'):
+            weapon_cfg.ARSENAL_PT_CfgAmmo.draw(magazine, context)
+        magazine.layout.row.return_value.label.assert_called_with(text='Magazine SID: SharedMagazine30')
+        self.assertEqual(magazine.layout.row.return_value.operator.return_value.sid, 'SharedMagazine30')
+
+    def test_magazine_sid_is_not_offered_until_required_names_are_valid(self):
+        item = self.cfg.magazines.add()
+        context = SimpleNamespace(scene=SimpleNamespace(arsenal_cfg=self.cfg))
+        for name, existing, sid in (('', False, ''), ('E9', True, ''),
+                                    ('E9', True, 'Invalid SID')):
+            self.cfg.text_name = name
+            item.use_existing, item.existing_sid = existing, sid
+            panel = SimpleNamespace(layout=Mock(), props=Mock())
+            with patch('stalker2_arsenal.inventory_images.draw_images'), \
+                    patch.object(weapon_cfg, 'draw_item_sid') as draw:
+                weapon_cfg.ARSENAL_PT_CfgAmmo.draw(panel, context)
+            draw.assert_not_called()
+            self.assertTrue(any(call.kwargs.get('icon') == 'ERROR'
+                                for call in panel.layout.label.call_args_list))
+
+    def test_copy_sid_copies_exact_value_and_rejects_invalid_values(self):
+        manager = SimpleNamespace(clipboard='unchanged')
+        context = SimpleNamespace(window_manager=manager)
+        operator = SimpleNamespace(sid='Gune9_HG', report=Mock())
+        self.assertEqual(weapon_cfg.ARSENAL_OT_CfgCopySID.execute(operator, context), {'FINISHED'})
+        self.assertEqual(manager.clipboard, 'Gune9_HG')
+        for invalid in ('', 'Invalid SID', 'Bad;SID'):
+            operator.sid = invalid
+            self.assertEqual(weapon_cfg.ARSENAL_OT_CfgCopySID.execute(operator, context), {'CANCELLED'})
+            self.assertEqual(manager.clipboard, 'Gune9_HG')
+            self.assertEqual(operator.report.call_args.args[0], {'ERROR'})
+
+    def test_existing_magazine_hides_definition_controls_and_keeps_settings(self):
+        item = self.cfg.magazines.add()
+        item.use_existing = True
+        item.extra_weapon_sids = 'GunOther'
+        item.preinstalled = False
+        item.text_name = 'Saved text'
+        panel = SimpleNamespace(layout=Mock(), props=Mock())
+        context = SimpleNamespace(scene=SimpleNamespace(arsenal_cfg=self.cfg))
+        with patch.object(weapon_cfg, 'draw_localization') as text, \
+                patch('stalker2_arsenal.inventory_images.draw_images') as images:
+            weapon_cfg.ARSENAL_PT_CfgAmmo.draw(panel, context)
+        text.assert_not_called()
+        images.assert_not_called()
+        shown = {call.args[1] for call in panel.layout.column.return_value.prop.call_args_list}
+        self.assertEqual(shown, {'name', 'use_existing', 'existing_sid', 'socket', 'preinstalled',
+                                 'tactical_reload', 'full_reload'})
+        item.use_existing = False
+        self.assertEqual(item.text_name, 'Saved text')
+        self.assertEqual(item.capacity, 15)
+        self.assertEqual(item.extra_weapon_sids, 'GunOther')
+        panel.layout.reset_mock()
+        with patch.object(weapon_cfg, 'draw_localization'), \
+                patch('stalker2_arsenal.inventory_images.draw_images'):
+            weapon_cfg.ARSENAL_PT_CfgAmmo.draw(panel, context)
+        shown = {call.args[1] for call in panel.layout.column.return_value.prop.call_args_list}
+        self.assertIn('extra_weapon_sids', shown)
+
+    def test_owned_magazine_exports_extra_weapon_sids_once_in_order(self):
+        mesh = bpy.data.objects.new('Shared magazine', bpy.data.meshes.new('Shared magazine'))
+        self.addCleanup(bpy.data.meshes.remove, mesh.data)
+        self.addCleanup(bpy.data.objects.remove, mesh)
+        item = self.cfg.magazines.add()
+        item.full_object = item.empty_object = mesh
+        item.extra_weapon_sids = ' GunOther, GunThird, GunOther, GunTest, , '
+        for preinstalled in (True, False):
+            with self.subTest(preinstalled=preinstalled):
+                item.preinstalled = preinstalled
+                magazines = weapon_cfg.collect_magazines(self.cfg, [])
+                self.assertEqual(magazines[0]['extra_weapon_sids'], ['GunOther', 'GunThird', 'GunTest'])
+                info = dict(self.info, magazines=magazines)
+                text = weapon_cfg.attach_prototypes(info)
+                self.assertIn(
+                    'FittingWeaponsSIDs : struct.begin\n'
+                    '      [0] = GunTest\n'
+                    '      [1] = GunOther\n'
+                    '      [2] = GunThird\n'
+                    '   struct.end', text)
+                self.assertEqual(text.count('= GunTest\n'), 1)
+                self.assertEqual(text, weapon_cfg.attach_prototypes(info))
+        item.extra_weapon_sids = ' , '
+        magazines = weapon_cfg.collect_magazines(self.cfg, [])
+        self.assertEqual(magazines[0]['extra_weapon_sids'], [])
+        info = dict(self.info, magazines=magazines)
+        self.assertIn('[0] = GunTest', weapon_cfg.attach_prototypes(info))
+        magazines[0]['preinstalled'] = True
+        self.assertNotIn('FittingWeaponsSIDs', weapon_cfg.attach_prototypes(info))
+
+    def test_extra_weapon_sids_are_validated_only_for_owned_magazines(self):
+        mesh = bpy.data.objects.new('Validated magazine', bpy.data.meshes.new('Validated magazine'))
+        self.addCleanup(bpy.data.meshes.remove, mesh.data)
+        self.addCleanup(bpy.data.objects.remove, mesh)
+        item = self.cfg.magazines.add()
+        item.full_object = item.empty_object = mesh
+        for invalid in ('GunOther GunThird', '/Game/GunOther', 'GunOther;GunThird',
+                        'GunOther\nstruct.end', 'GunOther, Bad-ID'):
+            with self.subTest(invalid=invalid):
+                item.extra_weapon_sids = invalid
+                with self.assertRaisesRegex(RuntimeError, 'invalid extra weapon SID'):
+                    weapon_cfg.collect_magazines(self.cfg, [])
+        item.use_existing = True
+        item.existing_sid = 'SharedMagazine'
+        magazines = weapon_cfg.collect_magazines(self.cfg, [])
+        self.assertEqual(magazines[0]['extra_weapon_sids'], [])
+        self.assertEqual(weapon_cfg.attach_prototypes(dict(self.info, magazines=magazines)).strip(), '')
+
+    def test_existing_magazine_needs_no_mesh_and_exports_only_references(self):
+        item = self.cfg.magazines.add()
+        item.name, item.existing_sid = 'Extended', ' SharedMagazine30 '
+        item.use_existing, item.preinstalled = True, False
+        item.socket = 'jnt_magazine'
+        item.tactical_reload, item.full_reload = 0.8, 1.2
+        item.text_name = 'Do not export this text'
+        magazines = weapon_cfg.collect_magazines(self.cfg, [])
+        self.assertEqual(magazines[0]['existing_sid'], 'SharedMagazine30')
+        info = dict(self.info, magazines=magazines, world_mesh="StaticMesh'/Test/World.World'",
+                    skeletal_mesh="SkeletalMesh'/Test/SK.SK'")
+        self.assertEqual(weapon_cfg.attach_prototypes(info).strip(), '')
+        self.assertNotIn('SharedMagazine30', weapon_cfg.mesh_prototypes(info))
+        self.assertEqual(weapon_cfg.localization_entries(info), [])
+        text = weapon_cfg.general_setup(info)
+        self.assertEqual(text.count('AttachPrototypeSID = SharedMagazine30'), 2)
+        self.assertIn('TacticalReloadTimeMultiplier = 0.8', text)
+        self.assertIn('FullReloadTimeMultiplier = 1.2', text)
+        self.assertIn('Socket = jnt_magazine', text)
+        self.assertNotIn('GunTest_MagExtended', text)
+        item.preinstalled = True
+        info['magazines'] = weapon_cfg.collect_magazines(self.cfg, [])
+        self.assertIn('AttachSID = SharedMagazine30', weapon_cfg.general_setup(info))
+        self.assertTrue(item.use_existing)
+        item.use_existing = False
+        with self.assertRaisesRegex(RuntimeError, 'both a full and an empty'):
+            weapon_cfg.collect_magazines(self.cfg, [])
+
+    def test_owned_default_and_shared_extended_export_together(self):
+        owned = {'name': 'Default', 'preinstalled': True, 'capacity': 15, 'cost': 0, 'weight': 0,
+                 'socket': 'jnt_magazine', 'tactical': 1, 'full_reload': 1,
+                 'full_path': "StaticMesh'/Test/Full.Full'", 'empty_path': "StaticMesh'/Test/Empty.Empty'"}
+        item = self.cfg.magazines.add()
+        item.name, item.use_existing, item.existing_sid = 'Extended', True, 'SharedMagazine30'
+        item.preinstalled = False
+        info = dict(self.info, magazines=[owned] + weapon_cfg.collect_magazines(self.cfg, []),
+                    world_mesh="StaticMesh'/Test/World.World'", skeletal_mesh="SkeletalMesh'/Test/SK.SK'")
+        text = weapon_cfg.attach_prototypes(info)
+        self.assertIn('SID = GunTest_MagDefault', text)
+        self.assertNotIn('SharedMagazine30', text)
+        meshes = weapon_cfg.mesh_prototypes(info)
+        self.assertIn('SID = GunTest_MagDefaultFull', meshes)
+        self.assertNotIn('GunTest_MagExtended', meshes)
+        setup = weapon_cfg.general_setup(info)
+        self.assertIn('AttachPrototypeSID = GunTest_MagDefault', setup)
+        self.assertIn('AttachPrototypeSID = SharedMagazine30', setup)
+        self.assertNotIn('GunTest_MagExtended', setup)
+
+    def test_existing_magazine_rejects_empty_or_invalid_sid_and_socket(self):
+        item = self.cfg.magazines.add()
+        item.use_existing = True
+        for sid in ('', ' ', 'Bad SID', '/Game/Mag', 'Bad;SID'):
+            item.existing_sid = sid
+            with self.assertRaisesRegex(RuntimeError, 'existing magazine SID'):
+                weapon_cfg.collect_magazines(self.cfg, [])
+        item.existing_sid = 'SharedMagazine'
+        item.socket = 'Invalid Socket'
+        with self.assertRaisesRegex(RuntimeError, 'socket name'):
+            weapon_cfg.collect_magazines(self.cfg, [])
+
+    def test_build_context_with_only_external_magazines_does_not_read_meshes(self):
+        item = self.cfg.magazines.add()
+        item.use_existing = True
+        item.existing_sid = 'SharedMagazine30'
+        export = SimpleNamespace(output_folder=tempfile.gettempdir(), static_category='pistol',
+                                 unreal_mount='TestMod')
+        scene = SimpleNamespace(arsenal_cfg=self.cfg, arsenal_export=export)
+        with patch.object(weapon_cfg.animation_export, '_build_static_plan', return_value=(None, None, {}, [])), \
+                patch.object(weapon_cfg.static_mesh, 'classify_meshes', return_value=(object(), {}, [])), \
+                patch.object(weapon_cfg.static_mesh, 'weapon_mesh_name', return_value='Test'), \
+                patch.object(weapon_cfg.static_mesh, 'template_token', return_value='udp'), \
+                patch.object(weapon_cfg.static_mesh, 'weighted_bones') as weighted, \
+                patch.object(weapon_cfg.animation_export, 'weapon_name', return_value='Test'), \
+                patch.object(weapon_cfg.animation_export, 'mod_mount', return_value='/TestMod'), \
+                patch.object(weapon_cfg, 'animation_folder', return_value='/TestMod/Animations/pt/Test'):
+            info = weapon_cfg.build_context(SimpleNamespace(scene=scene))
+            weighted.assert_not_called()
+            self.assertEqual(info['magazines'][0]['socket'], 'jnt_magazine')
+            duplicate = self.cfg.magazines.add()
+            duplicate.name, duplicate.use_existing, duplicate.existing_sid = 'Extra', True, item.existing_sid
+            with self.assertRaisesRegex(RuntimeError, 'SIDs must be unique'):
+                weapon_cfg.build_context(SimpleNamespace(scene=scene))
+
+    def test_external_magazine_is_exempt_from_local_definition_and_mesh_checks(self):
+        from stalker2_arsenal import export_check
+        item = self.cfg.magazines.add()
+        item.use_existing, item.existing_sid = True, 'SharedMagazine30'
+        magazines = weapon_cfg.collect_magazines(self.cfg, [])
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'Test.cfg')
+            with open(path, 'w') as handle:
+                handle.write('AttachPrototypeSID = SharedMagazine30\nAttachPrototypeSID = UndefinedItem\n')
+            info = dict(self.info, magazines=magazines, output_root=folder, mount='/TestMod',
+                        mod='TestMod', anim_name='Test', mesh_name='Test')
+            self.assertEqual(export_check.name_warnings(info), [])
+            warnings = export_check.path_warnings(info, [path])
+            self.assertEqual(len(warnings), 1)
+            self.assertIn('UndefinedItem', warnings[0])
+
     def test_custom_attachments_preserve_base_behaviour_and_use_mod_meshes(self):
         mesh = bpy.data.objects.new('Custom silencer', bpy.data.meshes.new('Custom silencer'))
         self.addCleanup(bpy.data.meshes.remove, mesh.data)
@@ -184,6 +435,92 @@ class FireModeTests(unittest.TestCase):
                             self.assertIn(f'[{index}] = EFireType::{mode}', block)
                         self.assertIn(f'DefaultFireType = EFireType::{default}', text)
                         self.assertIn(f'FireQueueCount = {5 if "Queue" in enabled else 0}', text)
+
+    def test_automatic_donors_export_all_three_fire_events(self):
+        for template, weapon in (('TemplateSMG', 'Viper'), ('TemplateRifle', 'AK74')):
+            with self.subTest(template=template):
+                with patch('stalker2_arsenal.setup_panel.apply_template_defaults'):
+                    self.cfg.setup_template = template
+                self.cfg.fire_modes = {'SemiAutomatic', 'Automatic'}
+                text = weapon_cfg.general_setup(self.info)
+                for event, suffix in (('OneShot', 'Oneshot'), ('Loop', 'Loop'), ('Break', 'Break')):
+                    line = next(line for line in text.splitlines() if f'FireEvent{event} = ' in line)
+                    self.assertIn(f'SFX_{weapon}_{suffix}.SFX_{weapon}_{suffix}', line)
+
+    def test_udp_sound_is_not_silently_substituted_for_automatic_fire(self):
+        self.cfg.fire_modes = {'SemiAutomatic', 'Automatic'}
+        text = weapon_cfg.general_setup(self.info)
+        self.assertIn('SFX_UDP_Oneshot.SFX_UDP_Oneshot', text)
+        self.assertNotIn('SFX_APB_', text)
+        self.assertNotIn('FireEventLoop = ', text)
+
+    def test_apb_firing_sound_is_independent_and_exports_complete_matched_set(self):
+        before = weapon_cfg.general_setup(self.info)
+        self.cfg.firing_sound_donor = 'APB'
+        self.cfg.fire_modes = {'SemiAutomatic', 'Automatic'}
+        text = weapon_cfg.general_setup(self.info)
+        for field, suffix in (('OneShot', 'Oneshot'), ('Loop', 'Loop'), ('Break', 'Break')):
+            self.assertIn(f'FireEvent{field} = AkAudioEvent', text)
+            self.assertIn(f'SFX_APB_{suffix}.SFX_APB_{suffix}', text)
+        self.assertIn('WeaponType-APB.WeaponType-APB', text)
+        self.assertNotIn('SFX_UDP_Oneshot', text)
+        self.assertIn('SFX_WeaponUnload_Auto_UDP', text)
+        self.assertIn('refkey=TemplatePistol', text)
+        self.assertIn('FireInterval = 0.08', text)
+        self.assertEqual(self.cfg.setup_template, 'TemplatePistol')
+        self.assertTrue(weapon_cfg.has_automatic_audio(self.cfg))
+        weapon_cfg.apply_preset(self.cfg)
+        self.assertEqual(self.cfg.firing_sound_donor, 'APB')
+        self.cfg.firing_sound_donor = 'TEMPLATE'
+        self.assertEqual(weapon_cfg.general_setup(self.info), before)
+
+    def test_all_explicit_firing_donors_export_exactly_one_of_each_field(self):
+        for donor in ('APB', 'UDP', 'Viper', 'AK74'):
+            with self.subTest(donor=donor):
+                self.cfg.firing_sound_donor = donor
+                text = weapon_cfg.general_setup(self.info)
+                for field in weapon_cfg.FIRING_AUDIO_FIELDS:
+                    self.assertEqual(text.count(f'{field} = '), 1)
+                self.assertIn(f'SFX_{donor}_Oneshot.SFX_{donor}_Oneshot', text)
+                self.assertEqual(weapon_cfg.has_automatic_audio(self.cfg), donor != 'UDP')
+                if donor == 'UDP':
+                    self.assertIn("FireEventLoop = AkAudioEvent''", text)
+                    self.assertIn("FireEventBreak = AkAudioEvent''", text)
+
+    def test_stock_attachment_layers_use_mod_images_and_zero_offsets(self):
+        self.cfg.allow_silencer = self.cfg.allow_laser = True
+        info = dict(self.info, mount='/TestMod')
+        for kind in ('silencer', 'laser'):
+            settings = getattr(self.cfg, f'stock_{kind}_images')
+            settings.inventory_image = bpy.data.images.new(f'Stock {kind}', width=258, height=128, alpha=True)
+            self.addCleanup(bpy.data.images.remove, settings.inventory_image)
+        text = weapon_cfg.general_setup(info)
+        for kind in ('Silencer', 'Laser'):
+            self.assertIn(f'T_inv_w_Test_Stock{kind}.T_inv_w_Test_Stock{kind}', text)
+        self.assertNotIn('IconPosX = 205', text)
+        self.assertNotIn('IconPosX = 150', text)
+        self.assertNotIn('/Integral/T_inv_w_integral_en_silen_5', text)
+        self.assertIn('MeshPrototypeSID = EN_Silen_5', text)
+        self.assertIn('AttachPrototypeSID = EN_Silen_2', text)
+
+    def test_missing_stock_images_keep_donor_behavior(self):
+        self.cfg.allow_silencer = self.cfg.allow_laser = True
+        text = weapon_cfg.general_setup(self.info)
+        self.assertIn('IconPosX = 205', text)
+        self.assertIn('IconPosX = 150', text)
+        self.assertIn('/Integral/T_inv_w_integral_en_silen_5', text)
+
+    def test_export_warns_for_missing_loop_and_unaligned_stock_overlay(self):
+        self.cfg.fire_modes = {'Automatic'}
+        self.cfg.allow_silencer = True
+        self.cfg.inventory_image = bpy.data.images.new('Body warning test', width=258, height=128, alpha=True)
+        self.addCleanup(bpy.data.images.remove, self.cfg.inventory_image)
+        with patch.object(weapon_cfg, 'write_cfg_files', return_value=([], self.info)), \
+                patch.object(weapon_cfg, 'report') as report:
+            weapon_cfg.export_cfg_files(Mock(), None)
+        messages = [call.args[2] for call in report.call_args_list]
+        self.assertTrue(any('no automatic-fire loop/break' in message for message in messages))
+        self.assertTrue(any('Stock silencer has no aligned inventory layer' in message for message in messages))
 
     def test_last_mode_cannot_be_disabled(self):
         for mode, prop in (('SemiAutomatic', 'fire_mode_semi'), ('Queue', 'fire_mode_burst'),
@@ -320,6 +657,7 @@ class FireModeTests(unittest.TestCase):
                 self.assertTrue(controls['fire_mode_burst'])
                 self.assertTrue(controls['fire_mode_auto'])
                 self.assertTrue(controls['active_fire_mode'])
+                self.assertTrue(controls['firing_sound_donor'])
                 self.assertTrue(controls['is_default_fire_mode'])
                 self.assertEqual('burst_length' in controls, selected == 'Queue')
                 self.assertNotIn('fire_modes', controls)
@@ -378,12 +716,29 @@ class FireModeTests(unittest.TestCase):
             self.assertEqual(self.cfg.default_fire_mode, default)
 
     def test_fire_settings_survive_blend_save(self):
+        self.cfg.firing_sound_donor = 'APB'
         self.cfg.fire_modes = {'SemiAutomatic', 'Queue', 'Automatic'}
         self.cfg.default_fire_mode = 'Queue'
         self.cfg.active_fire_mode = 'Automatic'
         self.cfg.burst_length = 7
         self.cfg.recoil_recovery_delay = 0.15
         self.cfg.recoil_recovery_time = 0.3
+        self.cfg.distribution_trader = 'TraderZalesie_TradeItemGenerator'
+        self.cfg.distribution_faction = 'Bandit'
+        self.cfg.trader_enabled = True
+        self.cfg.trader_chance = 40
+        self.cfg.trader_max_quantity = 5
+        self.cfg.trader_min_condition = 10
+        self.cfg.npc_CloseCombat_enabled = True
+        self.cfg.npc_CloseCombat_percent = 20
+        self.cfg.npc_Veteran_enabled = True
+        self.cfg.npc_Veteran_percent = 15
+        magazine = self.cfg.magazines.add()
+        magazine.use_existing = True
+        magazine.existing_sid = 'SharedMagazine30'
+        magazine.socket = 'jnt_clip_base'
+        magazine.capacity = 42
+        magazine.extra_weapon_sids = 'GunOther, GunThird'
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, 'fire_settings.blend')
             bpy.ops.wm.save_as_mainfile(filepath=path, check_existing=False, copy=True)
@@ -392,6 +747,13 @@ class FireModeTests(unittest.TestCase):
             loaded = destination.scenes[0]
             self.addCleanup(bpy.data.scenes.remove, loaded)
             cfg = loaded.test_arsenal_cfg
+            self.assertTrue(cfg.magazines[0].use_existing)
+            self.assertEqual(cfg.magazines[0].existing_sid, 'SharedMagazine30')
+            self.assertEqual(cfg.magazines[0].socket, 'jnt_clip_base')
+            self.assertEqual(cfg.magazines[0].capacity, 42)
+            self.assertEqual(cfg.magazines[0].extra_weapon_sids, 'GunOther, GunThird')
+            self.assertEqual(cfg.firing_sound_donor, 'APB')
+            self.assertEqual(cfg.setup_template, 'TemplatePistol')
             self.assertEqual(cfg.fire_modes, self.cfg.fire_modes)
             self.assertEqual(cfg.default_fire_mode, 'Queue')
             self.assertEqual(cfg.active_fire_mode, 'Automatic')
@@ -399,6 +761,184 @@ class FireModeTests(unittest.TestCase):
             self.assertEqual(cfg.burst_length, 7)
             self.assertAlmostEqual(cfg.recoil_recovery_delay, 0.15)
             self.assertAlmostEqual(cfg.recoil_recovery_time, 0.3)
+            self.assertEqual(cfg.distribution_trader, 'TraderZalesie_TradeItemGenerator')
+            self.assertEqual(cfg.distribution_faction, 'Bandit')
+            self.assertTrue(cfg.trader_enabled)
+            self.assertEqual(cfg.trader_chance, 40)
+            self.assertEqual(cfg.trader_max_quantity, 5)
+            self.assertEqual(cfg.trader_min_condition, 10)
+            self.assertTrue(cfg.npc_CloseCombat_enabled)
+            self.assertEqual(cfg.npc_CloseCombat_percent, 20)
+            self.assertTrue(cfg.npc_Veteran_enabled)
+            self.assertEqual(cfg.npc_Veteran_percent, 15)
+
+    def test_distribution_selection_retains_each_trader_and_factions_settings(self):
+        self.assertFalse(self.cfg.trader_enabled)
+        default_role = weapon_cfg.weapon_distribution.faction_defaults('TemplatePistol', 'Neutral')['roles']['CloseCombat']
+        self.assertEqual(self.cfg.npc_CloseCombat_enabled, default_role[0])
+        self.assertEqual(len(self.cfg.traders), 0)
+        self.assertEqual(len(self.cfg.npc_factions), 0)
+        self.cfg.trader_enabled = True
+        self.cfg.trader_max_quantity = 5
+        self.cfg.distribution_trader = 'TraderZalesie_TradeItemGenerator'
+        self.assertFalse(self.cfg.trader_enabled)
+        self.cfg.trader_chance = 75
+        self.cfg.distribution_trader = 'RostokTraderSoviet_TradeItemGenerator'
+        self.assertTrue(self.cfg.trader_enabled)
+        self.assertEqual(self.cfg.trader_max_quantity, 5)
+        self.assertEqual(self.cfg.trader_chance, 0)
+        self.cfg.npc_CloseCombat_enabled = True
+        self.cfg.npc_CloseCombat_percent = 20
+        self.cfg.npc_Veteran_enabled = True
+        self.cfg.npc_Veteran_percent = 15
+        self.cfg.distribution_faction = 'Bandit'
+        self.assertEqual(self.cfg.npc_CloseCombat_enabled, weapon_cfg.weapon_distribution.faction_defaults(
+            'TemplatePistol', 'Bandit')['roles']['CloseCombat'][0])
+        self.cfg.npc_CloseCombat_percent = 70
+        self.cfg.distribution_faction = 'Neutral'
+        self.assertTrue(self.cfg.npc_CloseCombat_enabled)
+        self.assertEqual(self.cfg.npc_CloseCombat_percent, 20)
+        self.assertTrue(self.cfg.npc_Veteran_enabled)
+        self.assertEqual(self.cfg.npc_Veteran_percent, 15)
+        weapon_cfg.apply_preset(self.cfg)
+        self.assertEqual(self.cfg.npc_CloseCombat_percent, 20)
+        self.assertTrue(self.cfg.trader_enabled)
+
+    def test_distribution_panels_draw_without_creating_data_and_match_control_shape(self):
+        context = SimpleNamespace(scene=SimpleNamespace(arsenal_cfg=self.cfg))
+        properties = []
+        for panel_type in (weapon_cfg.ARSENAL_PT_CfgTraders, weapon_cfg.ARSENAL_PT_CfgNPCs):
+            layout = Mock()
+            panel_type.draw(SimpleNamespace(layout=layout), context)
+            properties.extend(call.args[1] for call in layout.mock_calls
+                              if call[0].endswith('prop') and len(call.args) > 1)
+        self.assertEqual(len(self.cfg.traders), 0)
+        self.assertEqual(len(self.cfg.npc_factions), 0)
+        self.assertIn('trader_sell_unloaded', properties)
+        self.assertIn('npc_CloseCombat_enabled', properties)
+        self.assertIn('npc_Veteran_percent', properties)
+        self.assertFalse(any('ammo' in name or 'slot' in name for name in properties))
+        self.cfg.distribution_trader = 'IkarTrader_TradeItemGenerator'
+        self.cfg.trader_enabled = True
+        self.cfg.trader_chance = 40
+        layout = Mock()
+        weapon_cfg.ARSENAL_PT_CfgTraders.draw(SimpleNamespace(layout=layout), context)
+        labels = [call.kwargs['text'] for call in layout.mock_calls
+                  if call[0].endswith('label') and 'text' in call.kwargs]
+        self.assertIn('Existing stock-pool chance: 50%', labels)
+        self.assertIn('Effective stock chance: 20%', labels)
+        self.assertIn('Custom attachment chance: 10%', labels)
+        panels = (weapon_cfg.ARSENAL_PT_CfgText, weapon_cfg.ARSENAL_PT_CfgIdentity,
+                  weapon_cfg.ARSENAL_PT_CfgDamage, weapon_cfg.ARSENAL_PT_CfgHandling,
+                  weapon_cfg.ARSENAL_PT_CfgAmmo, weapon_cfg.ARSENAL_PT_CfgAttachments,
+                  weapon_cfg.ARSENAL_PT_CfgTraders, weapon_cfg.ARSENAL_PT_CfgNPCs)
+        self.assertEqual([panel.bl_order for panel in panels], list(range(8)))
+
+    def test_cfg_export_writes_and_clears_distribution_in_the_normal_writer(self):
+        weapon_cfg.weapon_distribution.load_defaults(self.cfg)
+        for row in self.cfg.traders:
+            row.enabled = False
+        for row in self.cfg.npc_factions:
+            for role in row.roles:
+                role.enabled = False
+        self.cfg.trader_enabled = True
+        self.cfg.trader_chance = 40
+        with tempfile.TemporaryDirectory() as folder:
+            info = dict(self.info, output_root=folder, mod='TestMod', player_sid='GunTest_Player',
+                        world_mesh="StaticMesh'/Test/SM_Test.SM_Test'",
+                        skeletal_mesh="SkeletalMesh'/Test/SK_Test.SK_Test'",
+                        anim_name='Test', animation_dir='/Test/Animations/Test')
+            with patch.object(weapon_cfg, 'build_context', return_value=info):
+                paths, _info = weapon_cfg.write_cfg_files(None)
+                path = next(path for path in paths if path.endswith('TestMod_TestDistribution.cfg'))
+                legacy = next(candidate for candidate in paths
+                              if candidate.endswith('TestDistribution.cfg') and candidate != path)
+                with open(legacy, 'w', encoding='utf-8') as handle:
+                    handle.write('Obsolete invalid ModGameData distribution')
+                with open(path, encoding='utf-8') as handle:
+                    self.assertNotIn('struct.begin', handle.read())
+                distribution = weapon_cfg.weapon_distribution
+                self.assertIn('ItemPrototypeSID = GunTest', distribution.distribution_compose.compose([
+                    distribution.payload(info)]))
+                self.cfg.trader_enabled = False
+                weapon_cfg.write_cfg_files(None)
+                for candidate in (path, legacy):
+                    with open(candidate, encoding='utf-8') as handle:
+                        text = handle.read()
+                    self.assertNotIn('struct.begin', text)
+                    self.assertNotIn('Obsolete invalid', text)
+
+    def test_initial_defaults_follow_template_without_requiring_ui_interaction(self):
+        self.cfg.distribution_trader = 'RostokTraderNato_TradeItemGenerator'
+        self.assertTrue(self.cfg.trader_enabled)
+        self.assertEqual(self.cfg.trader_chance, 100)
+        self.assertEqual(self.cfg.trader_min_quantity, 1)
+        self.assertEqual(self.cfg.trader_max_quantity, 1)
+        self.assertEqual(self.cfg.trader_min_condition, 100)
+        self.assertFalse(self.cfg.trader_sell_unloaded)
+        self.assertEqual(len(self.cfg.traders), 0)
+        weapon_cfg.weapon_distribution.load_defaults(self.cfg)
+        self.assertEqual(len(self.cfg.traders), len(weapon_cfg.weapon_distribution.TRADER_ITEMS))
+        self.assertEqual(len(self.cfg.npc_factions), len(weapon_cfg.weapon_distribution.FACTIONS))
+        self.assertEqual(self.cfg.traders['RostokTraderNato_TradeItemGenerator'].chance, 100)
+        for role, expected in weapon_cfg.weapon_distribution.faction_defaults(
+                'TemplatePistol', 'Neutral')['roles'].items():
+            row = self.cfg.npc_factions['Neutral'].roles[role]
+            self.assertEqual(row.enabled, expected[0])
+            self.assertAlmostEqual(row.percent, expected[1], places=4)
+
+    def test_all_template_defaults_export_without_opening_distribution_panels(self):
+        info = dict(self.info, mod='TestMod', player_sid='GunTest_Player',
+                    world_mesh="StaticMesh'/Test/SM_Test.SM_Test'",
+                    skeletal_mesh="SkeletalMesh'/Test/SK_Test.SK_Test'",
+                    anim_name='Test', animation_dir='/Test/Animations/Test')
+        for template in weapon_cfg.PRESETS:
+            with self.subTest(template=template), patch('stalker2_arsenal.setup_panel.apply_template_defaults'):
+                self.cfg.setup_template = template
+                files = weapon_cfg.cfg_files(info)
+                distribution = weapon_cfg.weapon_distribution
+                self.assertTrue(any(path.endswith('Distribution.cfg') for path in files))
+                text = distribution.distribution_compose.compose([distribution.payload(info)])
+                self.assertIn('ItemPrototypeSID = GunTest', text)
+                for sid, row in ((row.name, row) for row in self.cfg.traders):
+                    self.assertEqual(row.enabled, weapon_cfg.weapon_distribution.trader_defaults(
+                        template, sid)['enabled'])
+
+    def test_template_change_resets_all_distribution_overrides(self):
+        self.cfg.trader_chance = 12
+        self.cfg.trader_enabled = True
+        self.cfg.distribution_trader = 'TraderZalesie_TradeItemGenerator'
+        self.cfg.trader_min_condition = 33
+        self.cfg.npc_CloseCombat_percent = 77
+        self.cfg.distribution_faction = 'Bandit'
+        self.cfg.npc_Master_percent = 88
+        with patch('stalker2_arsenal.setup_panel.apply_template_defaults'):
+            self.cfg.setup_template = 'TemplateShotgun'
+        for sid, row in ((row.name, row) for row in self.cfg.traders):
+            for key, value in weapon_cfg.weapon_distribution.trader_defaults('TemplateShotgun', sid).items():
+                self.assertAlmostEqual(getattr(row, key), value, places=4)
+        for row in self.cfg.npc_factions:
+            expected = weapon_cfg.weapon_distribution.faction_defaults('TemplateShotgun', row.name)
+            for collection in ('roles', 'ranks'):
+                for key, (enabled, percent) in expected[collection].items():
+                    item = getattr(row, collection)[key]
+                    self.assertEqual(item.enabled, enabled)
+                    self.assertAlmostEqual(item.percent, percent, places=4)
+        self.assertEqual(self.cfg.distribution_trader, 'TraderZalesie_TradeItemGenerator')
+        self.assertEqual(self.cfg.distribution_faction, 'Bandit')
+
+    def test_first_edit_seeds_other_fields_from_template_and_preserves_saved_overrides(self):
+        self.cfg.distribution_trader = 'RostokTraderNato_TradeItemGenerator'
+        self.cfg.trader_max_quantity = 5
+        self.assertTrue(self.cfg.trader_enabled)
+        self.assertEqual(self.cfg.trader_chance, 100)
+        self.assertFalse(self.cfg.trader_sell_unloaded)
+        before = self.cfg.npc_Veteran_percent
+        self.cfg.npc_CloseCombat_percent = 12
+        self.assertAlmostEqual(self.cfg.npc_Veteran_percent, before, places=4)
+        weapon_cfg.weapon_distribution.load_defaults(self.cfg)
+        self.assertEqual(self.cfg.trader_max_quantity, 5)
+        self.assertEqual(self.cfg.npc_CloseCombat_percent, 12)
 
 
 if __name__ == '__main__':

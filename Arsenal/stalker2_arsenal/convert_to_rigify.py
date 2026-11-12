@@ -172,7 +172,9 @@ def parent_importer_camera_to_rig(context, source_armature, rig):
     camera.parent = rig
     camera.parent_type = 'BONE'
     camera.parent_bone = 'Camera'
-    camera.location = (0.0, 0.0, 0.0)
+    camera.matrix_parent_inverse.identity()
+    # Cancel Blender's tail-based bone parenting so the eye stays on the joint head.
+    camera.location = (0.0, -rig.data.bones['Camera'].length, 0.0)
     camera.rotation_mode = 'XYZ'
     camera.rotation_euler = (math.radians(90.0), 0.0, math.radians(-90.0))
     camera.scale = (1.0, 1.0, 1.0)
@@ -412,6 +414,12 @@ def merge_appended_weapon_rig(context, rig, weapon_armature):
 
     for weapon_mesh in weapon_meshes:
         weapon_mesh.select_set(False)
+    from . import weapon_sockets
+    if weapon_armature.get('arsenal_component_root'):
+        rig['arsenal_component_root'] = weapon_armature['arsenal_component_root']
+    weapon_sockets.rebind_markers(context.scene, weapon_armature, rig, source_to_rig)
+    if weapon_armature.get('arsenal_donor_mesh_name'):
+        rig['arsenal_donor_mesh_name'] = weapon_armature['arsenal_donor_mesh_name']
     weapon_armature.select_set(False)
     bpy.data.objects.remove(weapon_armature, do_unlink=True)
     return True

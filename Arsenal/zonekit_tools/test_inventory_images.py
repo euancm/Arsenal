@@ -4,6 +4,7 @@ blender --background --factory-startup --python-exit-code 1 --python test_invent
 No external weapon project is required or saved. Real Eevee renders run in a temporary directory.
 """
 import os
+import ast
 import json
 from pathlib import Path
 import sys
@@ -474,6 +475,59 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(list(body.data.materials), [original_material])
         self.assertNotIn('Arsenal Render Holdout', bpy.data.materials)
 
+    def test_stock_attachment_layers_share_camera_and_holdouts(self):
+        cfg = self.source.arsenal_cfg
+        cfg.allow_silencer = True
+        cfg.stock_silencer_images.mesh_object = self.silencer
+        scene = inventory.ensure_scene(bpy.context, self.source)
+        state = scene.arsenal_inventory
+        self.assertNotIn(self.silencer, {
+            obj['arsenal_inventory_source'] for obj in state.geometry.objects if not obj.hide_render})
+        for family in ('inventory', 'upgrade'):
+            def cancelled(**kwargs):
+                visible = {obj['arsenal_inventory_source'] for obj in state.geometry.objects
+                           if not obj.hide_render}
+                self.assertEqual(visible, {self.body, self.full, self.silencer})
+                self.assertEqual(scene.camera, state.upgrade_camera if family == 'upgrade'
+                                 else state.inventory_camera)
+                self.assertEqual((scene.render.resolution_x, scene.render.resolution_y), inventory.SIZES[family])
+                return {'CANCELLED'}
+            stub = SimpleNamespace(data=bpy.data, ops=SimpleNamespace(render=SimpleNamespace(render=cancelled)))
+            with patch.object(inventory, 'sync_geometry'), patch.object(inventory, 'bpy', stub):
+                with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+                    inventory.render_preview(bpy.context, self.source, family, stock_attachment='silencer')
+
+    def test_stock_layer_selection_export_clearing_and_custom_replacement(self):
+        cfg = self.source.arsenal_cfg
+        cfg.allow_silencer = True
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'stock.png')
+            image = bpy.data.images.new('Stock source', width=10, height=10, alpha=True)
+            image.file_format = 'PNG'
+            image.save(filepath=path)
+            for family in ('inventory', 'upgrade'):
+                self.assertEqual(bpy.ops.arsenal.inventory_image_file(
+                    filepath=path, family=family, stock_attachment='silencer',
+                    magazine_index=-1, attachment_index=-1, upgrade_index=-1), {'FINISHED'})
+                target, prop = inventory.image_target(self.source, -1, family, stock_attachment='silencer')
+                self.assertEqual(tuple(getattr(target, prop).size), inventory.SIZES[family])
+            info = {'cfg': cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'mount': '/TestMod',
+                    'output_root': folder, 'magazines': [], 'attachments': []}
+            entries = inventory.export_images(info)
+            self.assertEqual(len(entries), 2)
+            self.assertTrue(all(entry['sid'] == 'EN_Silen_2' and 'StockSilencer' in entry['asset']
+                                for entry in entries))
+            self.assertEqual(bpy.ops.arsenal.inventory_image(
+                family='inventory', stock_attachment='silencer', clear=True,
+                magazine_index=-1, attachment_index=-1), {'FINISHED'})
+            self.assertIsNone(cfg.stock_silencer_images.inventory_image)
+            self.assertEqual(len(inventory.export_images(info)), 1)
+            custom = cfg.attachments.add()
+            custom.kind = 'silencer'
+            self.assertEqual(inventory.export_images(info), [])
+            with self.assertRaisesRegex(RuntimeError, 'Enable this stock attachment'):
+                inventory.image_target(self.source, -1, 'inventory', stock_attachment='silencer')
+
     def test_exported_pngs_and_cfg_references_match_without_using_old_files(self):
         cfg = self.source.arsenal_cfg
         cfg.inventory_image = bpy.data.images.new('Export body', width=258, height=128, alpha=True)
@@ -541,16 +595,28 @@ class InventoryTests(unittest.TestCase):
         item.name, item.mesh_object, item.kind = 'Quiet', self.silencer, 'silencer'
         item.text_name = 'Quiet silencer'
         item.upgrade_image = bpy.data.images.new('Upgrade silencer', width=1940, height=800, alpha=True)
+        magazine = cfg.magazines[1]
+        magazine.use_existing, magazine.existing_sid = True, 'SharedMagazine30'
+        magazine.text_name = 'Must not be exported'
+        magazine.inventory_image = bpy.data.images.new('Old magazine icon', width=1, height=1, alpha=True)
+        magazine.upgrade_image = magazine.inventory_image
+        magazine.standalone_image = magazine.inventory_image
         self.source.arsenal_export.unreal_mount = 'TestMod'
-        info = {'cfg': cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'mount': '/TestMod',
-                'magazines': [], 'attachments': [
-                    {'settings': item, 'sid': 'GunTest_AttachQuiet', 'name': 'Quiet'}]}
+        info = {'cfg': cfg, 'sid': 'GunTest', 'weapon_id': 'test', 'mod': 'TestMod', 'mount': '/TestMod',
+                'world_mesh': "StaticMesh'/TestMod/SM_test.SM_test'",
+                'magazines': [weapon_cfg.collect_magazines(cfg, [])[1]], 'attachments': [
+                    {'settings': item, 'sid': 'GunTest_AttachQuiet', 'name': 'Quiet', 'kind': 'silencer'}]}
         with tempfile.TemporaryDirectory() as folder:
             info['output_root'] = folder
             self.source.arsenal_export.output_folder = folder
             static = os.path.join(folder, 'SM_Test.fbx')
             Path(static).touch()
-            with patch.object(export_unreal.animation_export, '_build_static_plan', return_value=(
+            world_sockets = {'version': 1, 'units': 'cm', 'mesh': '/TestMod/SM_test',
+                             'entries': [{'name': 'jnt_magazine', 'location': [0, 0, -3],
+                                          'rotation': [0, 0, 0], 'scale': [1, 1, 1]}]}
+            with patch.object(export_unreal.static_mesh, 'world_magazine_sockets',
+                              return_value=world_sockets), \
+                    patch.object(export_unreal.animation_export, '_build_static_plan', return_value=(
                     self.rig, None, {}, [('test', 'SM_Test', static)])), \
                     patch.object(export_unreal.animation_export, 'weapon_name', return_value='test'), \
                     patch.object(export_unreal.static_mesh, 'plan_static_meshes', return_value=('test', [])), \
@@ -560,9 +626,47 @@ class InventoryTests(unittest.TestCase):
                 export_unreal.write_unreal_import(bpy.context)
             manifest = json.loads(Path(folder, 'import_test.json').read_text(encoding='utf-8'))
             self.assertEqual(len(manifest['ui_images']), 2)
+            self.assertEqual(manifest['world_mesh_sockets'], world_sockets)
+            self.assertEqual(manifest['magazines'], [
+                {'sid': 'SharedMagazine30', 'name': 'Extended', 'preinstalled': False}])
+            self.assertEqual(len(manifest['localization']), 1)
             self.assertEqual(manifest['localization'][0]['SID'], 'sid_items_GunTest_AttachQuiet_name')
             self.assertTrue(Path(folder, 'import_test.py').is_file())
-            self.assertIn('def import_ui_images', Path(folder, 'import_test.py').read_text(encoding='utf-8'))
+            script = Path(folder, 'import_test.py').read_text(encoding='utf-8')
+            self.assertIn('def import_ui_images', script)
+            self.assertEqual(manifest['setup']['weapon'], 'test')
+            self.assertEqual(manifest['setup']['mod'], 'TestMod')
+            self.assertFalse(manifest['setup']['export'])
+            self.assertFalse(manifest['setup']['dry_run'])
+            self.assertEqual(manifest['distribution']['weapon'], 'test')
+            self.assertEqual(manifest['distribution']['mod'], 'TestMod')
+            parsed = ast.parse(script)
+            composer = next(ast.literal_eval(node.value) for node in parsed.body
+                            if isinstance(node, ast.Assign)
+                            and any(isinstance(target, ast.Name) and target.id == 'DISTRIBUTION_SOURCE'
+                                    for target in node.targets))
+            compile(composer, 'embedded_distribution', 'exec')
+            defaults = next(ast.literal_eval(node.value) for node in parsed.body
+                            if isinstance(node, ast.Assign)
+                            and any(isinstance(target, ast.Name) and target.id == 'DISTRIBUTION_DEFAULTS'
+                                    for target in node.targets))
+            self.assertIn('pistols', defaults)
+            embedded = next(ast.literal_eval(node.value) for node in parsed.body
+                            if isinstance(node, ast.Assign)
+                            and any(isinstance(target, ast.Name) and target.id == 'SETUP_SOURCE'
+                                    for target in node.targets))
+            self.assertIn('def ensure_mod_assets', embedded)
+            self.assertNotIn("if unreal is not None or __name__", embedded)
+            setup_ast = ast.parse(embedded)
+            patcher = next(ast.literal_eval(node.value) for node in setup_ast.body
+                           if isinstance(node, ast.Assign)
+                           and any(isinstance(target, ast.Name) and target.id == 'PATCHER_SOURCE'
+                                   for target in node.targets))
+            compile(patcher, 'embedded_patcher', 'exec')
+        self.assertIsNotNone(magazine.inventory_image)
+        for family in ('inventory', 'upgrade', 'standalone'):
+            with self.assertRaisesRegex(RuntimeError, 'owning mod'):
+                inventory.image_target(self.source, 1, family)
 
     def test_render_recreates_deleted_scene_without_manual_setup(self):
         scene = inventory.ensure_scene(bpy.context, self.source)
@@ -632,6 +736,8 @@ class InventoryTests(unittest.TestCase):
         self.assertIsNotNone(self.source.arsenal_inventory.render_scene)
 
     def test_real_render_packs_images_and_survives_blend_reload(self):
+        self.source.arsenal_cfg.allow_silencer = True
+        self.source.arsenal_cfg.stock_silencer_images.mesh_object = self.silencer
         scene = inventory.ensure_scene(bpy.context, self.source)
         inventory.fit_cameras(scene)
         cameras = {family: (getattr(scene.arsenal_inventory, f'{family}_camera').matrix_world.copy(),
@@ -646,6 +752,10 @@ class InventoryTests(unittest.TestCase):
         self.assertGreater(max(alpha), 0.1)
         self.assertLess(min(alpha), 0.01)
         self.assertEqual(self.source.arsenal_cfg.inventory_image, body)
+        stock = inventory.render_preview(bpy.context, self.source, 'inventory', stock_attachment='silencer')
+        self.assertEqual(tuple(stock.size), (258, 128))
+        self.assertIsNotNone(stock.packed_file)
+        self.assertEqual(self.source.arsenal_cfg.stock_silencer_images.inventory_image, stock)
         layer = inventory.render_preview(bpy.context, self.source, 'upgrade', 1)
         self.assertEqual(tuple(layer.size), (1940, 800))
         standalone = inventory.render_preview(bpy.context, self.source, 'standalone', 1)
@@ -673,6 +783,9 @@ class InventoryTests(unittest.TestCase):
             self.assertIsNotNone(restored.arsenal_cfg.inventory_image.packed_file)
             self.assertGreater(restored.arsenal_cfg.inventory_image.preview_ensure().image_size[0], 0)
             self.assertIsNotNone(restored.arsenal_cfg.magazines[1].standalone_image.packed_file)
+            self.assertIsNotNone(restored.arsenal_cfg.stock_silencer_images.inventory_image.packed_file)
+            self.assertEqual(tuple(restored.arsenal_cfg.stock_silencer_images.inventory_image.size), (258, 128))
+            self.assertIsNotNone(restored.arsenal_cfg.stock_silencer_images.mesh_object)
             self.assertEqual(restored.arsenal_inventory.render_scene.arsenal_inventory.source_scene, restored)
             self.assertNotEqual(restored.arsenal_inventory.render_scene, scene)
             self.assertEqual(restored.arsenal_cfg.attachments[0].text_name, 'Silencieux')

@@ -114,6 +114,10 @@ PRESETS = {'TemplatePistol': {'base_weapon': 'GunUDP_HG',
                            "/Script/AkAudio.AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/SMG/SMG_Rattlings/SFX_SMG_Rattle_Weak.SFX_SMG_Rattle_Weak'",
                            'FireEventOneShot = '
                            "AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/SMG/Viper/Viper_Fire/SFX_Viper_Oneshot.SFX_Viper_Oneshot'",
+                           'FireEventLoop = '
+                           "AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/SMG/Viper/Viper_Fire/SFX_Viper_Loop.SFX_Viper_Loop'",
+                           'FireEventBreak = '
+                           "AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/SMG/Viper/Viper_Fire/SFX_Viper_Break.SFX_Viper_Break'",
                            'WeaponTypeSoundSwitch = '
                            "AkSwitchValue'/Game/_STALKER2/Audio/WwiseAudio/Switches/Weapons/WeaponType/WeaponType-Viper.WeaponType-Viper'",
                            'WeaponInWorldUnloadSound = '
@@ -181,6 +185,10 @@ PRESETS = {'TemplatePistol': {'base_weapon': 'GunUDP_HG',
                              "/Script/AkAudio.AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/AR/AR_Rattlings/SFX_AR_SU_Rattle_Weak.SFX_AR_SU_Rattle_Weak'",
                              'FireEventOneShot = '
                              "AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/AR/AK74/AK74_Fire/SFX_AK74_Oneshot.SFX_AK74_Oneshot'",
+                             'FireEventLoop = '
+                             "AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/AR/AK74/AK74_Fire/SFX_AK74_Loop.SFX_AK74_Loop'",
+                             'FireEventBreak = '
+                             "AkAudioEvent'/Game/_STALKER2/Audio/WwiseAudio/Events/Weapons/AR/AK74/AK74_Fire/SFX_AK74_Break.SFX_AK74_Break'",
                              'WeaponTypeSoundSwitch = '
                              "AkSwitchValue'/Game/_STALKER2/Audio/WwiseAudio/Switches/Weapons/WeaponType/WeaponType-AK74.WeaponType-AK74'",
                              'WeaponInWorldUnloadSound = '

@@ -84,8 +84,11 @@ repairing keys.
 ### If export reports an unkeyed IK control
 
 The exporter checks every integer frame and rejects active IK-chain controls with non-rest
-transform properties that are not keyed in the action. The error names the control, action,
-frame and missing properties.
+transform properties that are not keyed in the action. Pole targets are checked only while
+Rigify's **Toggle Pole** is on; disabled pole targets do not block export. If the toggle is
+animated, the check follows its value at each frame. Hand and upper-arm IK controls are still
+checked while IK is active, regardless of the pole toggle. The error names the control,
+action, frame and missing properties.
 
 Select that action and control, restore the intended pose, and key **Location, Rotation and
 Scale**. For example, an error naming `upper_arm_ik.R` needs keys on that control, not just
@@ -95,6 +98,10 @@ Scale**. For example, an error naming `upper_arm_ik.R` needs keys on that contro
 does not generate a new import script. Successfully written FBXs and older files may still exist
 in the output folder; do not run an old import script or package those files as a successful export.
 Fix every reported action, then export again.
+
+Failed actions show **Export failed** and the reason in their export-list status instead of
+the earlier template-validation status. The completion popup includes each failed action's
+reason, and the system console prints the error and traceback when the failure occurs.
 
 Hip-fire recovery (`shoot_end`) and aimed-fire recovery (`shoot_aim_end`) are separate actions.
 Repairing keys in one does not repair the other. If only aimed recovery throws the elbow out,
@@ -109,12 +116,18 @@ check those keys too.
 
 ## Static meshes
 
-One FBX is written per mesh to `<output>/_Stalker_2/weapons/<Weapon Category>/p_<weapon>/AnimMesh/`. File names come from the **mesh object names**; the weapon name is not used for them. The weapon category (default `pistol`) is a field in the panel.
+Static FBXs are written to `<output>/_Stalker_2/weapons/<Weapon Category>/p_<weapon>/AnimMesh/`.
+The main mesh name supplies the weapon namespace (falling back to the custom weapon name
+when it is still named after the donor); mapped joints and attachment object names supply
+the part names. The weapon category (default `pistol`) is a field in the panel.
 
 - Every mesh bound to the weapon rig (parented to it, or with an Armature modifier pointing at it) is exported.
 - The **main weapon mesh** is the one weighted to the most weapon bones. Its object name is the weapon name (`e9`), and it is split per bone: each face goes to the bone with the highest summed vertex weight, and the file is `SM_wpn_e9_SM_<joint>` (for example `Weapon` → `jnt_offset` → `SM_wpn_e9_SM_offset`). Bones with no faces are skipped with a warning.
 - If the main mesh still has the template's name (`udp`), the custom weapon name supplies its export namespace instead (`coolpistol`). The object itself is not renamed. Keeping the retail folder/file names would make ZoneKit classify those assets as overrides, replacing UDP and its unique variants. Artist-assigned custom mesh names are still respected. The CFG and import manifest use the same resolved name.
 - **Every other mesh** is exported whole as `SM_wpn_<weapon>_SM_<object name>`, for example a separate mesh called `magazine_full` gives `SM_wpn_e9_SM_magazine_full`. Its origin is the head of the mapped bone with the most weight on it. Use this for variants such as full and empty magazines: separate the mesh, keep the same Armature modifier and vertex group.
+- Attachment names drop an existing `SM_` prefix and Blender's `.001` suffix, and replace a
+  standalone donor token with the weapon namespace. For example, `SM_pt_udp_mag_full.001`
+  becomes `SM_wpn_e9_SM_pt_e9_mag_full`, not a doubled-prefix or donor-named asset.
 - Object names must be unique after naming; collisions are reported by Validate.
 - Meshes are taken from the rest pose, so the current pose does not matter.
 - Each object's origin is its bone head, with vertices stored relative to it (translation only, no rotation).
@@ -124,6 +137,18 @@ One FBX is written per mesh to `<output>/_Stalker_2/weapons/<Weapon Category>/p_
 The same button also writes the non-animated world model into the parent folder of `AnimMesh`: `<output>/_Stalker_2/weapons/<category>/p_<weapon>/SM_<weapon>.FBX` for the whole main mesh (not split per bone), and `SM_<weapon>_<object name>.FBX` for every other mesh (for example `SM_e9_magazine_full.FBX`). These are all positioned relative to the head of the `Weapon` root bone, so the assembled parts stay aligned with each other.
 
 World models exclude bullet and shell geometry. Separate meshes weighted only to mapped `bullet` / `shell` joints are omitted; faces embedded in the main weapon or an attachment are removed when their highest summed vertex weight belongs to one of those joints. Keep ammunition weighted to the correct mapped joint. Magazines and other weapon parts remain, and the first-person `AnimMesh` exports still include ammunition for animations.
+
+Installed magazines use their bone-local `AnimMesh` meshes, including when referencing an
+existing magazine SID shared by several weapons. The importer automatically creates the
+matching magazine mount sockets on the main world static mesh. Their positions come from
+the mapped bone heads relative to the world model's root, in the same rest-pose coordinate
+space as the static exports. No trial-and-error magazine offset is needed. A missing world
+mount previously left the magazine at the weapon origin, making it protrude above the body.
+This fix changes neither first-person animation nor shared magazine geometry.
+
+After updating the add-on, **Export All**, run the newly generated importer and repackage.
+Previously generated import scripts do not contain the world-socket fix. Repeat for each
+affected weapon's world model; sharing a magazine SID does not share the weapon's mount sockets.
 
 ### Skeletal carrier mesh
 
@@ -137,7 +162,15 @@ The export also writes `SK_<weapon>.FBX` from the donor's skeletal carrier mesh.
 - `import_<weapon>.json`, a manifest of every exported file, texture and material.
 - `import_<weapon>.py`, a script for the ZoneKit editor.
 
-After **Export All**, paste the clipboard (the script's path, e.g. `D:\Euan\3D\Stalker Mods\MonkeyMod\import_monkeygun.py`) into the ZoneKit editor's Python bar and press Enter. It imports the textures (correct sRGB / normal / mask settings), creates the material instance from the parent material, imports the static meshes and assigns materials, then imports the player and weapon animations onto their skeletons. Existing assets are skipped; add `--overwrite` to re-import. The mount point is the **Mod Name** (e.g. `/MonkeyMod`). The other assets are fixed: player skeleton `SK_Stalker`, weapon skeleton `SK_<weapon>`, parent material `MI_PBR_Weapons` and physical material `PM_MetalSolid`. The skeletons must already exist in the project.
+After **Export All**, paste the clipboard (the script's path, e.g.
+`D:\WeaponWork\Blender Export\import_monkeygun.py`) into the ZoneKit editor's Python bar and
+press Enter. The mod must already exist. Fresh scripts first recover missing donor copies and
+repair their references, then import the skeletal carrier and apply socket edits, followed by
+textures, materials, static meshes and animations. Generated manifests replace existing exported skeletal meshes, static meshes
+and animations automatically. UI images are also refreshed; existing material/texture assets
+otherwise require `--overwrite` to re-import. The mount point is the **Mod Name** (e.g.
+`/MonkeyMod`). Player/weapon skeletons come from the export settings; the standard material
+defaults are `MI_PBR_Weapons` and `PM_MetalSolid`. See [setup recovery](cfg_export.md#recovering-missing-zonekit-setup).
 
 The latest generated setup/export and import scripts show an OK dialog when finished, with a
 success, warning or error category. Warnings are counted for that run; inspect the Output Log
@@ -218,7 +251,13 @@ the template rate too (30 FPS for UDP). A scene saved at 25 FPS plays the same k
 
 ### Animation montages
 
-Export the template weapon's montages from ZoneKit along with its animations, and have them in your mod's Content (named for your weapon, e.g. `MG_monkeygun_fp_reload`). After the animations are imported, the script repoints every slot in your weapon's montages, and every montage and sequence in its `AnimCollection`, from the template's animation (e.g. `AS_udp_fp_reload`) to the matching new one (`AS_monkeygun_fp_reload`). The match swaps the template weapon's name for yours in the folder and file name; if that fails it falls back to a unique match on the rest of the name. Anything with no matching new animation is listed as a warning and keeps the template animation. The editor's Python can't edit a montage's slot tracks, so the script repoints the `AnimCollection` and lists any montages still playing template animations. The ZoneKit setup script (Set Up panel) renames the montages together with the animations, which keeps their references correct.
+The setup script copies and renames the template's montages into your mod (for example
+`MG_monkeygun_fp_reload`) and patches references between the mod-owned assets. Fresh import
+scripts can recover this setup if copies are missing. Montage slot tracks are not rewritten
+through editor Python: the embedded reference patcher changes the mod copies' package name
+tables while preserving slots, sections, timing and notifies. The importer updates the
+`AnimCollection` and reports montages still referencing template sequences. Resolve those
+warnings before packaging; do not rebuild montages or modify the shared `/Game` originals.
 
 The collection's `Reloading`, `OneHandReloading` (used while holding a detector),
 and `AttachingBySID` magazine keys are **replaced**, not duplicated. A normal
@@ -238,6 +277,14 @@ The exact resulting keys and values are checked before saving; failed readback
 or save restores the original collection. If the template has no silencer attach
 entry to copy, a warning says so. Detaching a silencer has no animation, matching
 the base game. The step is safe to re-run.
+
+The importer takes detached native struct copies and ordinary map snapshots before
+editing. ZoneKit property reads can be shared views: changing one also changed the
+old rollback/readback state in earlier scripts, leaving visible but unsaved entries.
+The owning collection is now marked dirty before saving. Internal animation maps
+are never rewritten through generic struct text import. These are SID-keyed maps,
+not ordered magazine lists; editor display order does not select the magazine's
+animation. Existing configured values win over obsolete donor duplicates.
 
 The importer also updates `BindedAttachSid` on the mod montages' `AnimNotify_AttachItem`
 notifies. These select the item joined to the hand and then attached to the weapon; adding

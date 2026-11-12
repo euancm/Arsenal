@@ -198,7 +198,9 @@ def _create_camera(armature):
     camera.parent = armature
     camera.parent_type = "BONE"
     camera.parent_bone = "jnt_camera"
-    camera.location = (0.0, 0.0, 0.0)
+    camera.matrix_parent_inverse.identity()
+    # Blender bone parenting starts at the tail; the game camera uses the joint head.
+    camera.location = (0.0, -armature.data.bones["jnt_camera"].length, 0.0)
     camera.rotation_euler = (math.pi / 2.0, 0.0, 0.0)
     camera[BASE_MARKER] = True
     bpy.context.scene.camera = camera

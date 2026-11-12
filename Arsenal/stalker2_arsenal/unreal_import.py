@@ -8,12 +8,18 @@ Options (after the path): --overwrite re-imports assets that already exist.
 Run with a normal Python (outside Unreal) to print the plan without importing anything.
 """
 import json
+import math
 import os
 import re
 import shutil
 import sys
+import types
+import uuid
 
 BAKED_MANIFEST = None
+SETUP_SOURCE = None
+DISTRIBUTION_SOURCE = None
+DISTRIBUTION_DEFAULTS = None
 
 try:
     import unreal
@@ -34,6 +40,129 @@ def game_folder(root, relative_file):
 
 def asset_name(relative_file):
     return os.path.splitext(os.path.basename(relative_file))[0]
+
+
+def socket_mod_path(path, root):
+    if not isinstance(root, str):
+        raise RuntimeError('Sockets require a valid mod mount.')
+    root = root.rstrip('/')
+    if (not re.fullmatch(r'/[A-Za-z0-9_]+', root) or root.casefold() in ('/game', '/engine')
+            or not isinstance(path, str) or not path.startswith(root + '/')
+            or not re.fullmatch(r'/[A-Za-z0-9_/]+', path)
+            or '//' in path):
+        raise RuntimeError(f'Sockets require a mod-owned asset path, not {path!r}.')
+    return path
+
+
+def validate_socket_transform(value):
+    if not isinstance(value, dict):
+        raise RuntimeError('Invalid socket transform.')
+    for field in ('location', 'rotation', 'scale'):
+        values = value.get(field)
+        if (not isinstance(values, list) or len(values) != 3
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in values)):
+            raise RuntimeError(f'Socket {field} must contain three finite numbers.')
+    if any(v <= 0 for v in value['scale']) or max(value['scale']) - min(value['scale']) > 0.00001:
+        raise RuntimeError('Mirrored, singular or nonuniform socket scale is unsupported.')
+    return value
+
+
+def validate_weapon_sockets(manifest):
+    payload = manifest.get('weapon_sockets')
+    if payload is None:
+        return None
+    if (not isinstance(payload, dict) or type(payload.get('version')) is not int
+            or payload['version'] != 1 or payload.get('units') != 'cm'):
+        raise RuntimeError('Unsupported weapon socket payload version or units.')
+    mesh = socket_mod_path(payload.get('mesh'), manifest['game_root'])
+    if mesh != manifest['weapon_skeleton']:
+        raise RuntimeError('Socket destination must be the weapon mesh used by the export.')
+    if ('source_mesh' in payload and (not isinstance(payload['source_mesh'], str)
+            or not re.fullmatch(r'/[A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)+', payload['source_mesh']))):
+        raise RuntimeError('Invalid socket source mesh path.')
+    entries = payload.get('entries')
+    if not isinstance(entries, list):
+        raise RuntimeError('Socket entries must be a list.')
+    names = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise RuntimeError('Invalid socket entry.')
+        for field in ('name', 'bone'):
+            if not isinstance(entry.get(field), str) or not re.fullmatch(r'[A-Za-z0-9_]+', entry[field]):
+                raise RuntimeError(f'Invalid socket {field}.')
+        key = entry['name'].casefold()
+        if key in names:
+            raise RuntimeError(f'Duplicate socket: {entry["name"]}')
+        names.add(key)
+        if type(entry.get('enabled')) is not bool:
+            raise RuntimeError(f'Socket {entry["name"]} needs an explicit override state.')
+        baseline = validate_socket_transform(entry.get('baseline'))
+        transform = validate_socket_transform(entry.get('transform'))
+        if transform['scale'] != baseline['scale']:
+            raise RuntimeError(f'Scale editing is unsupported for socket {entry["name"]}.')
+    return payload
+
+
+def validate_world_mesh_sockets(manifest):
+    payload = manifest.get('world_mesh_sockets')
+    if payload is None:
+        return None
+    if (not isinstance(payload, dict) or type(payload.get('version')) is not int
+            or payload['version'] != 1 or payload.get('units') != 'cm'):
+        raise RuntimeError('Unsupported world mesh socket payload version or units.')
+    mesh = socket_mod_path(payload.get('mesh'), manifest['game_root'])
+    packages = {manifest['game_root'].rstrip('/') + '/' + os.path.splitext(path)[0].replace('\\', '/')
+                for path in manifest['static_meshes']}
+    if mesh not in packages:
+        raise RuntimeError('World socket destination is not one of the exported static meshes.')
+    if not isinstance(payload.get('entries'), list):
+        raise RuntimeError('World mesh socket entries must be a list.')
+    names = set()
+    for entry in payload['entries']:
+        if (not isinstance(entry, dict) or not isinstance(entry.get('name'), str)
+                or not re.fullmatch(r'[A-Za-z0-9_]+', entry['name'])):
+            raise RuntimeError('Invalid world mesh socket name.')
+        if entry['name'].casefold() in names:
+            raise RuntimeError(f'Duplicate world mesh socket: {entry["name"]}')
+        names.add(entry['name'].casefold())
+        validate_socket_transform(entry)
+    return payload
+
+
+def socket_transform(socket):
+    def values(property_name, components):
+        value = socket.get_editor_property(property_name)
+        return [float(getattr(value, axis)) for axis in components]
+    return {
+        'location': values('relative_location', 'xyz'),
+        'rotation': values('relative_rotation', ('roll', 'pitch', 'yaw')),
+        'scale': values('relative_scale', 'xyz'),
+    }
+
+
+def socket_quaternion(rotation):
+    roll, pitch, yaw = [math.radians(v) / 2 for v in rotation]
+    sr, cr = math.sin(roll), math.cos(roll)
+    sp, cp = math.sin(pitch), math.cos(pitch)
+    sy, cy = math.sin(yaw), math.cos(yaw)
+    return (cr * sp * sy - sr * cp * cy, -cr * sp * cy - sr * cp * sy,
+            cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy)
+
+
+def socket_transforms_equal(left, right):
+    dot = abs(sum(a * b for a, b in zip(socket_quaternion(left['rotation']),
+                                       socket_quaternion(right['rotation']))))
+    angle = math.degrees(2 * math.acos(min(1.0, dot)))
+    return (math.dist(left['location'], right['location']) <= 0.001
+            and max(abs(a - b) for a, b in zip(left['scale'], right['scale'])) <= 0.00001
+            and angle <= 0.01)
+
+
+def set_socket_transform(socket, transform):
+    socket.set_editor_property('relative_location', unreal.Vector(*transform['location']))
+    roll, pitch, yaw = transform['rotation']
+    socket.set_editor_property('relative_rotation', unreal.Rotator(pitch=pitch, yaw=yaw, roll=roll))
+    socket.set_editor_property('relative_scale', unreal.Vector(*transform['scale']))
 
 
 def build_plan(manifest, base_dir):
@@ -479,6 +608,67 @@ class Importer:
             if mesh is not None:
                 self.assign_materials(mesh)
                 self.library.save_loaded_asset(mesh)
+        self.apply_world_mesh_sockets()
+
+    def apply_world_mesh_sockets(self):
+        payload = validate_world_mesh_sockets(self.manifest)
+        if payload is None or not payload['entries']:
+            return
+        mesh = self.library.load_asset(payload['mesh'])
+        if not isinstance(mesh, unreal.StaticMesh):
+            raise RuntimeError(f'Cannot load world socket destination static mesh: {payload["mesh"]}')
+        changes = []
+        for entry in payload['entries']:
+            names = [name for name in mesh.get_socket_names()
+                     if str(name).casefold() == entry['name'].casefold()]
+            if len(names) > 1:
+                raise RuntimeError(f'Duplicate existing world mesh socket: {entry["name"]}')
+            socket = mesh.find_socket(names[0]) if names else None
+            if socket is not None and socket.get_outer() != mesh:
+                raise RuntimeError(f'World socket is not owned by its static mesh: {entry["name"]}')
+            before = socket_transform(socket) if socket is not None else None
+            if before is None or not socket_transforms_equal(before, entry):
+                changes.append((entry, socket, before))
+        if not changes:
+            log('  world magazine sockets unchanged; no save needed')
+            return
+        changed = []
+        mesh.modify()
+        try:
+            for entry, socket, before in changes:
+                if socket is None:
+                    socket = unreal.StaticMeshSocket(outer=mesh)
+                    socket.set_editor_property('socket_name', entry['name'])
+                    mesh.add_socket(socket)
+                changed.append((socket, before))
+                socket.modify()
+                set_socket_transform(socket, entry)
+                if (mesh.find_socket(entry['name']) != socket
+                        or not socket_transforms_equal(socket_transform(socket), entry)):
+                    raise RuntimeError(f'World socket readback failed: {entry["name"]}')
+            if not self.library.save_loaded_asset(mesh):
+                raise RuntimeError(f'Could not save world magazine sockets on {payload["mesh"]}')
+        except Exception as error:
+            rollback_errors = []
+            for socket, before in reversed(changed):
+                try:
+                    if before is None:
+                        mesh.remove_socket(socket)
+                    else:
+                        set_socket_transform(socket, before)
+                except Exception as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if changed:
+                try:
+                    if not self.library.save_loaded_asset(mesh):
+                        rollback_errors.append('could not save restored world magazine sockets')
+                except Exception as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if rollback_errors:
+                raise RuntimeError(f'{error}; world socket rollback failed: {rollback_errors}') from error
+            raise
+        self.counts['world magazine sockets'] = len(changes)
+        log(f'  saved {len(changes)} world magazine sockets on {payload["mesh"]}')
 
     def import_animations(self, files, skeleton_path):
         pending = [(path, folder, name) for path, folder, name in files if self.wanted(folder, name, replace=True)]
@@ -551,6 +741,176 @@ class Importer:
         options.set_editor_property('import_textures', False)
         options.set_editor_property('create_physics_asset', False)
         self.import_tasks([self.task(path, folder, name, options) for path, folder, name in pending])
+
+    def apply_weapon_sockets(self):
+        payload = validate_weapon_sockets(self.manifest)
+        if payload is None or not payload['entries']:
+            return
+        mesh = self.library.load_asset(payload['mesh'])
+        if not isinstance(mesh, unreal.SkeletalMesh):
+            raise RuntimeError(f'Cannot load socket destination skeletal mesh: {payload["mesh"]}')
+        tag = 'ArsenalWeaponSocketsV1'
+        old_tag = self.library.get_metadata_tag(mesh, tag)
+        try:
+            managed = json.loads(old_tag) if old_tag else {}
+        except ValueError as error:
+            raise RuntimeError(f'Invalid Arsenal socket metadata on {payload["mesh"]}') from error
+        if not isinstance(managed, dict):
+            raise RuntimeError(f'Invalid Arsenal socket metadata on {payload["mesh"]}')
+        updated = dict(managed)
+        changes = []
+        pending = []
+        donor = None
+        reference = unreal.SkeletalMeshComponent()
+        reference.set_skeletal_mesh_asset(mesh)
+        # Preflight every requested socket before modifying any UObject.
+        for entry in payload['entries']:
+            name = entry['name']
+            if reference.get_bone_index(entry['bone']) < 0:
+                raise RuntimeError(f'Socket {name} has no destination bone {entry["bone"]}.')
+            previous = managed.get(name)
+            desired = entry['transform'] if entry['enabled'] else entry['baseline']
+            socket = mesh.find_socket(name)
+            missing = socket is None
+            if missing and payload.get('source_mesh'):
+                if donor is None:
+                    donor = self.library.load_asset(payload['source_mesh'])
+                    if not isinstance(donor, unreal.SkeletalMesh) or donor == mesh:
+                        raise RuntimeError(f'Cannot load independent socket donor: {payload["source_mesh"]}')
+                socket = donor.find_socket(name)
+            if socket is None or str(socket.get_editor_property('bone_name')) != entry['bone']:
+                raise RuntimeError(f'Socket {name} is missing or its original bone changed; rerun setup/import.')
+            current = socket_transform(socket)
+            if missing and not socket_transforms_equal(current, entry['baseline']):
+                raise RuntimeError(f'Donor socket {name} changed; review the donor catalogue.')
+            if previous is not None:
+                if (not isinstance(previous, dict) or previous.get('bone') != entry['bone']
+                        or not socket_transforms_equal(validate_socket_transform(previous.get('baseline')),
+                                                       entry['baseline'])):
+                    raise RuntimeError(f'Source changed for managed socket {name}; review the donor catalogue.')
+                last = validate_socket_transform(previous.get('last'))
+                if not (socket_transforms_equal(current, last)
+                        or socket_transforms_equal(current, entry['baseline'])):
+                    raise RuntimeError(f'Socket {name} changed outside Arsenal; refusing to overwrite it.')
+            elif not missing and (not entry['enabled'] or socket_transforms_equal(desired, entry['baseline'])):
+                continue
+            elif not socket_transforms_equal(current, entry['baseline']):
+                raise RuntimeError(f'Socket {name} has an unmanaged override; refusing to overwrite it.')
+            owner = socket.get_outer()
+            source_mesh = donor if missing else mesh
+            if owner != source_mesh and owner != source_mesh.get_editor_property('skeleton'):
+                raise RuntimeError(f'Unexpected owner for socket {name}: {owner.get_path_name()}')
+            created = previous.get('created', False) if previous else False
+            needs_copy = missing or (owner != mesh and not socket_transforms_equal(current, desired))
+            if needs_copy:
+                for api_owner, method in ((self.library, 'duplicate_asset'), (self.library, 'delete_loaded_asset'),
+                                          (unreal, 'load_object'), (mesh, 'add_socket'), (socket, 'rename')):
+                    if not callable(getattr(api_owner, method, None)):
+                        raise RuntimeError(f'Cannot create an independent mesh socket: missing {method}.')
+                created = True
+            if entry['enabled'] and not socket_transforms_equal(desired, entry['baseline']):
+                updated[name] = {'bone': entry['bone'], 'baseline': entry['baseline'],
+                                 'last': desired, 'created': created}
+            elif created:
+                updated[name] = {'bone': entry['bone'], 'baseline': entry['baseline'],
+                                 'last': entry['baseline'], 'created': True}
+            else:
+                updated.pop(name, None)
+            if needs_copy or not socket_transforms_equal(current, desired):
+                pending.append((entry, socket, current, desired, needs_copy))
+        if not pending and updated == managed:
+            return
+        clones = {}
+        added = []
+        mesh.modify()
+        try:
+            for entry, source, before, desired, needs_copy in pending:
+                socket = source
+                if needs_copy:
+                    owner_path = source.get_outer().get_path_name()
+                    if owner_path not in clones:
+                        staging = (self.manifest['game_root'].rstrip('/') + '/_ArsenalSocketStaging/'
+                                   + uuid.uuid4().hex + '/SocketSource')
+                        clone = self.library.duplicate_asset(owner_path, staging)
+                        if clone is None or clone == source.get_outer():
+                            raise RuntimeError(f'Cannot independently copy socket owner {owner_path}')
+                        clones[owner_path] = clone
+                    clone = clones[owner_path]
+                    socket = unreal.load_object(None, clone.get_path_name() + ':' + source.get_name())
+                    if (socket is None or socket == source or socket.get_outer() != clone
+                            or str(socket.get_editor_property('socket_name')) != entry['name']
+                            or str(socket.get_editor_property('bone_name')) != entry['bone']
+                            or not socket_transforms_equal(socket_transform(socket), before)):
+                        raise RuntimeError(f'Independent socket copy failed: {entry["name"]}')
+                    if not socket.rename(name='ArsenalSocket_' + uuid.uuid4().hex, outer=mesh):
+                        raise RuntimeError(f'Cannot assign copied socket {entry["name"]} to the weapon mesh')
+                    mesh.add_socket(socket, add_to_skeleton=False)
+                    added.append((entry, socket, before))
+                    if mesh.find_socket(entry['name']) != socket or socket.get_outer() != mesh:
+                        raise RuntimeError(f'Mesh-only socket lookup failed: {entry["name"]}')
+                changes.append((socket, before, desired))
+            for socket, before, desired in changes:
+                set_socket_transform(socket, desired)
+                if not socket_transforms_equal(socket_transform(socket), desired):
+                    raise RuntimeError(f'Socket readback failed: {socket.get_path_name()}')
+                log(f'  socket {socket.get_editor_property("socket_name")}: {before} -> {desired}')
+            self.library.set_metadata_tag(mesh, tag, json.dumps(updated, sort_keys=True))
+            for _entry, source, before, _desired, needs_copy in pending:
+                if needs_copy and not socket_transforms_equal(socket_transform(source), before):
+                    raise RuntimeError('A source socket changed while creating a mesh-only copy.')
+            if not self.library.save_loaded_asset(mesh):
+                raise RuntimeError(f'Could not save socket owner {payload["mesh"]}')
+        except Exception as error:
+            failures = []
+            for socket, before, _desired in changes:
+                try:
+                    set_socket_transform(socket, before)
+                except Exception as rollback_error:
+                    failures.append(f'{socket.get_path_name()}: {rollback_error}')
+            try:
+                if added:
+                    restored = dict(managed)
+                    for entry, socket, before in added:
+                        set_socket_transform(socket, before)
+                        restored[entry['name']] = {
+                            'bone': entry['bone'], 'baseline': entry['baseline'], 'last': before, 'created': True}
+                    self.library.set_metadata_tag(mesh, tag, json.dumps(restored, sort_keys=True))
+                    failures.append('New mesh-only overrides remain at donor placement; '
+                                    'ZoneKit exposes no socket removal API')
+                elif old_tag:
+                    self.library.set_metadata_tag(mesh, tag, old_tag)
+                else:
+                    self.library.remove_metadata_tag(mesh, tag)
+                if not self.library.save_loaded_asset(mesh):
+                    failures.append(f'Could not save rollback: {payload["mesh"]}')
+            except Exception as rollback_error:
+                failures.append(str(rollback_error))
+            if failures:
+                raise RuntimeError(f'{error}; socket rollback failed: {"; ".join(failures)}') from error
+            raise
+        finally:
+            cleanup_errors = []
+            for clone in clones.values():
+                try:
+                    if not self.library.delete_loaded_asset(clone):
+                        cleanup_errors.append(f'Could not clean up temporary socket source {clone.get_path_name()}')
+                except Exception as cleanup_error:
+                    cleanup_errors.append(str(cleanup_error))
+            if cleanup_errors:
+                active_error = sys.exception()
+                raise RuntimeError(f'{active_error or "Socket save completed"}; {"; ".join(cleanup_errors)}') \
+                    from active_error
+        for entry in payload['entries']:
+            previous = managed.get(entry['name'])
+            if (previous and previous.get('created') and not entry['enabled']
+                    and not socket_transforms_equal(previous['last'], entry['baseline'])):
+                warn(f'{entry["name"]}: restored donor placement; the baseline mesh-only override is retained '
+                     'because ZoneKit exposes no socket removal API.')
+        for entry, socket, _before in added:
+            if mesh.find_socket(entry['name']) != socket or socket.get_outer() != mesh:
+                raise RuntimeError(f'Socket ownership changed after temporary-source cleanup: {entry["name"]}')
+        self.count('socket meshes saved')
+        log(f'  applied {len(changes)} socket changes to {payload["mesh"]}')
 
     @staticmethod
     def same_raw_animation(asset, original):
@@ -1014,7 +1374,7 @@ class Importer:
     def repoint_collection(self, collection, assets, report):
         changed = False
         for name in dir(collection):
-            if name.startswith('_') or name in ('cast', 'static_class', 'get_class'):
+            if name.startswith('_') or name in ('cast', 'static_class', 'get_class', 'internal_animations'):
                 continue
             try:
                 value = collection.get_editor_property(name)
@@ -1053,15 +1413,15 @@ class Importer:
             return False
         name = collection.get_name()
         try:
-            original = collection.get_editor_property('internal_animations')
-            internal = collection.get_editor_property('internal_animations')
+            original = collection.get_editor_property('internal_animations').copy()
+            internal = original.copy()
         except Exception as error:
             warn(f'{name}: cannot read internal_animations ({error}); add magazine/attachment SIDs by hand.')
             return False
         replaced = {}
         for field in COLLECTION_SID_MAPS:
             try:
-                entries = internal.get_editor_property(field)
+                entries = dict(internal.get_editor_property(field))
                 keys = list(entries.keys())
             except Exception as error:
                 warn(f'{name}: cannot read {field} ({error}); add magazine/attachment SIDs by hand.')
@@ -1096,6 +1456,7 @@ class Importer:
         if not replaced:
             return False
         try:
+            collection.modify()
             collection.set_editor_property('internal_animations', internal)
             if not self.collection_sids_match(collection, original, replaced):
                 raise RuntimeError('magazine/attachment SID entries did not read back correctly')
@@ -1144,6 +1505,7 @@ class Importer:
             return '/' + weapon + '/' in package.lower() or f'/{weapon}_' in package.lower() or f'_{weapon}_' in package.lower()
 
         updated = 0
+        collections_seen = 0
         for package in sorted(assets['montage'].values()):
             if not ours(package):
                 continue
@@ -1159,13 +1521,14 @@ class Importer:
             collection = self.library.load_asset(package)
             if collection is None:
                 continue
+            collections_seen += 1
             changed = self.repoint_collection(collection, assets, report)
             if self.sync_collection_sids(collection, report) or changed:
                 updated += 1
         for line in report['lines']:
             log('  ' + line)
-        if self.manifest.get('magazines') and not any('_Mag' in line for line in report['lines']):
-            warn('No magazine SIDs were replaced in the anim collection; set them by hand '
+        if self.manifest.get('magazines') and not collections_seen:
+            warn('No weapon anim collection was found; regenerate the import script with Export All '
                  f'({", ".join(m["sid"] for m in self.manifest["magazines"])}).')
         if report['inaccessible']:
             warn('Montage slot data cannot be edited from this editor\'s Python, so these montages still '
@@ -1373,14 +1736,28 @@ class Importer:
     def copy_game_data(self):
         """Copy the exported GameLite folder (the CFG files) into the mod's Content folder."""
         source = os.path.join(self.base_dir, 'GameLite')
-        if not os.path.isdir(source):
+        distribution = self.manifest.get('distribution')
+        if not os.path.isdir(source) and distribution is None:
             return
         target_root = self.mod_content_folder()
         if target_root is None:
+            if distribution is not None:
+                raise RuntimeError('Could not find the mod Content folder for combined distribution.')
             warn(f'Could not find the mod folder on disk; copy "{source}" into the mod\'s Content folder by hand.')
             return
         copied = 0
         mod = self.manifest['game_root'].strip('/').split('/')[0]
+        if distribution is not None:
+            if (distribution.get('mod') != mod
+                    or distribution.get('weapon') != self.manifest['weapon']):
+                raise RuntimeError('Distribution settings do not match the import weapon or mod.')
+            if not DISTRIBUTION_SOURCE or not DISTRIBUTION_DEFAULTS:
+                raise RuntimeError('Missing distribution composer; regenerate with Export All.')
+            module = types.ModuleType('arsenal_distribution_compose')
+            exec(compile(DISTRIBUTION_SOURCE, 'arsenal_distribution_compose', 'exec'), module.__dict__)
+            count = module.update_mod(target_root, distribution, DISTRIBUTION_DEFAULTS, warn=warn)
+            log(f'  rebuilt combined distribution for {count} weapons')
+            self.counts['distribution weapons'] = count
         mod_data = os.path.join(source, 'ModGameData')
         for folder, dirs, files in os.walk(source):
             if os.path.normcase(folder) == os.path.normcase(mod_data):
@@ -1393,6 +1770,16 @@ class Importer:
             destination = os.path.join(target_root, 'GameLite', os.path.relpath(folder, source))
             os.makedirs(destination, exist_ok=True)
             for name in files:
+                if distribution is not None:
+                    relative = os.path.relpath(os.path.join(folder, name), source).replace('\\', '/')
+                    if re.fullmatch(r'GameData/ItemGeneratorPrototypes/' + re.escape(mod)
+                                    + r'_\w+Distribution\.cfg', relative) or re.fullmatch(
+                                        r'ModGameData/' + re.escape(mod)
+                                        + r'/ItemGeneratorPrototypes/\w+Distribution\.cfg', relative):
+                        with open(os.path.join(folder, name), encoding='utf-8-sig') as handle:
+                            if not handle.read().startswith('// Generated by Arsenal.'):
+                                raise RuntimeError(f'Unexpected non-Arsenal distribution export: {relative}')
+                        continue
                 shutil.copy2(os.path.join(folder, name), os.path.join(destination, name))
                 copied += 1
         log(f'  copied {copied} CFG files into {os.path.join(target_root, "GameLite")}')
@@ -1417,8 +1804,12 @@ class Importer:
 
     def run(self):
         log(f'Arsenal import for "{self.manifest["weapon"]}"')
+        validate_weapon_sockets(self.manifest)
+        validate_world_mesh_sockets(self.manifest)
+        self.ensure_setup()
         self.copy_game_data()
         self.import_skeletal_mesh()
+        self.apply_weapon_sockets()
         self.import_textures()
         self.import_ui_images()
         self.import_materials()
@@ -1431,6 +1822,23 @@ class Importer:
         self.tidy_empty_folders()
         log('Arsenal import finished: ' + ', '.join(f'{count} {label}' for label, count in self.counts.items()))
 
+    def ensure_setup(self):
+        config = self.manifest.get('setup')
+        if config is None:
+            warn('This import manifest has no setup recovery data; regenerate it with Export All. '
+                 'Run the ZoneKit setup script first.')
+            return
+        if not SETUP_SOURCE:
+            raise RuntimeError('Setup recovery source is missing; regenerate the import script with Export All.')
+        if ('/' + config['mod'] != self.manifest['game_root'].rstrip('/')
+                or config['weapon'] != self.manifest['weapon']):
+            raise RuntimeError('Setup recovery does not match the export weapon or mod.')
+        module = types.ModuleType('arsenal_embedded_setup')
+        exec(compile(SETUP_SOURCE, 'arsenal_embedded_setup', 'exec'), module.__dict__)
+        module.warn = warn
+        config = dict(config, export_dir=self.base_dir, dry_run=False, export=False)
+        module.ensure_mod_assets(config)
+
 
 def print_plan(manifest, base_dir):
     for key, items in build_plan(manifest, base_dir).items():
@@ -1441,6 +1849,12 @@ def print_plan(manifest, base_dir):
     print(f'localization: {len(entries)}')
     for entry in entries:
         print('   ', entry['SID'])
+    sockets = validate_weapon_sockets(manifest)
+    if sockets is not None:
+        print(f'weapon sockets: {len(sockets["entries"])} on {sockets["mesh"]}')
+    world_sockets = validate_world_mesh_sockets(manifest)
+    if world_sockets is not None:
+        print(f'world magazine sockets: {len(world_sockets["entries"])} on {world_sockets["mesh"]}')
 
 
 def _main(argv=None):
@@ -1452,7 +1866,14 @@ def _main(argv=None):
     if unreal is None or '--dry-run' in argv:
         print_plan(manifest, base_dir)
         return
-    Importer(manifest, base_dir, '--overwrite' in argv).run()
+    importer = Importer(manifest, base_dir, '--overwrite' in argv)
+    if '--sockets-only' in argv:
+        if validate_weapon_sockets(manifest) is None:
+            raise RuntimeError('No Blender socket payload; regenerate the import script with socket markers.')
+        importer.apply_weapon_sockets()
+        log('Arsenal socket-only import finished.')
+    else:
+        importer.run()
 
 
 def main(argv=None):

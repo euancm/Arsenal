@@ -1,4 +1,4 @@
-*.blend1
+*.blend[1-9]*
 __pycache__/
 *.py[cod]
 *.zip
@@ -6,8 +6,20 @@ __pycache__/
 # Local extracted game assets and imported Blender test scenes
 /Arsenal/Source FBX Files/
 /Arsenal/*.blend
+/Arsenal/UI Inventory images/
+/Arsenal/ui mockup*.png
 survey_output/
 # Generated working folders (keep weapon projects outside this checkout)
 /ZoneKit Export/
 /Blender Export/
 L115A3/*
+
+# Extracted Unreal assets and packaged mods are never repository resources
+*.fbx
+*.FBX
+*.uasset
+*.uexp
+*.ubulk
+*.pak
+*.utoc
+*.ucas

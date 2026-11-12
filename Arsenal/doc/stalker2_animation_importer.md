@@ -12,8 +12,13 @@ Developer documentation for the importer module integrated into Stalker 2 Arsena
 
 ## Installation and Quick Start
 
+Existing weapon sockets can also be edited as named Empty markers. See
+[weapon sockets without opening SKEL](weapon_sockets.md) for authoring, catalogue
+refresh, reset and socket-only ZoneKit imports.
+
 1. In Blender, install and enable **Stalker 2 Arsenal** from Preferences. The importer is included.
-2. Start from a new Blender scene. The base-skeleton operation requires that the scene contain no armatures other than an imported weapon rig.
+2. Start from a new Blender scene. The base-skeleton operation requires no existing armatures;
+   **Import Weapon** manages its temporary weapon rig internally.
 3. In **3D View > Sidebar > STALKER 2 > 1. Set Up**, choose the template, enter your weapon name, the ZoneKit mod name and a working folder, then run the generated ZoneKit setup script (see the README). That fills **Exported Files** (`<working folder>/ZoneKit Export`, the folder containing `_STALKER2` and `_Stalker_2`), the template animation name (for example `udp`, or `viper` for the SMG) and the template mesh name (`vip` for the SMG; empty when it matches the animation name).
 4. Click **Import Weapon** in panel 2. One click runs the whole setup: it imports `SK_<mesh name>.FBX` and the `AnimMesh/SM_*_<mesh name>_SM_*.FBX` parts (placed, weighted to their bones, joined into one mesh named after the donor; rename it to your new weapon, with bone shapes and red colours applied), creates the base skeleton and camera, imports every matching animation pair, guesses the character and weapon mappings and converts the character to a Rigify rig. Replace or edit the mesh and bones as needed.
 5. Retarget the animations from panel 3. Keyframes are cleaned automatically afterwards.
@@ -74,7 +79,7 @@ The active camera is named `STALKER 2 First Person Camera` and has these setting
 | --- | --- |
 | Parent type | Bone |
 | Parent bone | `jnt_camera` |
-| Local location | `(0, 0, 0)` |
+| Local location | `(0, -bone.length, 0)` (bone head) |
 | Local Euler rotation | `(90°, 0°, 0°)` |
 | Lens | `18 mm` |
 | Sensor fit / width | Horizontal / `36 mm` |
@@ -82,7 +87,18 @@ The active camera is named `STALKER 2 First Person Camera` and has these setting
 
 The 90-degree X rotation converts the camera bone's forward +Y axis to Blender camera forward (-Z). Change `_create_camera` if the source rig's camera-bone orientation changes.
 
-When the character is converted to Rigify, the camera is reparented to the generated `Camera` control with local location `(0, 0, 0)`, local rotation `(90°, 0°, -90°)`, and unit scale.
+Blender bone parenting places a zero-offset object at the bone tail. The negative local Y
+offset cancels that displacement so the preview eye follows the animated bone head, matching
+the exported camera joint rather than introducing a sideways iron-sight offset.
+
+When the character is converted to Rigify, the camera is reparented to the generated `Camera`
+control with local location `(0, -bone.length, 0)`, local rotation `(90°, 0°, -90°)`, identity
+parent inverse and unit scale.
+
+Existing saved scenes are not changed automatically. For a previously imported camera, set
+its local Y location to the negative length of its parent bone (local X and Z remain zero).
+Keep the existing camera rotation and do not offset the animated bone or `CameraSocket` to
+compensate for this preview issue.
 
 ## Animation Import Pipeline
 
@@ -164,7 +180,9 @@ For automated tests, run Blender with `--background --factory-startup --python-e
 
 ## Known Limitations
 
-- Enter the weapon name in the **Weapon name** field first; files are matched as `AS_fp_<name>_*` and `AS_<name>_fp_*`.
+- Files are matched using the importer's **template animation name**, set by panel 1, as
+  `AS_fp_<name>_*` and `AS_<name>_fp_*`. Do not replace that donor token with the custom
+  weapon's display name.
 - The base builder uses the idle pair and assumes its character rig includes `jnt_camera`.
 - The generated rig is a same-name skeleton join, not a general skeleton merge or retargeting system.
 - Shared animated bones are resolved by source order, with the character source taking precedence.
@@ -187,4 +205,13 @@ Meshes import with smooth shading and their original hard edges (kept as Sharp E
 
 All magazine meshes (default, increased/big/twin; full and empty) are exported from ZoneKit and imported; Detect Magazines names the standard one Default and the others Increased/Twin/Drum. Normal Map nodes are set to the DirectX convention.
 
-Montages: Python cannot edit montage slot data, a montage rebuilt with AnimMontageFactory loses its slot name, notifies and length, and consolidate_assets on /Game assets crashes ZoneKit (do not use it). Instead the setup script patches the name tables of the mod's own copies (montages, sequences, the AnimCollection, the AnimBP and the skeletal mesh) so they reference each other rather than the /Game originals (slots, sections, notifies and graphs are preserved), then reloads them. Backups go to <export folder>\reference_backups. The weapon prototype also points at the mod's own skeletal mesh. Anything it cannot patch is listed by the check at the end for a manual swap.
+Montages: Python cannot edit montage slot tracks; rebuilding a montage with AnimMontageFactory
+loses its slot name, notifies and length, and consolidate_assets on /Game assets crashes ZoneKit
+(do not use it). Instead the setup script patches the name tables of the mod's own copies
+(montages, sequences, the AnimCollection, the AnimBP and the skeletal mesh) so they reference
+each other rather than the /Game originals (slots, sections, notifies and graphs are preserved),
+then reloads them. Backups go to `<export folder>\reference_backups`. The weapon prototype also
+points at the mod's own skeletal mesh. Fresh import scripts recover missing copies and repair
+references before importing Blender assets; see [setup recovery](cfg_export.md#recovering-missing-zonekit-setup).
+The importer can separately update attachment-notify SIDs without rebuilding montage tracks;
+see [animation montages](exporting_animations.md#animation-montages).

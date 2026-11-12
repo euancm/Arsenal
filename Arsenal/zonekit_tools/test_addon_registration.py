@@ -20,7 +20,7 @@ class AddonRegistrationTests(unittest.TestCase):
     def test_registration_reload_and_unregister(self):
         properties = (
             'stalker2_animation_importer', 'arsenal_export', 'arsenal_cfg',
-            'arsenal_setup', 'arsenal_ui', 'arsenal_inventory',
+            'arsenal_setup', 'arsenal_ui', 'arsenal_inventory', 'arsenal_sockets',
         )
         for _ in range(2):
             addon.register()

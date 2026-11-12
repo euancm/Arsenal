@@ -27,13 +27,20 @@ The full round trip works for the pistol template (UDP), tested in game from a b
 - ZoneKit setup script → Blender import and retarget → edit → Blender export → ZoneKit import script → package the mod.
 - The new weapon is a separate item with its own mesh and CFG stats. The vanilla UDP and Gambit pistols are left untouched.
 - It takes normal and extended magazines, fires and reloads.
+- Trader and NPC inventory settings are exported automatically. Purchasable custom magazines,
+  silencers and lasers can follow the weapon's traders at half its effective stock chance,
+  without separate attachment inventory rules.
 - Every first-person animation of the weapon can be edited in Blender: idle, aim and the aim transitions, reload (all variants), fire and aimed fire, empty click, equip and unequip, melee, offset aim, the empty-gun slide lock (`idle_boltlock`) and `break_bullet_idle`. Export fidelity has been tested for fingers, wrist twist and sleeves, and edited clips blend with the game's own. Final sight alignment still requires an in-game check.
 - Animations shared by every pistol (sprint, walk, jump, cover lean and so on) come from the game and are not imported.
 
 Known limitations:
 
 - Only the pistol template has been tested in game. The SMG, rifle, shotgun and sniper templates are untested.
-- Silencer and laser placement is not handled yet.
+- Trader/NPC spawn frequencies, custom attachment stock, custom upgrade trees and composed
+  inventory/upgrade images still require fresh in-game checks; automated tests are not gameplay proof.
+- Existing weapon sockets can be positioned using [Blender markers](Arsenal/doc/weapon_sockets.md)
+  without opening SKEL. Socket edits write mesh-only overrides on the mod-owned weapon mesh; cooked first-/third-person
+  attachment, effect and sight behavior still needs in-game verification.
 - A model whose sights sit higher or lower than the template's won't line up when aiming yet; a sight-alignment tool is planned.
 - Rarely, the first aim right after loading a save may look jerky; it hasn't been reproduced reliably and looks like a game loading glitch.
 
@@ -50,7 +57,11 @@ See [mapping storage and migration](Arsenal/doc/mappings.md).
 
 Requires Blender 5.2.2 or newer.
 
-To install, download this repository and zip the [Arsenal/stalker2_arsenal](Arsenal/stalker2_arsenal) folder, so the zip contains the `stalker2_arsenal` folder itself. In Blender, open **Edit > Preferences > Add-ons**, choose **Install from Disk** from the drop-down menu at the top right, pick the zip and enable **Stalker 2 Arsenal**.
+To install, download this repository and zip the [Arsenal/stalker2_arsenal](Arsenal/stalker2_arsenal) folder, so the zip contains the `stalker2_arsenal` folder itself. Keep all of its resources, including both `.blend` libraries and the JSON catalogues. In Blender, open **Edit > Preferences > Add-ons**, choose **Install from Disk** from the drop-down menu at the top right, pick the zip and enable **Stalker 2 Arsenal**. Enable Blender's Rigify add-on before importing a weapon.
+
+The `.blend` resources use Git LFS. If cloning, install Git LFS and run `git lfs pull` before
+installing the add-on or testing it. If using a downloaded source archive, verify that the
+libraries are real Blender files, not small Git LFS pointer text files.
 
 If you're changing the add-on's code, load it from source instead with [dev_load_addon.py](Arsenal/dev_load_addon.py): in Blender's Text Editor use **Text > Open** on that file, then **Run Script**. Run it again after editing the code to reload. It disables an installed zip copy of the add-on so the two don't clash.
 
@@ -64,7 +75,11 @@ In ZoneKit, weapons are stored in two places. Animations are in `_STALKER2/Anima
 
 [survey_template_assets.py](Arsenal/zonekit_tools/survey_template_assets.py) lists every file a template weapon uses and what the add-on does with it. Run it in ZoneKit (paste its path into the Python bar); the results go to `Arsenal/zonekit_tools/survey_output`, which is git-ignored.
 
-The other scripts in [zonekit_tools](Arsenal/zonekit_tools) are developer checks: [audit_mod.py](Arsenal/zonekit_tools/audit_mod.py) (plain Python) lists a mod's dangling or leftover template references, and the `test_*.py` files are regression tests: the Blender registration/resources, export, import and magazine detection (`test_addon_registration.py`, `test_animation_export.py`, `test_export_ik_controls.py`, `test_new_animations.py`, `test_skeleton_export.py`, `test_weapon_cfg.py`, run with `blender --background`), and the ZoneKit setup, import and completion notifications (`test_unreal_setup.py`, `test_animation_import.py`, `test_completion_notifications.py`, plain Python).
+The other scripts in [zonekit_tools](Arsenal/zonekit_tools) are developer checks.
+[audit_mod.py](Arsenal/zonekit_tools/audit_mod.py) runs in plain Python and lists a mod's dangling
+or leftover template references. Regression tests cover setup/import, distribution composition,
+sockets, registration, animation/mesh export, CFG, inventory images, mappings and upgrades.
+See [Developer validation](#developer-validation) for commands and required external inputs.
 
 ## Workflow
 
@@ -83,7 +98,7 @@ Start with a new, empty Blender file and press N in the 3D view to open the **ST
 3. Press **Create ZoneKit Setup Script**. The path of the script is copied to your clipboard.
 4. In ZoneKit, make sure your mod is the selected one, paste the path into the Python bar and run it. The script:
    - exports the template's first-person animations, its skeletal mesh and its animated static mesh parts to the ZoneKit Export folder;
-   - checks out the assets that stay in ZoneKit (montages, animation collection, anim blueprint, skeleton, skeletal mesh and the animation sequences) into your mod;
+   - creates mod-owned copies of the assets that stay in ZoneKit (montages, animation collection, anim blueprint, skeleton, skeletal mesh and animation sequences), without revision-control checkout;
    - renames them all to your weapon name with the asset rename function, like Batch Rename, then rewrites their references so the montages, animation collection and anim blueprint use your weapon's assets instead of the template's;
    - writes `zonekit_setup_<weapon>_report.txt` to the ZoneKit Export folder. Check it for warnings, especially "still references the template asset".
 
@@ -114,6 +129,15 @@ A few things to know:
 - Rename the main weapon mesh from the template mesh name (e.g. `udp`) to your new weapon's name.
 - Extra parts that need to swap in-game, like `magazine_full` and `magazine_empty`, should be separate objects with the same armature modifier. Each one is exported as its own static mesh, named after the object.
 - The skeleton exported to Unreal keeps the original bones, so extra bones you add won't be exported.
+
+In panel 4, configure **Trader Inventories** and **NPC Inventories** to make the weapon obtainable.
+They initially follow the selected template; changing templates resets trader/NPC rules.
+**Stock Custom Attachments** is on by default: every purchasable custom magazine, silencer and
+laser gets an independent roll at the enabled weapon traders, at half the weapon's effective
+stock chance. Preinstalled and referenced existing magazines are excluded. For example, a 50%
+effective weapon chance gives each custom attachment a 25% chance. Shared magazines can instead
+be owned by one weapon and referenced by another. See [CFG export](Arsenal/doc/cfg_export.md)
+for sharing, stock-pool gates, NPC percentages, fire modes, firing sounds and recoil controls.
 
 For an IK arm, key `hand_ik.L/R` and `upper_arm_ik.L/R`, plus `upper_arm_ik_target.L/R` if you
 use the elbow pole target. Key **Location, Rotation and Scale** in each affected action.
@@ -153,6 +177,44 @@ see [CFG export](Arsenal/doc/cfg_export.md#custom-upgrade-tree).
 3. When you close ZoneKit after packaging it may ask to save `SK_<weapon>` (save it; it's your mod's mesh) and to check out `SK_stalker_Skeleton` (decline; that's the base game's shared skeleton).
 
 Re-exporting under a new weapon name doesn't remove assets imported under the old name. Archive old mod-owned packages outside `Content` first; never delete or check out base-game assets.
+
+Fresh import scripts also recover missing donor copies and repair their references before
+importing Blender assets, without replacing existing custom assets with donor data. They apply
+authored weapon sockets and world-model magazine mounts, update attachment text/animation SIDs,
+and rebuild one combined trader/NPC distribution CFG for the mod. Back up
+`<mod folder>/Arsenal/distribution.json` with the mod project: it remembers the other weapons'
+settings and is not packaged content. Re-import each weapon with a fresh export to add its
+custom attachment stock. Test fresh NPC spawns and a trader stock refresh; existing inventories
+do not reroll immediately.
+
+## Developer validation
+
+Run from the repository root. Asset-free plain-Python tests:
+
+```powershell
+python -B -m unittest Arsenal.zonekit_tools.test_unreal_setup Arsenal.zonekit_tools.test_animation_import Arsenal.zonekit_tools.test_completion_notifications Arsenal.zonekit_tools.test_weapon_distribution Arsenal.zonekit_tools.test_distribution_compose Arsenal.zonekit_tools.test_weapon_sockets Arsenal.zonekit_tools.test_world_mesh_sockets
+```
+
+Blender tests document their command in each module's opening docstring. For example:
+
+```powershell
+& 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe' --background --factory-startup --python-exit-code 1 --python 'Arsenal\zonekit_tools\test_addon_registration.py'
+```
+
+Registration, camera placement, IK-control validation, mapping storage, static meshes, CFG,
+inventory images, weapon upgrades and socket-marker tests use disposable synthetic scenes.
+Animation round-trip, new-animation and skeleton-export tests need an external weapon blend or
+donor FBX as specified in their docstrings. Native ZoneKit socket/collection persistence tests
+require a disposable `ArsenalSocketProbe` mod and a second fresh process. Never point those tests
+at a real weapon mod. Do not run blanket test discovery under plain Python: Blender/ZoneKit
+modules need their respective runtimes.
+
+The bundled distribution and upgrade JSON catalogues are structured defaults, not extracted
+assets. Regenerate them with [build_distribution_defaults.py](Arsenal/zonekit_tools/build_distribution_defaults.py)
+and [build_upgrade_defaults.py](Arsenal/zonekit_tools/build_upgrade_defaults.py) when the installed
+game data changes. Keep exported textures, models, test blends, reports and packages outside
+the checkout. Required `.blend` libraries under the add-on's `resources` and `shapes` folders
+must remain included; Blender backups and Python caches must not be added.
 
 ## License
 

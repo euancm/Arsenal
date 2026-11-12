@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from stalker2_arsenal import export_static_mesh as meshes
@@ -103,6 +103,43 @@ class WorldMeshTests(unittest.TestCase):
         self.assertEqual(skipped, [])
         world_calls = [call for call in extract.call_args_list if len(call.args) == 5]
         self.assertEqual([call.args[2].name for call in world_calls], ['custom', 'mag_full'])
+
+    def test_world_magazine_socket_reconstructs_bone_local_mesh_at_rest(self):
+        magazine = self.mesh('mag_full', ['Magazine'])
+        root = Vector((18, -6, 148))
+        head = root + Vector((-1, 2, -3.5))
+        rig = SimpleNamespace(
+            matrix_world=Matrix.Identity(4),
+            data=SimpleNamespace(bones={
+                'Weapon': SimpleNamespace(head_local=root),
+                'Magazine': SimpleNamespace(head_local=head)}))
+        payload = meshes.world_magazine_sockets(
+            rig, self.rig, self.joints,
+            [{'name': 'Default', 'socket': 'jnt_magazine', 'existing_sid': 'SharedMag'},
+             {'name': 'Extended', 'socket': 'jnt_magazine'}],
+            '/TestMod/SM_custom')
+        self.assertEqual(payload['mesh'], '/TestMod/SM_custom')
+        self.assertEqual(len(payload['entries']), 1)
+        entry = payload['entries'][0]
+        self.assertEqual(entry['name'], 'jnt_magazine')
+        self.assertEqual(entry['location'], [-1, -2, -3.5])
+        self.assertEqual(entry['rotation'], [0, 0, 0])
+        part, _ = meshes.extract_whole(rig, self.rig, magazine, 'Magazine')
+        world, _ = meshes.extract_whole(rig, self.rig, magazine, 'Weapon')
+        try:
+            displacement = Vector((entry['location'][0], -entry['location'][1], entry['location'][2]))
+            for local, expected in zip(part.verts, world.verts):
+                self.assertLess((local.co + displacement - expected.co).length, 1e-5)
+        finally:
+            part.free()
+            world.free()
+
+    def test_world_magazine_socket_rejects_unmapped_mount(self):
+        rig = SimpleNamespace(data=SimpleNamespace(bones={'Weapon': object()}))
+        with self.assertRaisesRegex(RuntimeError, 'UnknownMount'):
+            meshes.world_magazine_sockets(
+                rig, self.rig, self.joints, [{'name': 'Shared', 'socket': 'UnknownMount'}],
+                '/TestMod/SM_custom')
 
 
 if __name__ == '__main__':

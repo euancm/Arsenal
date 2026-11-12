@@ -2,6 +2,7 @@ import json
 import math
 import os
 import re
+import traceback
 
 import bpy
 from mathutils import Matrix, Quaternion, Vector
@@ -634,6 +635,9 @@ def validate_ik_controls(context, rig, action, slot):
         for parent, control, missing in controls:
             if parent['IK_FK'] >= 1.0 - 1e-5:
                 continue
+            if ('_ik_target.' in control.name
+                    and 'pole_vector' in parent and not parent['pole_vector']):
+                continue
             unkeyed = [
                 prop for prop, rest in missing
                 if any(abs(value - default) > 1e-5
@@ -684,6 +688,8 @@ def run_exports(context, rig, backup, plans):
                     rest_unkeyed_channels(rig, action, slot)
                     written.extend(export_action(context, rig, backup, mapping, action, slot, outputs))
                 except Exception as error:
+                    print(f'[Arsenal export] FAILED {action.name}: {error}', flush=True)
+                    traceback.print_exc()
                     failures.append((action.name, str(error)))
     finally:
         restore_pose(pose)
@@ -950,7 +956,10 @@ class ARSENAL_OT_ExportValidate(bpy.types.Operator):
 def _report_animation(operator, context, result):
     written, failures, count = result
     for name, message in failures:
-        operator.report({'WARNING'}, f'{name}: {message}')
+        for item in context.scene.arsenal_export.actions:
+            if item.name == name:
+                item.status = f'Export failed: {message}'
+        report(operator, {'WARNING'}, f'{name}: {message}')
     return f'{len(written)} animation files for {count - len(failures)} actions ({len(failures)} failed)', bool(failures)
 
 
@@ -983,12 +992,13 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
                 warn = warn or failed
                 if failed:
                     names = ', '.join(name for name, _message in result[1])
+                    details = '\n'.join(f'{name}: {message}' for name, message in result[1])
                     export.summary = f'Export blocked: animation export failed for {names}.'
                     context.window_manager.clipboard = ''
                     raise RuntimeError(
                         f'{export.summary} Fix the reported animation errors and export again. '
                         'No new Unreal import script was generated. Do not run an older import script: '
-                        'it may import stale FBXs left by a previous export.')
+                        f'it may import stale FBXs left by a previous export.\n{details}')
             else:
                 report(self, {'WARNING'}, 'No actions are ticked; exporting static meshes only.')
                 warn = True

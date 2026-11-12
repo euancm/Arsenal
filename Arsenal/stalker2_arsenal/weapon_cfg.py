@@ -17,6 +17,7 @@ from . import export_static_mesh as static_mesh
 from .weapon_presets import PRESETS
 from .notifications import report
 from . import weapon_upgrades
+from . import weapon_distribution
 
 PISTOL = PRESETS['TemplatePistol']
 SAFE_ID = re.compile(r'^[A-Za-z0-9_]+$')
@@ -38,6 +39,41 @@ FIRE_MODES = (
     ('Queue', 'Burst', 'A fixed number of shots per trigger pull', 2),
     ('Automatic', 'Automatic', 'Keep firing while the trigger is held', 4),
 )
+FIRING_SOUND_DONORS = (
+    ('TEMPLATE', 'Follow Weapon Template', 'Keep the template firing sounds'),
+    ('APB', 'APB (automatic pistol)', 'Complete APB one-shot, loop, break and weapon sound switch'),
+    ('UDP', 'UDP (single-shot pistol)', 'UDP one-shot only; does not support sustained automatic audio'),
+    ('Viper', 'Viper (SMG)', 'Complete Viper firing sound set'),
+    ('AK74', 'AK-74 (rifle)', 'Complete AK-74 firing sound set'),
+)
+FIRING_AUDIO_FIELDS = ('FireEventOneShot', 'FireEventLoop', 'FireEventBreak', 'WeaponTypeSoundSwitch')
+
+
+def firing_audio(cfg):
+    """Matched firing events/switch, independent of stats and non-firing audio."""
+    donor = cfg.firing_sound_donor
+    if donor == 'TEMPLATE':
+        return [line for line in PRESETS[cfg.setup_template]['audio']
+                if line.split(' = ', 1)[0] in FIRING_AUDIO_FIELDS]
+    folders = {'APB': 'HG/APB', 'UDP': 'HG/UDP', 'Viper': 'SMG/Viper', 'AK74': 'AR/AK74'}
+    root = '/Game/_STALKER2/Audio/WwiseAudio'
+    lines = []
+    for field, suffix in (('FireEventOneShot', 'Oneshot'), ('FireEventLoop', 'Loop'), ('FireEventBreak', 'Break')):
+        path = f'{root}/Events/Weapons/{folders[donor]}/{donor}_Fire/SFX_{donor}_{suffix}'
+        value = "AkAudioEvent''" if donor == 'UDP' and suffix != 'Oneshot' else (
+            f"AkAudioEvent'{path}.{path.rsplit('/', 1)[-1]}'")
+        lines.append(f'{field} = {value}')
+    path = f'{root}/Switches/Weapons/WeaponType/WeaponType-{donor}'
+    lines.append(f"WeaponTypeSoundSwitch = AkSwitchValue'{path}.WeaponType-{donor}'")
+    return lines
+
+
+def has_automatic_audio(cfg):
+    fields = dict(line.split(' = ', 1) for line in firing_audio(cfg))
+    return all(fields.get(field, "AkAudioEvent''") != "AkAudioEvent''"
+               for field in ('FireEventLoop', 'FireEventBreak'))
+
+
 CALIBERS = (
     ('A918', '9x18', ''), ('A919', '9x19', ''), ('A045', '.45 ACP', ''), ('A545', '5.45x39', ''),
     ('A556', '5.56x45', ''), ('A762NATO', '7.62x51 NATO', ''), ('A762Sniper', '7.62x54R', ''),
@@ -71,6 +107,7 @@ def apply_preset(cfg, template=None):
 
 def _template_changed(self, context):
     apply_preset(self)
+    weapon_distribution.load_defaults(self, reset=True)
     from . import setup_panel
     setup_panel.apply_template_defaults(context.scene, self.setup_template)
 
@@ -137,6 +174,17 @@ def _set_text_description(self, value):
 
 
 class ARSENAL_CfgMagazine(bpy.types.PropertyGroup):
+    use_existing: bpy.props.BoolProperty(
+        name='Reference Existing Magazine',
+        description='Use a magazine item defined elsewhere; do not export its meshes, item, text or images')
+    existing_sid: bpy.props.StringProperty(name='Existing Magazine SID')
+    extra_weapon_sids: bpy.props.StringProperty(
+        name='Extra Weapon SIDs',
+        description='Comma-separated weapon item SIDs this magazine also fits; '
+                    'the current weapon is included automatically')
+    socket: bpy.props.StringProperty(
+        name='Socket', default='jnt_magazine',
+        description='Game bone or socket on this weapon where the existing magazine attaches')
     texts: bpy.props.CollectionProperty(type=ARSENAL_CfgText)
     text_language: bpy.props.EnumProperty(name='Language', items=LANGUAGES, default='en')
     text_name: bpy.props.StringProperty(name='Display Name', get=_get_text_name, set=_set_text_name)
@@ -319,7 +367,67 @@ def _set_is_default_fire_mode(self, value):
         _set_default_fire_mode(self, _get_active_fire_mode(self))
 
 
+class ARSENAL_CfgTrader(bpy.types.PropertyGroup):
+    enabled: bpy.props.BoolProperty(name='Stocks this weapon')
+    chance: bpy.props.FloatProperty(name='Stock chance %', min=0, max=100)
+    min_quantity: bpy.props.IntProperty(name='Min quantity', min=0)
+    max_quantity: bpy.props.IntProperty(name='Max quantity', min=0)
+    min_condition: bpy.props.FloatProperty(name='Min condition %', min=0, max=100)
+    max_condition: bpy.props.FloatProperty(name='Max condition %', min=0, max=100)
+    sell_unloaded: bpy.props.BoolProperty(name='Sell unloaded')
+
+
+class ARSENAL_CfgDistributionWeight(bpy.types.PropertyGroup):
+    enabled: bpy.props.BoolProperty()
+    percent: bpy.props.FloatProperty(name='%', min=0, max=100,
+                                    description='Role % multiplied by rank % gives the nominal weapon share')
+
+
+class ARSENAL_CfgFaction(bpy.types.PropertyGroup):
+    roles: bpy.props.CollectionProperty(type=ARSENAL_CfgDistributionWeight)
+    ranks: bpy.props.CollectionProperty(type=ARSENAL_CfgDistributionWeight)
+
+
+def _trader_property(field, factory, default, **kwargs):
+    def get(cfg):
+        row = cfg.traders.get(cfg.distribution_trader)
+        return getattr(row, field) if row else weapon_distribution.trader_defaults(
+            cfg.setup_template, cfg.distribution_trader)[field]
+
+    def set_value(cfg, value):
+        row = weapon_distribution.selected_rule(cfg, 'traders', cfg.distribution_trader)
+        setattr(row, field, value)
+    return factory(get=get, set=set_value, default=default, **kwargs)
+
+
+def _npc_property(collection, key, field, factory, default, **kwargs):
+    def get(cfg):
+        faction = cfg.npc_factions.get(cfg.distribution_faction)
+        row = getattr(faction, collection).get(key) if faction else None
+        if row:
+            return getattr(row, field)
+        values = weapon_distribution.faction_defaults(
+            cfg.setup_template, cfg.distribution_faction)[collection][key]
+        return values[0 if field == 'enabled' else 1]
+
+    def set_value(cfg, value):
+        faction = weapon_distribution.faction_rule(cfg)
+        setattr(getattr(faction, collection)[key], field, value)
+    return factory(get=get, set=set_value, default=default, **kwargs)
+
+
 class ARSENAL_WeaponCfg(bpy.types.PropertyGroup):
+    traders: bpy.props.CollectionProperty(type=ARSENAL_CfgTrader)
+    npc_factions: bpy.props.CollectionProperty(type=ARSENAL_CfgFaction)
+    stock_custom_attachments: bpy.props.BoolProperty(
+        name='Stock Custom Attachments', default=True,
+        description='Stock each purchasable custom magazine and attachment at enabled weapon traders '
+                    "with half the weapon's effective stock chance")
+    distribution_trader: bpy.props.EnumProperty(
+        name='Trader', items=weapon_distribution.TRADER_ITEMS,
+        default='RostokTraderSoviet_TradeItemGenerator')
+    distribution_faction: bpy.props.EnumProperty(
+        name='Faction', items=weapon_distribution.FACTION_ITEMS, default='Neutral')
     upgrades: bpy.props.CollectionProperty(type=ARSENAL_CfgUpgrade)
     active_upgrade: bpy.props.IntProperty()
     upgrade_template: bpy.props.StringProperty(options={'HIDDEN'})
@@ -383,6 +491,9 @@ class ARSENAL_WeaponCfg(bpy.types.PropertyGroup):
     caliber: bpy.props.EnumProperty(name='Caliber', description='Ammo type the weapon accepts. Also selects the projectile used for every ammo type', items=CALIBERS, default=PISTOL['caliber'])
     fire_interval: bpy.props.FloatProperty(name='Fire Interval', default=PISTOL['fire_interval'], min=0.01,
                                            description='Seconds between shots')
+    firing_sound_donor: bpy.props.EnumProperty(
+        name='Firing Sound', items=FIRING_SOUND_DONORS, default='TEMPLATE',
+        description='Existing game firing sound set; independent of weapon stats and animation templates')
     fire_modes: bpy.props.EnumProperty(
         name='Available Fire Modes', items=FIRE_MODES, options={'ENUM_FLAG'},
         get=_get_fire_modes, set=_set_fire_modes,
@@ -434,10 +545,37 @@ class ARSENAL_WeaponCfg(bpy.types.PropertyGroup):
     active_magazine: bpy.props.IntProperty()
     allow_silencer: bpy.props.BoolProperty(name='Allow Silencer', description="Adds the silencer slot (uses the game's EN_Silen_2 silencer)", default=False)
     allow_laser: bpy.props.BoolProperty(name='Allow Laser', description="Adds the laser sight slot (uses the game's EN_Laser_1 laser)", default=False)
+    stock_silencer_images: bpy.props.PointerProperty(type=ARSENAL_CfgAttachment)
+    stock_laser_images: bpy.props.PointerProperty(type=ARSENAL_CfgAttachment)
     keep_upgrades: bpy.props.BoolProperty(
         name='Use Base Weapon Upgrade Tree', default=True,
         update=weapon_upgrades.tree_changed,
         description='Use the unchanged template upgrades; uncheck to edit a mod-owned tree seeded from the template')
+
+
+for _field, _factory, _default, _label, _limits in (
+    ('enabled', bpy.props.BoolProperty, False, 'Stocks this weapon', {}),
+    ('chance', bpy.props.FloatProperty, 0.0, 'Stock chance %', {'min': 0, 'max': 100}),
+    ('min_quantity', bpy.props.IntProperty, 0, 'Min quantity', {'min': 0}),
+    ('max_quantity', bpy.props.IntProperty, 0, 'Max quantity', {'min': 0}),
+    ('min_condition', bpy.props.FloatProperty, 0.0, 'Min condition %', {'min': 0, 'max': 100}),
+    ('max_condition', bpy.props.FloatProperty, 0.0, 'Max condition %', {'min': 0, 'max': 100}),
+    ('sell_unloaded', bpy.props.BoolProperty, False, 'Sell unloaded', {}),
+):
+    ARSENAL_WeaponCfg.__annotations__[f'trader_{_field}'] = _trader_property(
+        _field, _factory, _default, name=_label, **_limits)
+
+for _collection, _names in (('roles', [name for name, _label in weapon_distribution.ROLES]),
+                            ('ranks', weapon_distribution.RANKS)):
+    for _name in _names:
+        for _field, _factory, _default in (('enabled', bpy.props.BoolProperty, False),
+                                           ('percent', bpy.props.FloatProperty, 0.0)):
+            _limits = {'min': 0, 'max': 100} if _field == 'percent' else {}
+            ARSENAL_WeaponCfg.__annotations__[f'npc_{_name}_{_field}'] = _npc_property(
+                _collection, _name, _field, _factory, _default,
+                name='%' if _field == 'percent' else _name,
+                description='Role % x rank % = nominal selection share within the weapon pool',
+                **_limits)
 
 
 def mod_name(export):
@@ -512,14 +650,38 @@ def collect_magazines(cfg, others):
     for entry in cfg.magazines:
         if not SAFE_ID.match(entry.name):
             raise RuntimeError(f'Magazine name "{entry.name}" may only contain letters, digits and underscores.')
-        if not entry.full_object or not entry.empty_object:
+        existing = entry.use_existing
+        if existing and not SAFE_ID.fullmatch(entry.existing_sid.strip()):
+            raise RuntimeError(f'Magazine "{entry.name}" needs a valid existing magazine SID.')
+        if existing and not SAFE_ID.fullmatch(entry.socket.strip()):
+            raise RuntimeError(f'Magazine "{entry.name}" needs a valid socket name.')
+        if not existing and (not entry.full_object or not entry.empty_object):
             raise RuntimeError(f'Magazine "{entry.name}" needs both a full and an empty mesh object.')
+        extra_weapon_sids = []
+        if not existing:
+            for value in entry.extra_weapon_sids.split(','):
+                sid = value.strip()
+                if not sid:
+                    continue
+                if not SAFE_ID.fullmatch(sid):
+                    raise RuntimeError(
+                        f'Magazine "{entry.name}" has an invalid extra weapon SID "{sid}". '
+                        'Use comma-separated SIDs containing only letters, digits and underscores.')
+                if sid not in extra_weapon_sids:
+                    extra_weapon_sids.append(sid)
         result.append({
             'settings': entry,
+            'existing_sid': entry.existing_sid.strip() if existing else '',
+            'extra_weapon_sids': extra_weapon_sids,
+            'socket': entry.socket.strip() if existing else '',
             'name': entry.name, 'full': entry.full_object, 'empty': entry.empty_object,
             'preinstalled': entry.preinstalled, 'capacity': entry.capacity, 'cost': entry.cost,
             'weight': entry.weight, 'tactical': entry.tactical_reload, 'full_reload': entry.full_reload})
     return result
+
+
+def magazine_sid(info, magazine):
+    return magazine.get('existing_sid') or f'Gun{info["weapon_id"]}_Mag{magazine["name"]}'
 
 
 def collect_attachments(cfg, others):
@@ -582,9 +744,13 @@ def build_context(context):
     magazines = collect_magazines(cfg, others)
     if len({item['name'].casefold() for item in magazines}) != len(magazines):
         raise RuntimeError('Magazine IDs must be unique.')
+    if len({magazine_sid({'weapon_id': weapon_id}, item).casefold() for item in magazines}) != len(magazines):
+        raise RuntimeError('Magazine SIDs must be unique.')
     attachments = collect_attachments(cfg, others)
     template = static_mesh.template_token(context.scene)
     for magazine in magazines:
+        if magazine.get('existing_sid'):
+            continue
         for key in ('full', 'empty'):
             obj = magazine[key]
             stem = static_mesh.attachment_stem(mesh_name, obj.name, template)
@@ -655,7 +821,9 @@ def weapon_prototypes(info):
 def attach_prototypes(info):
     writer = Writer()
     for magazine in info['magazines']:
-        mag_sid = f'Gun{info["weapon_id"]}_Mag{magazine["name"]}'
+        if magazine.get('existing_sid'):
+            continue
+        mag_sid = magazine_sid(info, magazine)
         template = 'MagTemplate' if magazine['preinstalled'] else 'BigMagTemplate'
         writer.begin(mag_sid, f'{{refurl=@BaseGame/ItemPrototypes/AttachPrototypes.cfg;refkey={template}}}')
         writer.line(f'SID = {mag_sid}')
@@ -682,9 +850,11 @@ def attach_prototypes(info):
         writer.line('BindBulletsToAttach = false')
         writer.line('HasMultipleMeshes = true')
         writer.end()
-        if not magazine['preinstalled']:
+        if not magazine['preinstalled'] or magazine.get('extra_weapon_sids'):
             writer.begin('FittingWeaponsSIDs')
-            writer.line(f'[0] = {info["sid"]}')
+            weapon_sids = dict.fromkeys([info['sid']] + magazine.get('extra_weapon_sids', []))
+            for index, sid in enumerate(weapon_sids):
+                writer.line(f'[{index}] = {sid}')
             writer.end()
         writer.end()
         writer.line()
@@ -719,7 +889,9 @@ def mesh_prototypes(info):
         writer.end()
 
     for magazine in info['magazines']:
-        mag_sid = f'Gun{info["weapon_id"]}_Mag{magazine["name"]}'
+        if magazine.get('existing_sid'):
+            continue
+        mag_sid = magazine_sid(info, magazine)
         entry(f'{mag_sid}Empty', magazine['empty_path'])
         entry(f'{mag_sid}Full', magazine['full_path'])
     for item in info.get('attachments', []):
@@ -867,7 +1039,7 @@ def general_setup(info):
         writer.begin('WeaponReloadTimePerAttachment')
         for index, magazine in enumerate(magazines):
             writer.begin(f'[{index}]')
-            writer.line(f'AttachPrototypeSID = Gun{info["weapon_id"]}_Mag{magazine["name"]}')
+            writer.line(f'AttachPrototypeSID = {magazine_sid(info, magazine)}')
             writer.line(f'TacticalReloadTimeMultiplier = {number(magazine["tactical"])}')
             writer.line(f'FullReloadTimeMultiplier = {number(magazine["full_reload"])}')
             if index == 0:
@@ -898,36 +1070,40 @@ def general_setup(info):
         writer.line('Muzzle = SilencerMuzzle')
         writer.line('Socket = SilencerMuzzleSocket')
         writer.line('MeshPrototypeSID = EN_Silen_5')
-        writer.line('IconPosX = 205')
-        writer.line('IconPosY = 9')
-        writer.line(f"WeaponSpecificIcon = Texture2D'{GAME_ICONS}/Integral/T_inv_w_integral_en_silen_5."
-                    "T_inv_w_integral_en_silen_5'")
+        image = image_reference(info, cfg.stock_silencer_images, 'inventory', 'StockSilencer')
+        writer.line(f'IconPosX = {0 if image else 205}')
+        writer.line(f'IconPosY = {0 if image else 9}')
+        writer.line('WeaponSpecificIcon = ' + (image or
+                    f"Texture2D'{GAME_ICONS}/Integral/T_inv_w_integral_en_silen_5.T_inv_w_integral_en_silen_5'"))
         writer.end()
         index += 1
     laser_upgrade = weapon_upgrades.laser_upgrade(info)
     if cfg.allow_laser and 'laser' not in custom_kinds:
         writer.begin(f'[{index}]')
         writer.line('AttachPrototypeSID = EN_Laser_1')
-        writer.line(f"WeaponSpecificIcon = Texture2D'{GAME_ICONS}/UDP/T_inv_w_udp_en_laser_1.T_inv_w_udp_en_laser_1'")
+        image = image_reference(info, cfg.stock_laser_images, 'inventory', 'StockLaser')
+        writer.line('WeaponSpecificIcon = ' + (image or
+                    f"Texture2D'{GAME_ICONS}/UDP/T_inv_w_udp_en_laser_1.T_inv_w_udp_en_laser_1'"))
         writer.line('Socket = LaserSocket')
         if laser_upgrade:
             writer.begin('RequiredUpgradeIDs')
             writer.line(f'[0] = {laser_upgrade}')
             writer.end()
-        writer.line('IconPosX = 150')
-        writer.line('IconPosY = 30')
+        writer.line(f'IconPosX = {0 if image else 150}')
+        writer.line(f'IconPosY = {0 if image else 30}')
         writer.end()
         index += 1
     for magazine in magazines:
         icon = 'magdefault' if magazine['preinstalled'] else 'magincreased'
         writer.begin(f'[{index}]')
-        writer.line(f'AttachPrototypeSID = Gun{info["weapon_id"]}_Mag{magazine["name"]}')
+        writer.line(f'AttachPrototypeSID = {magazine_sid(info, magazine)}')
         writer.line(f'Socket = {magazine["socket"]}')
         writer.line('IconPosX = 0')
         writer.line('IconPosY = 0')
-        image = image_reference(info, magazine.get('settings'), 'inventory', f'Mag{magazine["name"]}')
-        writer.line(f"WeaponSpecificIcon = " + (image or
-                    f"Texture2D'{GAME_ICONS}/Integral/T_inv_w_integral_{icon}.T_inv_w_integral_{icon}'"))
+        if not magazine.get('existing_sid'):
+            image = image_reference(info, magazine.get('settings'), 'inventory', f'Mag{magazine["name"]}')
+            writer.line(f"WeaponSpecificIcon = " + (image or
+                        f"Texture2D'{GAME_ICONS}/Integral/T_inv_w_integral_{icon}.T_inv_w_integral_{icon}'"))
         writer.end()
         index += 1
     for item in info.get('attachments', []):
@@ -949,7 +1125,7 @@ def general_setup(info):
         writer.begin('PreinstalledAttachmentsItemPrototypeSIDs', '{bskipref}')
         for index, magazine in enumerate(preinstalled):
             writer.begin(f'[{index}]')
-            writer.line(f'AttachSID = Gun{info["weapon_id"]}_Mag{magazine["name"]}')
+            writer.line(f'AttachSID = {magazine_sid(info, magazine)}')
             writer.line('bHiddenInInventory = true')
             writer.end()
         writer.end()
@@ -960,6 +1136,9 @@ def general_setup(info):
     writer.end()
     writer.line('//WWise Events and parameters')
     for text in preset['audio']:
+        if text.split(' = ', 1)[0] not in FIRING_AUDIO_FIELDS:
+            writer.line(text)
+    for text in firing_audio(cfg):
         writer.line(text)
     writer.line('//Visual sockets')
     socket = magazines[0]['socket'] if magazines else 'jnt_magazine'
@@ -988,7 +1167,7 @@ def localization_entries(info):
     targets = [(info['cfg'], text_key(info))]
     targets += [(item['settings'], f'Gun{info["weapon_id"]}_Mag{item["name"]}')
                 for item in info.get('magazines', [])
-                if item.get('settings') and not item['preinstalled']]
+                if item.get('settings') and not item['preinstalled'] and not item.get('existing_sid')]
     targets += [(item['settings'], item['sid']) for item in info.get('attachments', [])]
     for settings, sid in targets:
         sid = settings.localization_sid.strip() or sid
@@ -1018,6 +1197,7 @@ def localization_json(info):
 def cfg_files(info):
     """Return {path relative to the output folder: file text}."""
     name = info['weapon_id']
+    weapon_distribution.load_defaults(info['cfg'])
     base = os.path.join('GameLite', 'ModGameData', info['mod'])
     files = {
         os.path.join(base, 'ItemPrototypes', f'{name}WeaponPrototypes.cfg'): weapon_prototypes(info),
@@ -1031,6 +1211,7 @@ def cfg_files(info):
                      f'{name}WeaponGeneralSetupPrototypes.cfg'): general_setup(info),
     }
     files.update(weapon_upgrades.files(info))
+    files.update(weapon_distribution.files(info))
     localization = localization_json(info)
     if localization:
         files[os.path.join('Localization', f'{info["mod"]}-{name}-localization.json')] = localization
@@ -1054,6 +1235,18 @@ def write_cfg_files(context):
 def export_cfg_files(operator, context):
     """Write the CFG files and the localisation JSON, reporting problems on the operator."""
     written, info = write_cfg_files(context)
+    cfg = info['cfg']
+    if info.get('distribution_sources'):
+        report(operator, {'INFO'}, 'Some NPC pools lack the template weapon; condition and spare ammo '
+               'use that same template weapon in matching rank/difficulty reference loadouts.')
+    if cfg.fire_modes & {'Automatic', 'Queue'} and not has_automatic_audio(cfg):
+        report(operator, {'WARNING'}, 'This sound preset has no automatic-fire loop/break events; '
+               'automatic/burst fire may play only its first shot. The one-shot sound was not changed.')
+    from .inventory_images import stock_attachments
+    for kind, _sid, settings in stock_attachments(cfg):
+        if cfg.inventory_image and not settings.inventory_image:
+            report(operator, {'WARNING'}, f'Stock {kind} has no aligned inventory layer; the donor overlay '
+                   'and offsets can change the whole weapon icon scale. Render or select its image layer.')
     if not info['magazines']:
         report(operator, {'WARNING'}, 'No separate magazine meshes found; magazine entries were skipped.')
     if not localization_entries(info):
@@ -1134,6 +1327,8 @@ class ARSENAL_OT_CfgMagazineDetect(bpy.types.Operator):
 class ARSENAL_UL_CfgMagazines(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         layout.label(text=item.name, icon='MESH_CYLINDER')
+        if getattr(item, 'use_existing', False):
+            layout.label(text=item.existing_sid or 'Existing SID required')
         if getattr(item, 'preinstalled', False):
             layout.label(text='Preinstalled')
 
@@ -1351,6 +1546,7 @@ def draw_upgrades(layout, context):
     select = row.operator('arsenal.inventory_image_file', text='Select Image', icon='FILE_FOLDER')
     select.upgrade_index = cfg.active_upgrade
     select.magazine_index, select.attachment_index, select.family = -1, -1, 'upgrade'
+    select.stock_attachment = 'NONE'
     row.operator('object.arsenal_cfg_upgrade_edit', text='', icon='X').action = 'CLEAR_IMAGE'
     box = layout.box()
     box.label(text='Functionality')
@@ -1372,7 +1568,7 @@ def draw_upgrades(layout, context):
 class ARSENAL_PT_CfgText(_CfgSubPanel, bpy.types.Panel):
     bl_label = 'Name & Description'
     bl_options = set()
-    bl_order = 1
+    bl_order = 0
 
     def draw(self, context):
         cfg = context.scene.arsenal_cfg
@@ -1394,8 +1590,31 @@ class ARSENAL_PT_CfgText(_CfgSubPanel, bpy.types.Panel):
         layout.prop(cfg, 'localization_sid')
 
 
+class ARSENAL_OT_CfgCopySID(bpy.types.Operator):
+    bl_idname = 'object.arsenal_cfg_copy_sid'
+    bl_label = 'Copy SID'
+    bl_description = 'Copy the exact exported item SID for use in another mod or Blender project'
+
+    sid: bpy.props.StringProperty()
+
+    def execute(self, context):
+        if not SAFE_ID.fullmatch(self.sid):
+            report(self, {'ERROR'}, 'Cannot copy an empty or invalid item SID.')
+            return {'CANCELLED'}
+        context.window_manager.clipboard = self.sid
+        report(self, {'INFO'}, f'Copied SID: {self.sid}')
+        return {'FINISHED'}
+
+
+def draw_item_sid(layout, label, sid):
+    row = layout.row(align=True)
+    row.label(text=f'{label}: {sid}')
+    row.operator('object.arsenal_cfg_copy_sid', text='', icon='COPYDOWN').sid = sid
+
+
 class ARSENAL_PT_CfgIdentity(_CfgSubPanel, bpy.types.Panel):
     bl_label = 'Weapon'
+    bl_order = 1
 
     def draw(self, context):
         export = context.scene.arsenal_export
@@ -1404,7 +1623,7 @@ class ARSENAL_PT_CfgIdentity(_CfgSubPanel, bpy.types.Panel):
         try:
             weapon_id, sid = weapon_names(context.scene, export, cfg)
             box = self.layout.box()
-            box.label(text=f'Weapon ID: {sid}')
+            draw_item_sid(box, 'Weapon SID', sid)
             box.label(text=f'Mod: {mod_name(export)}')
         except RuntimeError as error:
             self.layout.label(text=str(error), icon='ERROR')
@@ -1415,6 +1634,7 @@ class ARSENAL_PT_CfgIdentity(_CfgSubPanel, bpy.types.Panel):
 
 class ARSENAL_PT_CfgDamage(_CfgSubPanel, bpy.types.Panel):
     bl_label = 'Damage & Range'
+    bl_order = 2
 
     def draw(self, context):
         self.props(context, ('base_damage', 'armor_damage', 'armor_piercing', 'cover_piercing', 'base_bleeding',
@@ -1426,6 +1646,7 @@ class ARSENAL_PT_CfgDamage(_CfgSubPanel, bpy.types.Panel):
 
 class ARSENAL_PT_CfgHandling(_CfgSubPanel, bpy.types.Panel):
     bl_label = 'Handling & Fire'
+    bl_order = 3
 
     def draw(self, context):
         cfg = context.scene.arsenal_cfg
@@ -1442,6 +1663,9 @@ class ARSENAL_PT_CfgHandling(_CfgSubPanel, bpy.types.Panel):
         self.layout.prop(cfg, 'is_default_fire_mode')
         if cfg.active_fire_mode == 'Queue':
             self.layout.prop(cfg, 'burst_length')
+        self.layout.prop(cfg, 'firing_sound_donor')
+        if cfg.fire_modes & {'Automatic', 'Queue'} and not has_automatic_audio(cfg):
+            self.layout.label(text='Select an automatic-capable firing sound (e.g. APB).', icon='ERROR')
         self.layout.label(text='Handling values are shared across fire modes')
         self.props(context, ('fire_interval', 'recoil_radius', 'recoil_recovery_delay', 'recoil_recovery_time',
                              'dispersion_radius', 'aiming_time',
@@ -1451,6 +1675,7 @@ class ARSENAL_PT_CfgHandling(_CfgSubPanel, bpy.types.Panel):
 
 class ARSENAL_PT_CfgAmmo(_CfgSubPanel, bpy.types.Panel):
     bl_label = 'Ammo & Magazines'
+    bl_order = 4
 
     def draw(self, context):
         cfg = context.scene.arsenal_cfg
@@ -1466,23 +1691,49 @@ class ARSENAL_PT_CfgAmmo(_CfgSubPanel, bpy.types.Panel):
         if 0 <= cfg.active_magazine < len(cfg.magazines):
             item = cfg.magazines[cfg.active_magazine]
             col = layout.column(align=True)
-            for name in ('name', 'full_object', 'empty_object', 'capacity', 'preinstalled'):
-                col.prop(item, name)
-            if not item.preinstalled:
+            col.prop(item, 'name')
+            col.prop(item, 'use_existing')
+            weapon_id = animation_export.weapon_name(context.scene)
+            if item.use_existing:
+                sid = item.existing_sid.strip()
+            elif weapon_id and SAFE_ID.fullmatch(item.name):
+                sid = magazine_sid({'weapon_id': weapon_id}, {'name': item.name})
+            else:
+                sid = ''
+            if sid and SAFE_ID.fullmatch(sid):
+                draw_item_sid(layout, 'Magazine SID', sid)
+            else:
+                layout.label(
+                    text='Enter a valid existing SID.' if item.use_existing
+                    else 'Set the English weapon name and a valid magazine ID to see its SID.',
+                    icon='ERROR')
+            if item.use_existing:
+                col.prop(item, 'existing_sid')
+                col.prop(item, 'socket')
+            else:
+                for name in ('full_object', 'empty_object', 'capacity'):
+                    col.prop(item, name)
+                col.prop(item, 'extra_weapon_sids')
+            col.prop(item, 'preinstalled')
+            if not item.use_existing and not item.preinstalled:
                 col.prop(item, 'cost')
                 col.prop(item, 'weight')
-            col.prop(item, 'tactical_reload')
-            col.prop(item, 'full_reload')
-            if not item.preinstalled:
+            for name in ('tactical_reload', 'full_reload'):
+                col.prop(item, name)
+            if item.use_existing:
+                layout.label(text='Defined by the owning mod; it must support this weapon.')
+            elif not item.preinstalled:
                 box = layout.box()
                 box.label(text='Magazine Name & Description')
                 draw_localization(box, item, magazine_index=cfg.active_magazine)
             from . import inventory_images
-            inventory_images.draw_images(layout, context, cfg.active_magazine)
+            if not item.use_existing:
+                inventory_images.draw_images(layout, context, cfg.active_magazine)
 
 
 class ARSENAL_PT_CfgAttachments(_CfgSubPanel, bpy.types.Panel):
     bl_label = 'Attachments & Upgrades'
+    bl_order = 5
 
     def draw(self, context):
         self.props(context, ('allow_silencer', 'allow_laser', 'keep_upgrades'))
@@ -1490,6 +1741,13 @@ class ARSENAL_PT_CfgAttachments(_CfgSubPanel, bpy.types.Panel):
         layout = self.layout
         if not cfg.keep_upgrades:
             draw_upgrades(layout.box(), context)
+        from . import inventory_images
+        for kind, _sid, settings in inventory_images.stock_attachments(cfg):
+            box = layout.box()
+            box.label(text=f'Stock {kind} image layers')
+            box.prop(settings, 'mesh_object', text='Preview Mesh')
+            box.label(text='Preview only: does not replace the game attachment mesh.')
+            inventory_images.draw_images(box, context, stock_attachment=kind)
         layout.label(text='Custom attachments replace the matching base-game option.')
         row = layout.row()
         row.template_list('ARSENAL_UL_CfgMagazines', 'attachments', cfg, 'attachments',
@@ -1504,8 +1762,63 @@ class ARSENAL_PT_CfgAttachments(_CfgSubPanel, bpy.types.Panel):
             layout.label(text='Mesh must be weighted to a mapped weapon bone.')
             layout.label(text='Laser socket: LaserSocket; silencer: SilencerMuzzleSocket.')
             draw_localization(layout.box(), item, attachment_index=cfg.active_attachment)
-            from . import inventory_images
             inventory_images.draw_images(layout, context, attachment_index=cfg.active_attachment)
+
+
+class ARSENAL_PT_CfgTraders(_CfgSubPanel, bpy.types.Panel):
+    bl_label = 'Trader Inventories'
+    bl_order = 6
+
+    def draw(self, context):
+        cfg = context.scene.arsenal_cfg
+        layout = self.layout
+        layout.prop(cfg, 'stock_custom_attachments')
+        layout.prop(cfg, 'distribution_trader', text='')
+        layout.prop(cfg, 'trader_enabled')
+        col = layout.column()
+        col.enabled = cfg.trader_enabled
+        col.prop(cfg, 'trader_chance')
+        for minimum, maximum in (('min_quantity', 'max_quantity'), ('min_condition', 'max_condition')):
+            row = col.row(align=True)
+            row.prop(cfg, f'trader_{minimum}')
+            row.prop(cfg, f'trader_{maximum}')
+        col.prop(cfg, 'trader_sell_unloaded')
+        activation = weapon_distribution.trader_activation(cfg)
+        if activation != 1:
+            col.label(text=f'Existing stock-pool chance: {activation * 100:g}%', icon='INFO')
+        col.label(text=f'Effective stock chance: {cfg.trader_chance * activation:g}%')
+        if cfg.stock_custom_attachments:
+            col.label(text=f'Custom attachment chance: {cfg.trader_chance * activation / 2:g}%')
+        if cfg.trader_min_quantity > cfg.trader_max_quantity:
+            col.label(text='Minimum quantity exceeds maximum.', icon='ERROR')
+        if cfg.trader_min_condition > cfg.trader_max_condition:
+            col.label(text='Minimum condition exceeds maximum.', icon='ERROR')
+
+
+class ARSENAL_PT_CfgNPCs(_CfgSubPanel, bpy.types.Panel):
+    bl_label = 'NPC Inventories'
+    bl_order = 7
+
+    def draw(self, context):
+        cfg = context.scene.arsenal_cfg
+        layout = self.layout
+        layout.prop(cfg, 'distribution_faction', text='')
+        split = layout.split(factor=0.5)
+        roles = weapon_distribution.available_roles(cfg.distribution_faction)
+        for title, names in (('Roles', weapon_distribution.ROLES),
+                             ('Ranks', [(rank, rank) for rank in weapon_distribution.RANKS])):
+            col = split.column()
+            col.label(text=title)
+            for name, label in names:
+                row = col.row(align=True)
+                row.enabled = title == 'Ranks' or name in roles
+                row.prop(cfg, f'npc_{name}_enabled', text=label)
+                value = row.row(align=True)
+                value.enabled = getattr(cfg, f'npc_{name}_enabled')
+                value.prop(cfg, f'npc_{name}_percent', text='%')
+        layout.label(text='Role % x rank % = weapon-pool share.', icon='INFO')
+        layout.label(text='Template percentages approximate role/rank/difficulty pools.')
+        layout.label(text=f'Slot: {weapon_distribution.slot(cfg)}; condition/ammo follow template.')
 
 
 CLASSES = (
@@ -1514,8 +1827,12 @@ CLASSES = (
     ARSENAL_CfgAttachment,
     ARSENAL_CfgUpgradeEffect,
     ARSENAL_CfgUpgrade,
+    ARSENAL_CfgTrader,
+    ARSENAL_CfgDistributionWeight,
+    ARSENAL_CfgFaction,
     ARSENAL_WeaponCfg,
     ARSENAL_OT_CfgClearText,
+    ARSENAL_OT_CfgCopySID,
     ARSENAL_OT_CfgAttachmentEdit,
     ARSENAL_OT_CfgUpgradeEdit,
     ARSENAL_UL_CfgUpgradeEffects,
@@ -1531,4 +1848,6 @@ CLASSES = (
     ARSENAL_PT_CfgHandling,
     ARSENAL_PT_CfgAmmo,
     ARSENAL_PT_CfgAttachments,
+    ARSENAL_PT_CfgTraders,
+    ARSENAL_PT_CfgNPCs,
 )

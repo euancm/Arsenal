@@ -34,6 +34,8 @@ def name_warnings(info):
             f'English Name) so they match.')
     objects = [('main weapon mesh', mesh_name)]
     for magazine in info['magazines']:
+        if magazine.get('existing_sid'):
+            continue
         objects.append((f'magazine "{magazine["name"]}" (full)', magazine['full'].name))
         objects.append((f'magazine "{magazine["name"]}" (empty)', magazine['empty'].name))
     for label, name in objects:
@@ -80,12 +82,13 @@ def path_warnings(info, cfg_paths, written=None):
                 texts[path] = handle.read()
 
     defined = set()
+    external = {item['existing_sid'] for item in info.get('magazines', []) if item.get('existing_sid')}
     for text in texts.values():
         defined.update(SID_DEFINITION.findall(text))
     for path, text in texts.items():
         name = os.path.basename(path)
         for field, value in SID_REFERENCE.findall(text):
-            if value not in defined:
+            if value not in defined and value not in external:
                 warnings.append(f'{name}: {field} "{value}" is not defined in any generated CFG file.')
         for kind, asset_path, asset_name in OBJECT_REFERENCE.findall(text):
             if not mount or not asset_path.startswith(mount + '/'):

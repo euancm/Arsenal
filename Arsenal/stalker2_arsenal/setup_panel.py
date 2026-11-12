@@ -118,14 +118,13 @@ def setup_problems(context):
 def build_config(context):
     scene = context.scene
     setup = scene.arsenal_setup
-    apply_template_defaults(scene, scene.arsenal_cfg.setup_template)
     importer = scene.stalker2_animation_importer
     animation = importer.weapon_name.strip().lower()
     mesh = (importer.mesh_name.strip() or animation).lower()
     return {
         'template': scene.arsenal_cfg.setup_template,
         'weapon': animation_export.weapon_name(scene),
-        'mod': setup.mod_name.strip(),
+        'mod': animation_export.mod_mount(scene.arsenal_export).strip('/'),
         'export_dir': os.path.join(bpy.path.abspath(setup.working_folder).strip(), ZONEKIT_FOLDER),
         'anim_tokens': [animation],
         'mesh_tokens': [mesh],
@@ -141,6 +140,7 @@ def write_setup_script(context):
     problems = setup_problems(context)
     if problems:
         raise RuntimeError(' '.join(problems))
+    apply_template_defaults(context.scene, context.scene.arsenal_cfg.setup_template)
     config = build_config(context)
     working = bpy.path.abspath(context.scene.arsenal_setup.working_folder).strip()
     os.makedirs(config['export_dir'], exist_ok=True)

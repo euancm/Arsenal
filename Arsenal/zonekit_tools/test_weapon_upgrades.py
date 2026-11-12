@@ -221,7 +221,7 @@ class UpgradeTests(unittest.TestCase):
             self.scene.arsenal_export.output_folder = folder
             self.scene.arsenal_export.unreal_mount = 'TestMod'
             info['output_root'] = folder
-            rig = SimpleNamespace()
+            rig = SimpleNamespace(data=SimpleNamespace(bones={'Weapon': SimpleNamespace()}))
             with patch.object(export_unreal.animation_export, '_build_static_plan',
                               return_value=(rig, None, {}, [('test', 'SM_Test', static)])), \
                     patch.object(export_unreal.animation_export, 'weapon_name', return_value='test'), \

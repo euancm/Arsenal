@@ -210,6 +210,26 @@ def extract_whole(rig, backup, obj, bone_name, world_joints=None):
     return part, [slot.material for slot in obj.material_slots]
 
 
+def world_magazine_sockets(rig, backup, bone_joints, magazines, mesh_path, root_bone='Weapon'):
+    """Mount bone-local magazine meshes on the root-relative static world model."""
+    entries = []
+    names = {magazine['socket'] for magazine in magazines}
+    if not names:
+        return None
+    by_joint = {joint: bone for bone, joint in bone_joints.items()}
+    for name in sorted(names):
+        if name not in by_joint:
+            raise RuntimeError(f'World magazine socket {name} has no mapped weapon bone.')
+    root = rig.matrix_world @ rig.data.bones[root_bone].head_local
+    to_source_units = backup.matrix_world.to_3x3().inverted_safe()
+    for name in sorted(names):
+        head = rig.matrix_world @ rig.data.bones[by_joint[name]].head_local
+        location = to_source_units @ (head - root)
+        entries.append({'name': name, 'location': [location.x, -location.y, location.z],
+                        'rotation': [0.0, 0.0, 0.0], 'scale': [1.0, 1.0, 1.0]})
+    return {'version': 1, 'units': 'cm', 'mesh': mesh_path, 'entries': entries}
+
+
 def plan_static_meshes(rig, bone_joints, category, output_root, scene):
     """Return (weapon name, [(label, stem, path)]) for the meshes that would be written."""
     main, main_bones, others = classify_meshes(rig, scene, bone_joints)

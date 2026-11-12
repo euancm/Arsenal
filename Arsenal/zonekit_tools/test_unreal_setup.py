@@ -54,6 +54,18 @@ class SetupSelectionTests(unittest.TestCase):
 
 
 class SetupCopyTests(unittest.TestCase):
+    def test_existing_renamed_target_never_creates_an_old_donor_copy(self):
+        item = ('/Game/Template', '/Mod/Template', '/Mod/Custom')
+        library = SimpleNamespace(
+            does_asset_exist=lambda path: path == item[2], duplicate_asset=Mock(), load_asset=Mock())
+        tools = SimpleNamespace(rename_assets=Mock())
+        with patch.object(setup, 'unreal', SimpleNamespace(
+                EditorAssetLibrary=library, AssetToolsHelpers=SimpleNamespace(get_asset_tools=lambda: tools))):
+            ready = setup.checkout_copies({'copies': [item]}, {})
+            self.assertEqual(setup.run_rename(ready), 0)
+        library.duplicate_asset.assert_not_called()
+        tools.rename_assets.assert_not_called()
+
     def test_copies_directly_without_revision_control_checkout(self):
         item = ('/Game/Template', '/Mod/Template', '/Mod/Custom')
         assets = {item[0]}
@@ -83,6 +95,62 @@ class SetupCopyTests(unittest.TestCase):
                 patch.object(setup, 'warn') as warning:
             self.assertEqual(setup.checkout_copies({'copies': [item]}, {}), [])
         self.assertTrue(any('no copy in the mod' in call.args[0] for call in warning.call_args_list))
+
+
+class SetupRecoveryTests(unittest.TestCase):
+    def make(self):
+        config = {'mod': 'TestMod', 'weapon': 'gun'}
+        plan = {'selection': {field: ['donor'] for field in (
+            'sequences', 'montages', 'collections', 'anim_blueprints', 'skeletal_meshes')},
+            'copies': [('/Game/New', '/TestMod/New', '/TestMod/Gun'),
+                       ('/Game/Existing', '/TestMod/Existing', '/TestMod/Custom')]}
+        asset = Mock()
+        existing = {'/TestMod/Custom'}
+
+        def duplicate(source, target):
+            existing.add(target)
+            return asset
+
+        library = SimpleNamespace(
+            does_directory_exist=Mock(return_value=True), does_asset_exist=lambda path: path in existing,
+            duplicate_asset=Mock(side_effect=duplicate), save_loaded_asset=Mock(return_value=True))
+        return config, plan, library, asset
+
+    def run_recovery(self, config, plan, library, failures=0):
+        with patch.object(setup, 'unreal', SimpleNamespace(EditorAssetLibrary=library, log=Mock())), \
+                patch.object(setup, 'registry_assets', return_value=(None, [])), \
+                patch.object(setup, 'build_plan', return_value=plan), \
+                patch.object(setup, 'patch_references', return_value=failures):
+            return setup.ensure_mod_assets(config)
+
+    def test_missing_assets_are_saved_existing_assets_preserved_and_repeat_is_safe(self):
+        config, plan, library, asset = self.make()
+        self.assertIs(self.run_recovery(config, plan, library), plan)
+        self.run_recovery(config, plan, library)
+        library.duplicate_asset.assert_called_once_with('/Game/New', '/TestMod/Gun')
+        library.save_loaded_asset.assert_called_once_with(asset, False)
+
+    def test_missing_donor_collection_stops_before_writes(self):
+        config, plan, library, _asset = self.make()
+        plan['selection']['collections'] = []
+        with self.assertRaisesRegex(RuntimeError, 'no collections'):
+            self.run_recovery(config, plan, library)
+        library.duplicate_asset.assert_not_called()
+
+    def test_save_and_reference_failures_are_fatal(self):
+        config, plan, library, _asset = self.make()
+        library.save_loaded_asset.return_value = False
+        with self.assertRaisesRegex(RuntimeError, 'Cannot save'):
+            self.run_recovery(config, plan, library)
+        with self.assertRaisesRegex(RuntimeError, 'repair setup references'):
+            self.run_recovery(config, plan, library, failures=1)
+
+    def test_base_game_mount_is_rejected(self):
+        config, plan, library, _asset = self.make()
+        config['mod'] = 'Game'
+        with self.assertRaisesRegex(RuntimeError, 'mod-owned'):
+            self.run_recovery(config, plan, library)
+        library.duplicate_asset.assert_not_called()
 
 
 if __name__ == '__main__':

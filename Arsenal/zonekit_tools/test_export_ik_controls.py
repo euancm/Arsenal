@@ -2,6 +2,8 @@
 import os
 import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from unittest.mock import patch
 from unittest.mock import Mock
 from types import SimpleNamespace
@@ -26,9 +28,14 @@ class ExportIKControlsTests(unittest.TestCase):
         upper = bones.new('upper_arm_ik.R')
         upper.head = (0, 0, 0)
         upper.tail = (0, 1, 0)
+        pole = bones.new('upper_arm_ik_target.R')
+        pole.head = (0, 2, 0)
+        pole.tail = (0, 3, 0)
         bpy.ops.object.mode_set(mode='OBJECT')
         self.parent = self.rig.pose.bones['upper_arm_parent.R']
         self.parent['IK_FK'] = 0.0
+        self.parent['pole_vector'] = False
+        self.pole = self.rig.pose.bones['upper_arm_ik_target.R']
         self.control = self.rig.pose.bones['hand_ik.R']
         self.control.rotation_mode = 'QUATERNION'
         self.control.location = (20, 30, 40)
@@ -79,17 +86,73 @@ class ExportIKControlsTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r'upper_arm_ik.R.*rotation_euler'):
             self.validate()
 
+    def test_accepts_unkeyed_disabled_pole(self):
+        self.control.keyframe_insert('location', frame=1)
+        self.pole.location = (10, 20, 30)
+        self.validate()
+
+    def test_rejects_unkeyed_enabled_pole(self):
+        self.control.keyframe_insert('location', frame=1)
+        self.pole.location = (10, 20, 30)
+        self.parent['pole_vector'] = True
+        with self.assertRaisesRegex(RuntimeError, r'upper_arm_ik_target.R.*location is not keyed'):
+            self.validate()
+
+    def test_checks_pole_enabled_later_in_clip(self):
+        self.control.keyframe_insert('location', frame=1)
+        self.pole.location = (10, 20, 30)
+        self.parent.keyframe_insert('["pole_vector"]', frame=1)
+        self.parent['pole_vector'] = True
+        self.parent.keyframe_insert('["pole_vector"]', frame=3)
+        for curve in ex.action_slot_curves(self.action, self.slot):
+            if curve.data_path.endswith('["pole_vector"]'):
+                for key in curve.keyframe_points:
+                    key.interpolation = 'CONSTANT'
+        with self.assertRaisesRegex(RuntimeError, r'upper_arm_ik_target.R uses IK at frame 3'):
+            self.validate()
+
+    def test_missing_pole_switch_preserves_validation(self):
+        self.control.keyframe_insert('location', frame=1)
+        self.pole.location = (10, 20, 30)
+        del self.parent['pole_vector']
+        with self.assertRaisesRegex(RuntimeError, r'upper_arm_ik_target.R.*location is not keyed'):
+            self.validate()
+
+    def test_disabled_pole_does_not_skip_hand_validation(self):
+        self.pole.location = (10, 20, 30)
+        with self.assertRaisesRegex(RuntimeError, r'hand_ik.R.*location is not keyed'):
+            self.validate()
+
+    def test_disabled_pole_does_not_block_export(self):
+        self.control.keyframe_insert('location', frame=1)
+        self.pole.location = (10, 20, 30)
+        before = tuple(self.pole.location)
+        with patch.object(ex, 'resolve_animation_mapping', return_value=(
+                [('hand_ik.R', 'hand_ik.R', 'rot_loc')], [])), patch.object(
+                    ex, 'export_action', return_value=['fresh.fbx']) as export:
+            written, failures = ex.run_exports(
+                bpy.context, self.rig, self.rig, [(self.action, self.slot, [])])
+        self.assertEqual(written, ['fresh.fbx'])
+        self.assertEqual(failures, [])
+        export.assert_called_once()
+        self.assertEqual(tuple(self.pole.location), before)
+        self.assertFalse(self.parent['pole_vector'])
+
     def test_failed_export_writes_nothing_and_restores_state(self):
         bpy.context.scene.frame_set(9, subframe=0.25)
         before = tuple(self.control.location)
+        console = StringIO()
         with patch.object(ex, 'resolve_animation_mapping', return_value=(
                 [('hand_ik.R', 'hand_ik.R', 'rot_loc')], [])), patch.object(
-                    ex, 'export_action') as export:
+                    ex, 'export_action') as export, redirect_stdout(console), redirect_stderr(console):
             written, failures = ex.run_exports(
                 bpy.context, self.rig, self.rig, [(self.action, self.slot, [])])
         self.assertEqual(written, [])
         self.assertEqual(len(failures), 1)
         self.assertIn('hand_ik.R', failures[0][1])
+        self.assertIn(f'[Arsenal export] FAILED {self.action.name}:', console.getvalue())
+        self.assertIn('Traceback (most recent call last)', console.getvalue())
+        self.assertIn('location is not keyed', console.getvalue())
         export.assert_not_called()
         self.assertEqual(tuple(self.control.location), before)
         self.assertEqual(bpy.context.scene.frame_current, 9)
@@ -99,7 +162,9 @@ class ExportIKControlsTests(unittest.TestCase):
     def test_export_all_blocks_import_script_when_any_animation_failed(self):
         for written in ([], ['fresh_shoot.fbx']):
             with self.subTest(written=written):
-                settings = SimpleNamespace(actions=[SimpleNamespace(enabled=True)], summary='')
+                item = SimpleNamespace(
+                    name='shoot_aim_end', enabled=True, status='Matches an original animation')
+                settings = SimpleNamespace(actions=[item], summary='')
                 context = SimpleNamespace(
                     scene=SimpleNamespace(arsenal_export=settings),
                     window_manager=SimpleNamespace(clipboard='old_import.py'))
@@ -113,11 +178,13 @@ class ExportIKControlsTests(unittest.TestCase):
                 self.assertEqual(result, {'CANCELLED'})
                 self.assertEqual(context.window_manager.clipboard, '')
                 self.assertIn('shoot_aim_end', settings.summary)
+                self.assertEqual(item.status, 'Export failed: upper_arm_ik.R is not keyed')
                 static_export.assert_not_called()
                 script.assert_not_called()
                 messages = '\n'.join(str(call.args[1]) for call in operator.report.call_args_list)
                 self.assertIn('upper_arm_ik.R', messages)
                 self.assertIn('stale FBXs', messages)
+                self.assertIn('upper_arm_ik.R is not keyed', operator.report.call_args.args[1])
 
 
 if __name__ == '__main__':

@@ -30,7 +30,23 @@ if "bpy" in locals():
         importlib.reload(weapon_upgrades)
     else:
         from . import weapon_upgrades
+    if "distribution_compose" in locals():
+        importlib.reload(distribution_compose)
+    else:
+        from . import distribution_compose
+    if "weapon_distribution" in locals():
+        importlib.reload(weapon_distribution)
+    else:
+        from . import weapon_distribution
     importlib.reload(weapon_cfg)
+    if "unreal_import" in locals():
+        importlib.reload(unreal_import)
+    else:
+        from . import unreal_import
+    if "weapon_sockets" in locals():
+        importlib.reload(weapon_sockets)
+    else:
+        from . import weapon_sockets
     if "inventory_images" in locals():
         importlib.reload(inventory_images)
     else:
@@ -53,7 +69,11 @@ else:
     from . import export_unreal
     from . import weapon_presets
     from . import weapon_upgrades
+    from . import distribution_compose
+    from . import weapon_distribution
     from . import weapon_cfg
+    from . import unreal_import
+    from . import weapon_sockets
     from . import inventory_images
     from . import debug_report
     from . import setup_panel
@@ -92,6 +112,7 @@ classes = (
     *export_animation.CLASSES,
     *export_unreal.CLASSES,
     *weapon_cfg.CLASSES,
+    *weapon_sockets.CLASSES,
     *inventory_images.CLASSES,
     *debug_report.CLASSES,
 )
@@ -107,6 +128,8 @@ def register():
     bpy.types.Scene.arsenal_cfg = bpy.props.PointerProperty(type = weapon_cfg.ARSENAL_WeaponCfg)
     bpy.types.Scene.arsenal_setup = bpy.props.PointerProperty(type = setup_panel.ARSENAL_SetupProps)
     bpy.types.Scene.arsenal_inventory = bpy.props.PointerProperty(type=inventory_images.ARSENAL_InventoryProps)
+    bpy.types.Scene.arsenal_sockets = bpy.props.PointerProperty(type=weapon_sockets.ARSENAL_SocketState)
+    bpy.types.Object.arsenal_socket_id = bpy.props.StringProperty()
 
     bpy.types.Scene.arsenal_ui = bpy.props.PointerProperty(type = mapping_editor.ARSENAL_IU_Props)
 
@@ -116,6 +139,8 @@ def unregister():
     del bpy.types.Scene.arsenal_cfg
     del bpy.types.Scene.arsenal_setup
     del bpy.types.Scene.arsenal_inventory
+    del bpy.types.Scene.arsenal_sockets
+    del bpy.types.Object.arsenal_socket_id
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 

@@ -8,8 +8,17 @@ The bundled template contains three artist-authored cameras, four sun lamps, sky
 
 - **Weapon** has **Inventory image** and **Upgrade image** previews.
 - Select a magazine under **Ammo & Magazines** for its corresponding component-layer previews.
+- **Reference Existing Magazine** hides its image controls and skips its saved
+  image selections during export; images come from the owning item. Unchecking
+  the option restores the previous selections.
 - A magazine without **Preinstalled** also has a **Standalone inventory image** preview.
 - Custom silencers and lasers under **Attachments & Upgrades** have component-layer and standalone previews too.
+- Enabled stock silencers/lasers have **Stock silencer/laser image layers** in that panel.
+  Select a **Preview Mesh** and render their inventory/upgrade layers with the same cameras
+  as the weapon, or use **Select Image** for already aligned artwork. This mesh is used
+  only for the preview; it does not change the attachment's SID, in-game mesh or behavior.
+  Use the mesh corresponding to the mounted stock model, not an unrelated donor accessory.
+  Stock attachment standalone icons continue to come from the game.
 - **Render** replaces that preview; **X** clears it. Rendered images and thumbnails are packed into the blend. Save the blend normally to retain them; rendering does not save your project.
 - **Select Image** uses an existing image from your computer instead of rendering. It creates an independent RGBA copy, resizes it to this preview's canvas size and packs it with a thumbnail. The original file and other Blender image users are not changed. Selected images use the same export and CFG references as rendered images. A failed selection keeps the previous preview.
 
@@ -46,6 +55,16 @@ align the artwork or remove an opaque background.
 Run the freshly generated import script in ZoneKit. Images are imported into the mod's own content mount at `/<Mod>/UI/Arsenal/<WeaponID>/`, with UI compression, sRGB, no mipmaps and no virtual-texture streaming. Re-running the importer replaces these generated image assets. No shared base-game textures are modified.
 
 The generated weapon CFG uses the body inventory image as `Icon`. Each compatible magazine/custom accessory uses its inventory layer as `WeaponSpecificIcon`, with zero X/Y offsets because the full canvases align. Purchasable attachments use their standalone image as `Icon`. Missing previews retain the existing donor image behaviour for weapons/magazines; a custom accessory without a layer has an empty weapon-specific icon. Render the complete set before packaging.
+
+Assigned stock attachment layers also use mod-owned `WeaponSpecificIcon` textures and zero
+offsets. Without a stock layer, the legacy donor overlay and offsets are retained; export
+warns when this is combined with a custom weapon body image. In particular, the stock
+silencer fallback uses Integral artwork, which is not aligned to a custom pistol canvas
+and can alter the bounds/scale of the entire composed inventory icon. Render the stock
+layer to avoid mixing these layouts. Custom attachments of the same kind take precedence;
+disabled/replaced stock layers are not exported. Clear a stock preview with **X** to stop
+exporting it. Re-render all layers after camera edits, regenerate the import script with
+**Export All**, import in ZoneKit and repackage before checking the composed icon in game.
 
 Large upgrade layers are exported and imported as UI textures too, using the game's paired
 texture naming: `T_inv_w_<WeaponID>_<component>` for inventory and the same name with `_upgrade`

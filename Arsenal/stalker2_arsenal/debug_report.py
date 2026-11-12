@@ -119,9 +119,11 @@ def cfg_state(context):
     lines.append(f'Mesh folder: {info["mesh_folder"]}')
     lines.append(f'Animation folder: {info["animation_dir"]}')
     for magazine in info['magazines']:
-        lines.append(f'Magazine {magazine["name"]}: SID Gun{info["weapon_id"]}_Mag{magazine["name"]}, '
+        geometry = ('existing item (geometry owned elsewhere)' if magazine.get('existing_sid') else
+                    f'full={magazine["full_path"]}, empty={magazine["empty_path"]}')
+        lines.append(f'Magazine {magazine["name"]}: SID {weapon_cfg.magazine_sid(info, magazine)}, '
                      f'preinstalled={magazine["preinstalled"]}, socket={magazine["socket"]}, '
-                     f'full={magazine["full_path"]}, empty={magazine["empty_path"]}')
+                     f'{geometry}')
     lines.append('Weapon parts: ' + ', '.join(joint for _path, joint in info['parts']))
     lines.append('CFG files: ' + ', '.join(sorted(weapon_cfg.cfg_files(info))))
     lines.append('Localisation SIDs: ' + ', '.join(entry['SID'] for entry in weapon_cfg.localization_entries(info)))

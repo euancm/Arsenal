@@ -209,9 +209,11 @@ def _import_skeleton(context, path, display_name):
 
     _select_only(context, [rig], rig)
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    rig['arsenal_component_root'] = re.sub(r'\.\d{3,}$', '', rig.name)
     rig.name = ROOT_BONE
     rig.data.name = f'{display_name} Weapon Rig'
     rig[RIG_MARKER] = True
+    rig['arsenal_donor_mesh_name'] = display_name
 
     bpy.ops.object.mode_set(mode='EDIT')
     try:
@@ -422,6 +424,10 @@ def _socket_offset(rig, root, filename):
     try:
         with open(path, encoding='utf-8') as handle:
             sockets = json.load(handle)
+        if isinstance(sockets, dict):
+            from .weapon_sockets import catalogue_mesh
+            mesh = catalogue_mesh(path, donor_name=rig.get('arsenal_donor_mesh_name', ''))
+            sockets = [entry for entry in mesh['sockets'] if entry['effective']]
     except (OSError, ValueError):
         return None
     for entry in sockets:
@@ -555,6 +561,8 @@ def import_rigged_weapon(context, root, weapon_name):
     rig = _import_skeleton(context, skeleton_path, name)
     main, bounds, skipped = _import_parts(context, rig, parts, name)
     apply_bone_shapes(rig, bounds)
+    from . import weapon_sockets
+    weapon_sockets.import_markers(context.scene, rig, root)
     attachments = _import_attachments(context, rig, find_attachment_files(root, name), root)
     apply_materials(root, ([main] if main else []) + attachments)
     from . import weapon_cfg

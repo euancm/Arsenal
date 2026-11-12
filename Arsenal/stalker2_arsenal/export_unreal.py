@@ -129,7 +129,7 @@ def write_unreal_import(context):
         raise RuntimeError('No static meshes found in the output folder; export them first.')
     animation_files = find_animation_files(output_root, animation_name)
 
-    main, _bones, others = static_mesh.classify_meshes(rig, context.scene, bone_joints)
+    main, main_bones, others = static_mesh.classify_meshes(rig, context.scene, bone_joints)
     managed, game = collect_materials([main] + [obj for obj, _bones in others])
 
     weapon_folder = os.path.join(output_root, '_Stalker_2', 'weapons', category, f'p_{mesh_name}')
@@ -159,17 +159,33 @@ def write_unreal_import(context):
     else:
         weapon_skeleton = f'{mount}/_STALKER2/SkeletalMeshes/weapons/pt/{animation_name}/SK_{animation_name}'
 
-    from . import inventory_images, weapon_cfg
+    from . import inventory_images, setup_panel, weapon_cfg, weapon_sockets, weapon_distribution
     info = weapon_cfg.build_context(context)
+    root_bone = 'Weapon' if 'Weapon' in rig.data.bones else max(main_bones, key=main_bones.get)
+    world_sockets = static_mesh.world_magazine_sockets(
+        rig, backup, bone_joints, info['magazines'],
+        info['world_mesh'].split("'")[1].split('.')[0], root_bone)
+    socket_state = getattr(context.scene, 'arsenal_sockets', None)
+    if socket_state is not None and socket_state.entries:
+        if socket_state.rig != rig:
+            raise RuntimeError('Socket markers belong to a different weapon rig than the one being exported.')
+        cfg_mesh = info['skeletal_mesh'].split("'")[1].split('.')[0]
+        if cfg_mesh != weapon_skeleton:
+            raise RuntimeError('Socket destination differs from the weapon CFG mesh; export the skeletal mesh first.')
+    socket_payload = weapon_sockets.export_payload(context.scene, weapon_skeleton)
     localization = weapon_cfg.localization_entries(info)
-    magazines = [{'sid': f'Gun{info["weapon_id"]}_Mag{magazine["name"]}', 'name': magazine['name'],
+    magazines = [{'sid': weapon_cfg.magazine_sid(info, magazine), 'name': magazine['name'],
                   'preinstalled': bool(magazine['preinstalled'])} for magazine in info['magazines']]
     ui_images = inventory_images.export_images(info)
     from . import weapon_upgrades
     ui_images.extend(weapon_upgrades.export_images(info))
+    setup_config = setup_panel.build_config(context)
+    setup_config.update(export_dir=output_root, dry_run=False, export=False)
 
     manifest = {
         'version': MANIFEST_VERSION,
+        'setup': setup_config,
+        'distribution': weapon_distribution.payload(info),
         'localization': localization,
         'ui_images': ui_images,
         'magazines': magazines,
@@ -192,6 +208,10 @@ def write_unreal_import(context):
         'materials': materials,
         'game_materials': game,
     }
+    if socket_payload is not None:
+        manifest['weapon_sockets'] = socket_payload
+    if world_sockets is not None:
+        manifest['world_mesh_sockets'] = world_sockets
 
     base = f'import_{animation_name}'
     manifest_path = os.path.join(output_root, base + '.json')
@@ -202,6 +222,15 @@ def write_unreal_import(context):
     with open(template, encoding='utf-8') as handle:
         script = handle.read()
     script = script.replace('BAKED_MANIFEST = None', f'BAKED_MANIFEST = {manifest_path!r}', 1)
+    with open(os.path.join(os.path.dirname(__file__), 'unreal_setup.py'), encoding='utf-8') as handle:
+        setup_source = handle.read().rsplit("\nif unreal is not None or __name__", 1)[0]
+    with open(os.path.join(os.path.dirname(__file__), 'uasset_patch.py'), encoding='utf-8') as handle:
+        setup_source = setup_source.replace('PATCHER_SOURCE = None', f'PATCHER_SOURCE = {handle.read()!r}', 1)
+    script = script.replace('SETUP_SOURCE = None', f'SETUP_SOURCE = {setup_source!r}', 1)
+    with open(os.path.join(os.path.dirname(__file__), 'distribution_compose.py'), encoding='utf-8') as handle:
+        script = script.replace('DISTRIBUTION_SOURCE = None', f'DISTRIBUTION_SOURCE = {handle.read()!r}', 1)
+    script = script.replace('DISTRIBUTION_DEFAULTS = None',
+                            f'DISTRIBUTION_DEFAULTS = {weapon_distribution.DEFAULTS!r}', 1)
     with open(script_path, 'w', encoding='utf-8') as handle:
         handle.write(script)
     return script_path, manifest

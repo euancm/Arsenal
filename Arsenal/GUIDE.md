@@ -7,9 +7,34 @@ For the add-on workflow and generated weapon configuration, see [CFG export](doc
 and the [README](../README.md). Extracted data and generated mod files belong in your own
 working folder outside this repository.
 
+## Arsenal's generated CFG layout
+
+For the current add-on, use the generated files rather than assembling these patches by hand:
+
+- Weapon, attachment, mesh and optional custom upgrade/effect definitions go under
+  `GameLite/ModGameData/<Mod>/`, with mod-owned identifiers and `@BaseGame` donor references.
+- Existing trader/NPC generators are patched under
+  `GameLite/GameData/ItemGeneratorPrototypes/<Mod>_ArsenalDistribution.cfg`, not as new
+  definitions in `ModGameData`. The importer combines all of the mod's weapon plans into
+  that file so each generator root is patched once.
+- `<mod folder>/Arsenal/distribution.json`, outside `Content`, is the importer's composition
+  state. Back it up with the mod project. Importing one weapon preserves the others.
+- **Stock Custom Attachments** adds each purchasable custom magazine, silencer and laser to
+  enabled weapon traders at half the weapon's effective stock chance, including any weapon
+  pool gate. These are independent one-item rolls, not preinstalled attachments or NPC loot.
+- Weapon and attachment localisation is written into the mod's text asset automatically by
+  the generated importer; routine manual SID entry is no longer required.
+
+See [trader and NPC inventories](doc/cfg_export.md#trader-and-npc-inventories) for probability
+semantics, migration, compatibility limits and re-import steps. The remaining sections are a
+general community reference: version-specific observations and deductions are not a guarantee
+of current runtime behaviour. Check your installed ZoneKit data and test a disposable mod.
+
 ## 0. Verifying Mod Loading (UE4SS)
 
-Before diving into complex changes, always verify if your mod is even being mounted by the engine. You can check this using the `ue4ss zdev` console or logs. Look for `LogPakFile` entries like these:
+Before debugging complex changes, verify that your mod is mounted by the engine. UE4SS is an
+optional diagnostic tool, not an Arsenal dependency; its console or game logs can expose
+`LogPakFile` entries like these:
 
 ```log
 LogPakFile: Display: Found Pak file ../../../Stalker2/Content/Paks/~mods/SavantsZone_P.pak attempting to mount.
@@ -87,7 +112,7 @@ Level.Actors:ForEach(function(Index, ActorWrapper)
 end)
 ```
 
-#### Damping Configs (Advanced)
+#### Dumping Configs (Advanced)
 
 The `GSCConfigSubsystem` holds a map of all loaded `.cfg` files in `InternalConfigNodes`. You can iterate this map to see exactly what the engine has parsed, which is the ultimate "Source of Truth" for your patches.
 
@@ -97,14 +122,15 @@ There are two main types of configuration files you will encounter, each requiri
 
 ### A. Prototype CFGs (SIDs)
 
-Files that define objects using String IDs (SIDs), such as `ItemPrototypes.cfg`, `ObjectPrototypes.cfg`, `EffectPrototypes.cfg`.
+Files that define objects using String IDs (SIDs), such as `ItemPrototypes.cfg`, `ObjPrototypes.cfg`, `EffectPrototypes.cfg`.
 
 - **Rule**: Patches must be placed in a **sub-folder** named exactly matching the target file (minus extension).
-- **Filename**: `[OriginalFileName]_patch_[YourModName].cfg`
+- **Example filename**: `[OriginalFileName]_patch_[YourModName].cfg`. Arsenal's generated
+  distribution CFG uses its own mod-prefixed filename in the same prototype subfolder.
 - **Folder Path**: `Content/GameLite/GameData/[OriginalFileName]/`
 - **Example**:
-  - Target: `ObjectPrototypes.cfg`
-  - Path: `.../GameData/ObjectPrototypes/ObjectPrototypes_patch_SkipRunFast.cfg`
+  - Target: `ObjPrototypes.cfg`
+  - Path: `.../GameData/ObjPrototypes/ObjPrototypes_patch_SkipRunFast.cfg`
 
 ### B. Standard/Global CFGs
 
@@ -197,7 +223,7 @@ _Example:_
 
 ```ini
 SomeUpgrade : struct.begin {bpatch}
-   OldBadEffect : struct.begin {bpatch} removenode struct.end
+   OldBadEffect : removenode
 struct.end
 ```
 
@@ -246,7 +272,7 @@ You can combine these keys to pull a specific node from another file to create a
 // We create 'MyNewScope' by copying 'TemplateScope' from a file one folder up.
 // Because we use refurl/refkey and NO {bpatch}, we are treating the reference as a base template.
 // note that we are using ../ to reference a file in the parent directory. This runs under the assumption that the patch file will be one directory down from the original file.
-// Since we know that ItemProtypes.cfg resides in Content\GameLite\GameData\ , we assume that this patch file will be located in Content\GameLite\GameData\FolderNameHere
+// ItemPrototypes.cfg resides in Content\GameLite\GameData\; this patch is one folder below it.
 MyNewScope : struct.begin {refurl=../ItemPrototypes.cfg; refkey=TemplateScope}
     SID = MyNewScope
     MarketPrice = 9999
@@ -265,7 +291,7 @@ struct.end
 // We can also use removenode here to cleanly excise parts we don't want.
 MyNewScope : struct.begin {bpatch}
     MarketPrice = 500
-    BadEffect : struct.begin {bpatch} removenode struct.end
+    BadEffect : removenode
 struct.end
 ```
 
@@ -440,7 +466,7 @@ This file is the "visual" counterpart to the NPC version, but specifically for t
 
 # Additional Technical Observations
 
-From automating patches with scripts like `patch_long_range_combat.py`, several patterns have emerged:
+From earlier CFG automation work (scripts are not bundled with Arsenal), several patterns have emerged:
 
 ### 1. Recursive Inheritance Tracing
 

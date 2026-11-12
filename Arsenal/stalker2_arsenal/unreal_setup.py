@@ -279,57 +279,68 @@ def _vector(value, names):
     return [float(getattr(value, name)) for name in names]
 
 
+def socket_reference_pose(mesh, packages):
+    skeleton = mesh.get_editor_property('skeleton')
+    candidates = sorted(packages, key=lambda path: not path.casefold().endswith('_idle'))
+    for package in candidates:
+        sequence = unreal.EditorAssetLibrary.load_asset(package)
+        if sequence is None:
+            raise RuntimeError(f'Cannot load reference-pose sequence {package}')
+        if sequence.get_editor_property('skeleton') != skeleton:
+            continue
+        options = unreal.AnimPoseEvaluationOptions()
+        options.evaluation_type = unreal.AnimDataEvalType.RAW
+        options.should_retarget = False
+        options.retrieve_additive_as_full_pose = True
+        options.optional_skeletal_mesh = mesh
+        return unreal.AnimPoseExtensions.get_anim_pose_at_frame(sequence, 0, options)
+    raise RuntimeError(f'No sequence uses the socket source skeleton {skeleton.get_path_name()}')
+
+
 def export_sockets(plan, config):
-    """Write the weapon mesh's sockets (silencer, laser...) so Blender can place attachments where the game does."""
-    entries = []
-    seen = set()
+    """Export all mesh and inherited sockets, retaining their effective lookup and source owner."""
+    meshes = []
     for package in plan['selection']['skeletal_meshes']:
         mesh = unreal.EditorAssetLibrary.load_asset(package)
-        owners = [mesh]
-        try:
-            owners.append(mesh.get_editor_property('skeleton'))
-        except Exception:
-            pass
-        for owner in owners:
-            if owner is None:
-                continue
-            found = []
-            for prop in ('sockets', 'mesh_only_socket_list'):
-                try:
-                    found += list(owner.get_editor_property(prop) or [])
-                except Exception:
-                    pass
-            for name in ('SilencerMuzzleSocket', 'LaserSocket'):
-                finder = getattr(owner, 'find_socket', None)
-                if finder:
-                    try:
-                        socket = finder(name)
-                        if socket:
-                            found.append(socket)
-                    except Exception:
-                        pass
-            for socket in found:
-                try:
-                    name = str(socket.get_editor_property('socket_name'))
-                    if name in seen:
-                        continue
-                    seen.add(name)
-                    entries.append({
-                        'name': name,
-                        'bone': str(socket.get_editor_property('bone_name')),
-                        'location': _vector(socket.get_editor_property('relative_location'), 'xyz'),
-                        'rotation': _vector(socket.get_editor_property('relative_rotation'), ('roll', 'pitch', 'yaw')),
-                        'scale': _vector(socket.get_editor_property('relative_scale'), 'xyz'),
-                    })
-                except Exception as error:
-                    warn(f'Could not read a socket of {package}: {error}')
-        if not entries:
-            names = [n for n in dir(mesh) if 'socket' in n.lower()]
-            warn(f'No sockets could be read from {package} (socket-related attributes: {names})')
+        if mesh is None:
+            raise RuntimeError(f'Cannot load socket source mesh: {package}')
+        skeleton = mesh.get_editor_property('skeleton')
+        reference = socket_reference_pose(mesh, plan['selection'].get('sequences', []))
+        bones = {str(name) for name in reference.get_bone_names()}
+        component = unreal.SkeletalMeshComponent()
+        component.set_skeletal_mesh_asset(mesh)
+        root_bone = str(component.get_bone_name(0))
+        if root_bone not in bones:
+            raise RuntimeError(f'Cannot identify socket source root bone: {package}')
+        entries = []
+        for index in range(mesh.num_sockets()):
+            socket = mesh.get_socket_by_index(index)
+            name = str(socket.get_editor_property('socket_name'))
+            bone = str(socket.get_editor_property('bone_name'))
+            if bone not in bones:
+                raise RuntimeError(f'Socket {name} has an unknown reference bone {bone} on {package}')
+            transform = reference.get_ref_bone_pose(bone, unreal.AnimPoseSpaces.WORLD)
+            entries.append({
+                'name': name,
+                'bone': bone,
+                'location': _vector(socket.get_editor_property('relative_location'), 'xyz'),
+                'rotation': _vector(socket.get_editor_property('relative_rotation'), ('roll', 'pitch', 'yaw')),
+                'scale': _vector(socket.get_editor_property('relative_scale'), 'xyz'),
+                'object': socket.get_path_name(),
+                'owner': socket.get_outer().get_path_name(),
+                'effective': mesh.find_socket(name) == socket,
+                'bone_transform': {
+                    'location': _vector(transform.translation, 'xyz'),
+                    'quaternion': _vector(transform.rotation, 'xyzw'),
+                    'scale': _vector(transform.scale3d, 'xyz'),
+                },
+            })
+        meshes.append({'mesh': package, 'skeleton': skeleton.get_path_name(),
+                       'root_bone': root_bone, 'sockets': entries})
     path = os.path.join(config['export_dir'], 'weapon_sockets.json')
     with open(path, 'w', encoding='utf-8') as handle:
-        json.dump(entries, handle, indent=2)
-    log(f'Wrote {len(entries)} sockets to {path}')
+        json.dump({'version': 1, 'units': 'cm', 'meshes': meshes}, handle, indent=2)
+    log(f'Wrote {sum(len(mesh["sockets"]) for mesh in meshes)} sockets to {path}')
 
 
 def _material_slots(asset):
@@ -407,6 +418,9 @@ def checkout_copies(plan, config):
     library = unreal.EditorAssetLibrary
     ready = []
     for package, source, target in plan['copies']:
+        if library.does_asset_exist(target):
+            ready.append((package, source, target))
+            continue
         if not library.does_asset_exist(source):
             try:
                 library.duplicate_asset(package, source)
@@ -425,7 +439,7 @@ def run_rename(items):
     library = unreal.EditorAssetLibrary
     data = []
     for _package, source, target in items:
-        if source == target:
+        if source == target or library.does_asset_exist(target):
             continue
         asset = library.load_asset(source)
         if asset is None:
@@ -487,6 +501,33 @@ def reload_packages(assets):
     return unreal.EditorLoadingAndSavingUtils.reload_packages([asset.get_package() for asset in assets], mode)
 
 
+def ensure_mod_assets(config):
+    """Recover setup without exporting donor FBXs or replacing existing mod assets."""
+    validate(config)
+    if config['mod'].casefold() in ('game', 'engine'):
+        raise RuntimeError('Setup recovery requires a mod-owned mount.')
+    library = unreal.EditorAssetLibrary
+    if not library.does_directory_exist('/' + config['mod']):
+        raise RuntimeError(f'The mod /{config["mod"]} does not exist in this ZoneKit project.')
+    _registry, assets = registry_assets()
+    plan = build_plan(assets, config, sequence_is_additive)
+    for field in ('sequences', 'montages', 'collections', 'anim_blueprints', 'skeletal_meshes'):
+        if not plan['selection'][field]:
+            raise RuntimeError(f'The donor has no {field}; cannot recover ZoneKit setup.')
+    for package, _source, target in plan['copies']:
+        if library.does_asset_exist(target):
+            continue
+        asset = library.duplicate_asset(package, target)
+        if asset is None or not library.does_asset_exist(target):
+            raise RuntimeError(f'Cannot create missing setup asset: {target}')
+        if not library.save_loaded_asset(asset, False):
+            raise RuntimeError(f'Cannot save missing setup asset: {target}')
+        log(f'Created missing setup asset: {target}')
+    if patch_references(plan, config):
+        raise RuntimeError('Could not repair setup references; resolve the setup errors before packaging.')
+    return plan
+
+
 def patch_references(plan, config):
     """Point every copied asset at the other copies instead of the /Game originals, by rewriting names in the
     mod's own .uasset headers.
@@ -522,7 +563,8 @@ def patch_references(plan, config):
             continue
         try:
             # A loaded package keeps its file open; a forced save releases it before the file is rewritten.
-            library.save_loaded_asset(asset, False)
+            if not library.save_loaded_asset(asset, False):
+                raise OSError(f'Cannot save {target} before patching references')
             patcher.patch_file(path, mapping, backup_dir=backups)
             patched.append(asset)
         except (patcher.PatchError, OSError) as error:
@@ -530,7 +572,8 @@ def patch_references(plan, config):
             warn(f'Could not patch {target}: {error}')
     if patched:
         try:
-            reload_packages(patched)
+            if not reload_packages(patched):
+                raise RuntimeError('reload_packages reported a failure')
         except Exception as error:
             failed += len(patched)
             warn(f'Patched {len(patched)} files but could not reload them ({error}). Close and reopen ZoneKit '
@@ -640,6 +683,11 @@ def _main():
         log('Dry run: nothing exported, copied or renamed.')
         write_report(config, plan, {})
         return
+    if '--sockets-only' in sys.argv:
+        os.makedirs(config['export_dir'], exist_ok=True)
+        export_sockets(plan, config)
+        log('Socket catalogue refreshed; no mod assets were copied, renamed or saved.')
+        return
     if config.get('export', True):
         run_exports(plan, config)
         for step in (export_sockets, export_textures):
@@ -676,6 +724,8 @@ def notify_completion(error=None):
         else 'Setup finished. Next: in Blender, press Import Weapon.')
     if CONFIG and CONFIG.get('dry_run') and error is None:
         message = 'Dry run finished; no assets were changed. See the setup report for details.'
+    elif '--sockets-only' in sys.argv and error is None:
+        message = 'Socket catalogue refreshed. In Blender, use Weapon Sockets > Import / Refresh Sockets.'
     if unreal is not None:
         category = (unreal.AppMsgCategory.ERROR if error is not None else
                     unreal.AppMsgCategory.WARNING if warnings else unreal.AppMsgCategory.INFO)

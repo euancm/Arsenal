@@ -22,6 +22,20 @@ FAMILIES = (
 SIZES = {'inventory': (258, 128), 'upgrade': (1940, 800), 'standalone': (258, 128)}
 CAMERAS = {'inventory': 'Standard', 'upgrade': 'Upgrade', 'standalone': 'MagazineStandalone'}
 CAMERA_LAYOUT = 2
+STOCK_ATTACHMENTS = [('NONE', 'None', ''), ('silencer', 'Stock Silencer', ''), ('laser', 'Stock Laser', '')]
+
+
+def stock_attachments(cfg):
+    custom_kinds = {item.kind for item in cfg.attachments}
+    return [(kind, sid, getattr(cfg, f'stock_{kind}_images'))
+            for kind, sid in (('silencer', 'EN_Silen_2'), ('laser', 'EN_Laser_1'))
+            if getattr(cfg, f'allow_{kind}') and kind not in custom_kinds]
+
+
+def attachment_objects(source):
+    settings = list(source.arsenal_cfg.attachments)
+    settings += [item for _kind, _sid, item in stock_attachments(source.arsenal_cfg)]
+    return {item.mesh_object for item in settings if item.mesh_object}
 
 
 class ARSENAL_InventoryProps(bpy.types.PropertyGroup):
@@ -60,8 +74,7 @@ def weapon_sources(context, source):
     magazine_objects = {obj for item in source.arsenal_cfg.magazines
                         for obj in (item.full_object, item.empty_object) if obj}
     # Explicitly selected magazine meshes may not be bound to the rig yet.
-    attachment_objects = {item.mesh_object for item in source.arsenal_cfg.attachments if item.mesh_object}
-    objects += [obj for obj in magazine_objects | attachment_objects
+    objects += [obj for obj in magazine_objects | attachment_objects(source)
                 if obj.name in source.objects and obj not in objects]
     return objects, joints
 
@@ -141,12 +154,16 @@ def export_images(info):
 
     targets = [(info['cfg'], 'body', info['sid'])]
     targets += [(item['settings'], f'Mag{item["name"]}', f'Gun{info["weapon_id"]}_Mag{item["name"]}')
-                for item in info['magazines'] if item.get('settings')]
+                for item in info['magazines'] if item.get('settings') and not item.get('existing_sid')]
     targets += [(item['settings'], f'Attach{item["name"]}', item['sid'])
                 for item in info.get('attachments', [])]
+    targets += [(settings, f'Stock{kind.title()}', sid)
+                for kind, sid, settings in stock_attachments(info['cfg'])]
     entries = []
     for settings, token, sid in targets:
         for family in ('inventory', 'upgrade', 'standalone'):
+            if token.startswith('Stock') and family == 'standalone':
+                continue
             image = getattr(settings, f'{family}_image', None)
             if image is None or (family == 'standalone' and (
                     token == 'body' or getattr(settings, 'preinstalled', False))):
@@ -249,7 +266,7 @@ def fit_cameras(scene):
     source = state.source_scene
     magazines = {obj for item in source.arsenal_cfg.magazines
                  for obj in (item.full_object, item.empty_object) if obj}
-    attachments = {item.mesh_object for item in source.arsenal_cfg.attachments if item.mesh_object}
+    attachments = attachment_objects(source)
     body = [obj for obj in state.geometry.objects
             if obj.get('arsenal_inventory_source') not in magazines | attachments]
     full_magazines = {item.full_object for item in source.arsenal_cfg.magazines if item.full_object}
@@ -269,7 +286,7 @@ def default_view(scene):
     source = state.source_scene
     magazines = {obj for item in source.arsenal_cfg.magazines
                  for obj in (item.full_object, item.empty_object) if obj}
-    attachments = {item.mesh_object for item in source.arsenal_cfg.attachments if item.mesh_object}
+    attachments = attachment_objects(source)
     default = next((item.full_object for item in source.arsenal_cfg.magazines if item.preinstalled), None)
     scene.camera = state.inventory_camera
     scene.render.resolution_x, scene.render.resolution_y = SIZES['inventory']
@@ -279,7 +296,13 @@ def default_view(scene):
     scene.view_layers[LAYER_NAME].update()
 
 
-def image_target(source, magazine_index, family, attachment_index=-1):
+def image_target(source, magazine_index, family, attachment_index=-1, stock_attachment='NONE'):
+    if stock_attachment != 'NONE':
+        settings = next((item for kind, _sid, item in stock_attachments(source.arsenal_cfg)
+                         if kind == stock_attachment), None)
+        if settings is None or family == 'standalone':
+            raise RuntimeError('Enable this stock attachment and select an inventory or upgrade layer first.')
+        return settings, f'{family}_image'
     if attachment_index >= 0:
         if attachment_index >= len(source.arsenal_cfg.attachments):
             raise RuntimeError('Select an attachment first.')
@@ -291,6 +314,8 @@ def image_target(source, magazine_index, family, attachment_index=-1):
     if not 0 <= magazine_index < len(source.arsenal_cfg.magazines):
         raise RuntimeError('Select a magazine first.')
     item = source.arsenal_cfg.magazines[magazine_index]
+    if item.use_existing:
+        raise RuntimeError('Existing magazine images are supplied by the owning mod.')
     if family == 'standalone' and item.preinstalled:
         raise RuntimeError('Preinstalled magazines do not need a standalone inventory image.')
     return item, f'{family}_image'
@@ -343,21 +368,21 @@ def load_packed_image(filepath, size=None):
         bpy.data.images.remove(loaded)
 
 
-def render_preview(context, source, family, magazine_index=-1, attachment_index=-1):
-    target, prop = image_target(source, magazine_index, family, attachment_index)
+def render_preview(context, source, family, magazine_index=-1, attachment_index=-1, stock_attachment='NONE'):
+    target, prop = image_target(source, magazine_index, family, attachment_index, stock_attachment)
     scene = ensure_scene(context, source)
     sync_geometry(context, source)
     state = scene.arsenal_inventory
     objects = list(state.geometry.objects)
     magazines = {obj for item in source.arsenal_cfg.magazines
                  for obj in (item.full_object, item.empty_object) if obj}
-    attachments = {item.mesh_object for item in source.arsenal_cfg.attachments if item.mesh_object}
+    attachments = attachment_objects(source)
     selected = None
     if magazine_index >= 0:
         selected = source.arsenal_cfg.magazines[magazine_index].full_object
         if selected is None or selected.name not in source.objects:
             raise RuntimeError('The selected magazine needs a full mesh in the weapon scene.')
-    if attachment_index >= 0:
+    if attachment_index >= 0 or stock_attachment != 'NONE':
         selected = target.mesh_object
         if selected is None or selected.name not in source.objects:
             raise RuntimeError('The selected attachment needs a mesh in the weapon scene.')
@@ -374,7 +399,7 @@ def render_preview(context, source, family, magazine_index=-1, attachment_index=
     body = [obj for obj in objects if obj.get('arsenal_inventory_source') not in magazines | attachments]
     default = next((item.full_object for item in source.arsenal_cfg.magazines if item.preinstalled), None)
     occluders = body if selected and family != 'standalone' else []
-    if attachment_index >= 0 and family != 'standalone':
+    if (attachment_index >= 0 or stock_attachment != 'NONE') and family != 'standalone':
         occluders += [obj for obj in objects if obj.get('arsenal_inventory_source') == default]
     materials = [(obj, list(obj.data.materials), [(slot.link, slot.material) for slot in obj.material_slots])
                  for obj in occluders]
@@ -453,6 +478,7 @@ class ARSENAL_OT_InventoryImage(bpy.types.Operator):
     family: bpy.props.EnumProperty(items=FAMILIES)
     magazine_index: bpy.props.IntProperty(default=-1)
     attachment_index: bpy.props.IntProperty(default=-1)
+    stock_attachment: bpy.props.EnumProperty(items=STOCK_ATTACHMENTS, default='NONE')
     clear: bpy.props.BoolProperty()
 
     @classmethod
@@ -468,11 +494,13 @@ class ARSENAL_OT_InventoryImage(bpy.types.Operator):
     def execute(self, context):
         source = source_scene(context.scene)
         try:
-            target, prop = image_target(source, self.magazine_index, self.family, self.attachment_index)
+            target, prop = image_target(
+                source, self.magazine_index, self.family, self.attachment_index, self.stock_attachment)
             if self.clear:
                 assign_image(target, prop, None)
             else:
-                render_preview(context, source, self.family, self.magazine_index, self.attachment_index)
+                render_preview(
+                    context, source, self.family, self.magazine_index, self.attachment_index, self.stock_attachment)
         except (OSError, RuntimeError, ValueError) as error:
             report(self, {'ERROR'}, str(error))
             return {'CANCELLED'}
@@ -489,6 +517,7 @@ class ARSENAL_OT_InventoryImageFile(bpy.types.Operator, ImportHelper):
     family: bpy.props.EnumProperty(items=FAMILIES)
     magazine_index: bpy.props.IntProperty(default=-1)
     attachment_index: bpy.props.IntProperty(default=-1)
+    stock_attachment: bpy.props.EnumProperty(items=STOCK_ATTACHMENTS, default='NONE')
     upgrade_index: bpy.props.IntProperty(default=-1)
 
     @classmethod
@@ -506,7 +535,8 @@ class ARSENAL_OT_InventoryImageFile(bpy.types.Operator, ImportHelper):
                 target, prop = source.arsenal_cfg.upgrades[self.upgrade_index], 'image'
                 size = None
             else:
-                target, prop = image_target(source, self.magazine_index, self.family, self.attachment_index)
+                target, prop = image_target(
+                    source, self.magazine_index, self.family, self.attachment_index, self.stock_attachment)
                 size = SIZES[self.family]
             image = load_packed_image(bpy.path.abspath(self.filepath), size)
             assign_image(target, prop, image)
@@ -516,7 +546,7 @@ class ARSENAL_OT_InventoryImageFile(bpy.types.Operator, ImportHelper):
         return {'FINISHED'}
 
 
-def draw_images(layout, context, magazine_index=-1, attachment_index=-1):
+def draw_images(layout, context, magazine_index=-1, attachment_index=-1, stock_attachment='NONE'):
     source = source_scene(context.scene)
     row = layout.row()
     families = ('inventory', 'upgrade')
@@ -524,7 +554,7 @@ def draw_images(layout, context, magazine_index=-1, attachment_index=-1):
             magazine_index >= 0 and not source.arsenal_cfg.magazines[magazine_index].preinstalled):
         families += ('standalone',)
     for family in families:
-        target, prop = image_target(source, magazine_index, family, attachment_index)
+        target, prop = image_target(source, magazine_index, family, attachment_index, stock_attachment)
         box = row.box() if family != 'standalone' else layout.box()
         box.label(text=dict((item[0], item[1]) for item in FAMILIES)[family])
         image = getattr(target, prop)
@@ -538,12 +568,15 @@ def draw_images(layout, context, magazine_index=-1, attachment_index=-1):
         render = controls.operator('arsenal.inventory_image', text='Render', icon='RENDER_STILL')
         render.family, render.magazine_index = family, magazine_index
         render.attachment_index, render.clear = attachment_index, False
+        render.stock_attachment = stock_attachment
         select = controls.operator('arsenal.inventory_image_file', text='Select Image', icon='FILE_FOLDER')
         select.family, select.magazine_index = family, magazine_index
         select.attachment_index, select.upgrade_index = attachment_index, -1
+        select.stock_attachment = stock_attachment
         clear = controls.operator('arsenal.inventory_image', text='', icon='X')
         clear.family, clear.magazine_index, clear.clear = family, magazine_index, True
         clear.attachment_index = attachment_index
+        clear.stock_attachment = stock_attachment
 
 
 CLASSES = (ARSENAL_InventoryProps, ARSENAL_OT_InventoryImage, ARSENAL_OT_InventoryImageFile)

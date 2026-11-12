@@ -20,12 +20,14 @@ ZoneKit (Python bar)       run the setup script: exports template assets, create
                            batch-renames them to the new weapon name, tidies redirectors, writes a report
 Blender panel 2 "Import"   imports skeletal mesh (full quality), attachments (all magazines), animations,
                            materials/textures, sockets; Detect Magazines runs automatically
-Blender panel 3 "Retarget" Rigify conversion + retarget of character, weapon and camera animation
+Blender panel 3 "Retarget" retarget character, weapon and camera animation onto the generated Rigify rig
 Blender panel 4 "Create Your Custom Weapon"  edit meshes/animation, weapon presets, CFG values
 Blender panel 5 "Export"   FBX animations (baked at 4 substeps/frame), skeletal/static meshes, CFG,
                            localisation JSON, ZoneKit import script (import_<weapon>.py)
-ZoneKit (Python bar)       run the import script: imports textures/materials/meshes, imports animations
-                           through the legacy FBX path, syncs additive idles, writes localisation text
+ZoneKit (Python bar)       run the import script: recovers missing donor copies/references first,
+                           imports textures/materials/meshes, imports animations
+                           through the legacy FBX path, applies sockets, syncs additive idles,
+                           writes localisation text and composes mod-wide trader/NPC distribution
 ZoneKit Mod Editor         package (cook) the mod, then install/replace the pak and test in game
 ```
 
@@ -34,18 +36,158 @@ ZoneKit Mod Editor         package (cook) the mod, then install/replace the pak 
 | Stage | State |
 |---|---|
 | Template selection (Pistol, SMG, Rifle, Shotgun, Sniper) and setup-script generation | Done. Verified offline for all five templates. |
-| ZoneKit export of sequences, additive sequences, skeletal/static meshes, magazines, sockets, textures | Done; ran in ZoneKit for the pistol. Socket API names are guesses. |
+| ZoneKit export of sequences, additive sequences, skeletal/static meshes, magazines, sockets, textures | Done; ran in ZoneKit for the pistol. Native socket reference frames and mod-owned writes have disposable ZoneKit coverage; cooked gameplay acceptance remains separate. |
 | ZoneKit mod copy + batch rename | Done. Uses `duplicate_asset` directly; revision-control checkout does not create a mod copy and caused unnecessary warning dialogs. |
 | Blender import (pairing, LOD1/collision skip, smoothing, vertex-group attachments, DirectX normals, RMA split) | Done; materials tested with synthetic data only. |
 | Rigify conversion, retargeting, weapon/camera controls | Done and validated in Blender 5.2.2. |
 | Animation / mesh / CFG / localisation export | Done. |
 | Inventory image rendering/export | Asset-free three-camera/sun/sky/compositor template; automatic scene creation/recreation, rest-mesh refresh and camera assignment; packed previews. Standard for inventory layers and standalone accessories, Upgrade for large upgrade layers, MagazineStandalone for standalone magazines. Authored transforms and clipping retained; no fitting or scene-management controls. Manual edits via Blender's scene selector. Temporary weapon holdouts for attachment layers. Export PNGs and inventory CFG references; import mod-owned UI textures. Custom magazine/silencer/laser localisation. PDA/module close-ups and per-class dimensions remain pending. |
 | Selected images / custom upgrade trees | Image-file selection creates resized, packed RGBA previews without changing source files. Unchecked base-tree option seeds all five templates' upgrade entries; editable layout, text, module images, dependencies and existing/custom numerical effects export with mod-owned SIDs. Shared donor assets/CFGs untouched. 64 focused Blender and 67 importer tests pass; technician layout and effects still need in-game verification. |
+| Trader / NPC distribution | Per-trader stock and per-faction role/rank controls; blend-persistent defaults load from the selected template, and changing template resets trader/NPC rules. The global custom-attachment toggle is retained. Trader values copy matching stock entries and base prototype defaults; NPC columns approximate the template's weighted shares (difficulty mean, role peak, mean normalized rank share). Role and rank percentages multiply. Slot follows weapon template; condition/spare rounds copy matching template entries, with difficulty-specific splitting where needed. The importer composes one mod-wide CFG with combined private pools and one patch per generator root. Template-matching stock routes retain activation gates; UI shows effective weapon and attachment chances. Purchasable custom attachments follow enabled weapon traders at half the effective weapon chance. Structured catalogue covers 18 traders and 50 generic role loadouts, with live NPC-to-trade links verified. Fresh-spawn/stock-refresh gameplay verification pending. |
 | ZoneKit import script | Done; sequences and collections update, additive idles are resynchronised, montages keep their slots/notifies (header-patched at setup). |
-| Reference repointing (montages, AnimCollection, AnimBP, sequences) | **Automated in the setup script** (header patching, D6, extended by D11); gameplay-confirmed with LadybugMod. |
+| Reference repointing (montages, AnimCollection, AnimBP, sequences) | **Automated in setup and recovered by fresh import scripts** (header patching, D6, extended by D11); the original setup path is gameplay-confirmed with LadybugMod. |
 | Localisation into the mod | **Automated native text upserts** by the import script: reuses the mod's text asset or creates `<Mod>TextToolAsset`, supports empty arrays without exposed entry/enum classes, preserves other SIDs/languages, verifies before saving and skips unchanged saves. Offline regression coverage; live ZoneKit/in-game verification of this path pending. Export All must regenerate older import scripts. |
 | Weapon visible and fireable in game | **Verified in Ladybug by the user:** visible model, CFG stats, normal/extended magazines, firing, reloading, edited reload fingers and fire/aim transitions all work. Bird (blank-slate rerun) reproduced the same result, and confirmed the aim pose, crouch lean (D22) and aim transitions (D24). |
 | Fire, equip, empty click, offset aim and weapon-only clips in Blender | **Done (D25, D26)**; gameplay-confirmed with Bird. |
+
+### Repository validation (2026-11-12)
+
+The pre-push audit removed extracted inventory texture references and outdated UI mockups
+from the checkout, preserving them in an external local archive. Required shape and inventory
+scene libraries remain bundled through Git LFS. Ignore rules now also exclude extracted Unreal
+assets, FBXs, packaged mods and numbered Blender backups. Existing Git history is unchanged.
+
+Validation: 182 asset-free plain-Python tests pass. Nine disposable Blender 5.2.2 suites run
+134 tests, with one optional real-donor socket-marker test skipped because its external FBX
+and catalogue were not supplied; all other cases pass. Two manifest-export test fixtures were
+updated to supply the rig/context data required by world magazine sockets and distribution.
+Python syntax, JSON catalogues, local documentation links/anchors, Git LFS integrity and
+whitespace checks pass. This does not revalidate native ZoneKit persistence, cooking or gameplay.
+See the README's developer-validation section for runtimes and external fixture requirements.
+
+### Automatic custom attachment stock (2026-11-12)
+
+**Stock Custom Attachments** is enabled by default and applies to all of a weapon's enabled
+traders. Each purchasable custom magazine, silencer and laser gets a separate one-item stock
+roll at half the weapon's effective stock chance. Weapon-pool gates are included: a 40% entry
+behind a 50% gate gives the attachment a 10% roll. Preinstalled magazines, references to
+existing magazine items and stock game attachments are excluded. There are no separate
+attachment trader rules or NPC attachment-distribution controls.
+
+The manifest stores these additions with the weapon's distribution record. Composition appends
+to an existing direct attachment group or creates one independent attachment group for that
+trader, combining all custom weapons without repeated roots or duplicate per-import entries.
+Shared base-game attachment pools are unchanged. Re-importing replaces that weapon's plan;
+turning the option off or disabling a trader removes only its automatic additions.
+
+Regression checks cover direct and gated routes, all 18 traders, multi-weapon composition,
+repeat import, disabling stock and the generated import path. In-game stock refresh remains
+an acceptance check. Re-export each existing weapon and run its fresh importer to opt its
+stored plan into attachment distribution.
+
+### World magazine mount sockets (2026-11-11)
+
+The ECM E9 world mesh package had no `jnt_magazine` socket/name. Its CFG correctly referenced
+the shared Gen7 magazine's bone-local AnimMesh, but the world carrier had no corresponding
+mount. In the saved E9OG project the magazine joint is (-0.936825, 0, -3.549240) cm relative
+to the world root, explaining a raised magazine when attached at the root instead.
+
+Exports now include a validated world static-mesh socket payload for the configured magazine
+mounts, including shared existing SIDs. Positions use the same rest heads/source-unit conversion
+as static geometry; socket rotation stays identity because part export subtracts translation
+only. The importer creates/updates mesh-owned static sockets after static FBX import, marks
+the owner dirty, verifies readback, saves and rolls back failures. First-person animation,
+skeletal sockets and shared magazine geometry are unchanged.
+
+Validation: 117 focused plain-Python socket/import regressions and six Blender checks
+(static geometry plus generated manifest) pass. A read-only check of the actual E9OG project
+reconstructs all four standard/extended, full/empty magazine meshes at the world position
+with zero measured vertex error after adding the socket offset. The blend and real mod
+were not saved or changed. In-game world-model alignment still requires a fresh import/package test.
+Native ZoneKit transient assertions also passed for mesh-owned socket creation, transform
+readback and repeat-import no-op. Enumerate via `get_socket_names()` / `find_socket()`:
+the native `sockets` property is protected. The commandlet returned nonzero for existing
+DDC/DLC errors and unavailable real-mod asset-registry mounts; native save/restart persistence
+of these new world sockets was not tested.
+
+### Automatic mod-wide distribution composition (2026-11-11)
+
+The three-weapon ECM Pistols test exposed 32 repeated generator roots (22 NPC, 10 trader).
+Per-weapon shared-pool route assignments competed even within one mod, triggering the game's
+same-entities conflict warning and potentially hiding weapons from stock/spawn pools.
+
+Fresh import scripts embed the self-contained distribution composer and reference catalogue.
+Manifests carry per-weapon structured distribution plans. The importer migrates installed,
+recognized Arsenal-generated legacy CFGs, persists all weapon records outside Content, and
+transactionally rebuilds one mod-wide CFG with one patch per generator and shared combined
+caller-owned pools. Reimporting/disabling one weapon preserves the others; no extra UI steps.
+Joint NPC weights preserve requested shares when their sum is at most 100%. Higher totals are
+proportionally scaled to 100% with explicit requested/effective-share warnings, as requested
+after migration exposed existing per-weapon 100% selections in the same pool.
+The installed test data includes one such conflict: Mercenary Close Combat / Master requests
+50% + 33.33% + 50%; the importer warns and uses 37.5% + 25% + 37.5%. Gameplay confirmation that a newly
+packaged combined CFG removes the warning remains necessary.
+
+Validation: 122 plain-Python distribution/import tests and 79 Blender CFG/image/registration
+tests pass. A disposable copy of the actual three-weapon CFG set migrated into one file with
+103 unique roots (50 private pools); all three weapons remain reachable through the shared
+Chemical Plant trader and Monolith Recon routes. Repeat import is byte-identical. No real mod
+files were changed by validation.
+
+### Setup recovery and native SID save correction (2026-11-11)
+
+Fresh import scripts embed setup plus the `.uasset` reference patcher, with the
+actual donor animation/mesh tokens captured from Blender. Recovery creates only
+missing renamed targets, preserves existing mod-owned assets and repairs stale
+references before any Blender FBX import. It does not re-export donor files or
+save shared base-game assets. A repeat normal setup also skips existing renamed
+targets rather than creating another donor-named copy.
+
+A disposable ZoneKit run exposed the magazine persistence failure: property
+reads returned shared native struct/map views, so editing the planned maps also
+mutated the original used for readback/rollback. Validation failed with
+`GunUDP_MagDefault` missing from the original, leaving changed in-memory values
+without a save. SID updates now copy the native struct explicitly and stage maps
+as detached dictionaries. Generic collection text import skips internal maps;
+existing target values still win over obsolete donor duplicates. Both collection
+and socket writes explicitly mark their owning asset dirty.
+
+Focused plain-Python tests cover aliasing, dirty-owner saves, repeat imports,
+recovery order, preserved existing assets and failure reporting. A synthetic
+Blender test validates generated importer syntax and both embedded sources.
+`zonekit_tools/test_collection_sids_zonekit.py` exercises real native wrappers
+and fresh-process persistence on the disposable ArsenalSocketProbe mount.
+The live recovery run created/repointed the missing UDP donor copies, succeeded
+again without recreating them, and saved the corrected collection. A subsequent
+fresh process verified its complete internal-animation text and the independent
+mesh-only socket owners/transforms. The offline audit found no dangling mod
+references; recovered weapon assets retain only the intended donor skeleton
+reference. 126 focused plain-Python tests and the Blender generation test pass.
+ZoneKit commandlets report existing missing DDC host/DLC asset-domain startup
+errors (exit 1), but both final Python scripts explicitly completed successfully.
+The reported in-game aiming/packaging behaviour still requires a fresh export,
+import, package and gameplay check; in-session socket readback is not proof.
+
+### Distribution packaging correction (2026-11-10)
+
+The initial distribution export put partial base-generator `{bpatch}` blocks in the weapon's
+`ModGameData` namespace. The reported cook loaded those as additional prototypes and rejected
+missing `SID`, `Category` and `ItemPrototypeSID` fields. The wiki's trader/CFG guides require
+base-generator patches under `GameData/ItemGeneratorPrototypes`, not `ModGameData`.
+
+Distribution now writes `GameLite/GameData/ItemGeneratorPrototypes/<Mod>_<ID>Distribution.cfg`.
+Private shared-pool specializations remain beside their callers in this base namespace; their
+SIDs already include the mod and weapon IDs. Weapon/attachment definitions remain in ModGameData.
+Every export also writes a comment-only legacy `<ID>Distribution.cfg` in the old ModGameData
+location, so the normal importer overwrites the invalid file in an existing mod. Disabling all
+rules clears the live patch file too. No shared ZoneKit content or real mod was edited for testing.
+
+Validation: 26 asset-free distribution tests, 71 importer tests (including legacy-file migration),
+and 36 Blender CFG tests pass; the exporter has no Pylance syntax errors. Native cook validation
+was attempted with a disposable CFG-only mod, but it lacks the GameFeatureData asset required to
+activate its namespace. Those attempts therefore do **not** validate the corrected parser output
+or a successful package. Re-export/import and a full package of the user's mod remain the
+integration acceptance check, followed by fresh NPC/trader inventory checks in game.
 
 ## Current status: version 1 (2026-10-27)
 
@@ -64,13 +206,47 @@ Watch: right after loading, the user once saw fire → reload → aim give a jer
 
 - Fire, aim fire, empty click, equip/unequip, offset aim, `idle_boltlock` and `break_bullet_idle` are imported into Blender and exported like the other clips (D25, D26); no problems found in game with Bird.
 
-This is **version 1**: the complete round trip for the pistol template. Not yet done: the other four templates are untested in game, sight alignment for models whose sights differ from the template's, and silencer/laser placement (see Roadmap).
+This is **version 1**: the complete round trip for the pistol template. The other four templates
+remain untested in game. Manual socket authoring is implemented; automatic sight alignment and
+cooked attachment/effect placement still require the work/checks listed in the Roadmap.
 
-History of the sprint → aim fix: sprint comes from the shared pistol collection, and fire and equip are untouched vanilla overlays (see "Plan: importing the clips the add-on skips"). The game blends them with ours bone by bone in local space. Our `jnt_l_arm`/`jnt_r_arm` were 47–60° / 26–30° twisted off the donor (positions exact, children compensating), because Rigify's `DEF-upper_arm` copies the twist-free `upper_arm_tweak`. Blending two clips whose arm frames disagree swings the hand off its path. Reload's last frame already matched idle/idle_aim/idle_to_aim's first frame as closely as vanilla's, so the clips themselves had no seam.
+History of the sprint → aim fix: sprint comes from the shared pistol collection, and at that
+time fire and equip were untouched vanilla overlays (they are now editable; see D25/D26).
+The game blends them with ours bone by bone in local space. Our `jnt_l_arm`/`jnt_r_arm` were
+47–60° / 26–30° twisted off the donor (positions exact, children compensating), because
+Rigify's `DEF-upper_arm` copies the twist-free `upper_arm_tweak`. Blending two clips whose arm
+frames disagree swings the hand off its path. Reload's last frame already matched
+idle/idle_aim/idle_to_aim's first frame as closely as vanilla's, so the clips themselves had no seam.
 
 The mesh-space additive conversion tried for these (D21) made things much worse and is rolled back. Measuring Bird's export against the donor found the cause the plan below predicted: the lower spine's local frames were twisted 19° and stretched, which only the game's procedural spine layers expose (D22). A second bug, one clip's control edits leaking into other clips, was found and fixed on the way (D23).
 
 ## Known issues
+
+E9 automatic audio and inventory composition (2026-11-10):
+
+- The exported UDP-based setup has `FireEventOneShot` but no loop/break pair.
+  The installed Wwise event banks contain `SFX_UDP_Oneshot`, not a UDP loop or
+  break event. No verified CFG-only one-shot retrigger option was found.
+  UDP audio is deliberately unchanged at the user's request; a previous working
+  export or editable Wwise project is unavailable. Automatic UDP sound remains
+  unresolved, and export now warns for automatic/burst modes on one-shot presets.
+- Follow-up: the user selected a CFG-only donor sound solution. **Handling & Fire ->
+  Firing Sound** now selects APB, UDP, Viper, AK-74 or the existing template sound,
+  independently of stats/animations. APB exports its complete one-shot/loop/break/
+  sound-switch set, without replacing rattles or unload audio. The blend stores
+  the selection; existing projects default to following the template. APB must be
+  selected explicitly for E9 and the updated CFGs packaged. Runtime validation is pending.
+- SMG/Viper and Rifle/AK74 presets had omitted their existing donor loop/break
+  events. Both now export the complete three-event set; these are not substituted
+  into the UDP preset.
+- A read-only ZoneKit probe measured the Integral stock silencer overlay at
+  648 x 258 and the UDP stock overlay at 258 x 128. Generated pistol images use
+  258 x 128, but the stock silencer CFG fallback uses Integral artwork and offsets.
+  Stock silencer/laser preview settings now support shared-camera inventory and
+  upgrade layers, exported as mod-owned textures with zero offsets. Preview
+  meshes do not alter the runtime attachments. Missing aligned stock layers warn
+  when using a custom body icon. Render/select the layers and regenerate the
+  import script; the final composed inventory icon still needs in-game validation.
 
 E9 aimed-fire recovery investigation (2026-11-05): a read-only Blender/ZoneKit comparison found
 `shoot_aim_end` missing `upper_arm_ik.R` transform keys while the aimed idle/fire use about
@@ -83,9 +259,11 @@ when any selected animation fails. Camera recovery is separately exposed as dela
 preserving the old 0.0/0.06-second output; UDP uses the same values. Manual action repair and
 fresh export/import/package/in-game verification remain required.
 
-1. **Fixed and gameplay-confirmed (D6/D11).** The mod's `MG_fp_<weapon>_*` copies used to reference the `/Game` `AS_*` sequences, so the weapon animated with the original animation. Python in ZoneKit (UE 5.5.4) cannot edit montage slots, composite sections or notifies, so references are rewritten on disk instead (the one-off montage probes have been removed; see git history).
+1. **Fixed and gameplay-confirmed (D6/D11).** The mod's `MG_fp_<weapon>_*` copies used to reference the `/Game` `AS_*` sequences, so the weapon animated with the original animation. Python in ZoneKit (UE 5.5.4) cannot rewrite montage slot tracks/composite sections, so references are rewritten on disk instead (the one-off montage probes have been removed; see git history). Attachment notify SIDs are separately writable and now synchronized by the importer (D27).
 2. **Fixed (D13).** Attachment mesh names had a doubled `SM_` and kept the template name (`SM_wpn_jaguargun_SM_SM_pt_udp_mag_full`), and the export check reported every template-named file left in the output folder by earlier exports.
-3. Laser and silencer placement is not resolved; sockets are exported but the Blender side does not use them yet.
+3. **Implemented; gameplay checks pending.** Blender imports attachment placement and editable
+   socket markers; the generated importer writes mod-owned mesh overrides. Verify attachment,
+   effect, first-/third-person and dropped/world consumers separately; see the socket implementation record.
 4. **Fixed and gameplay-confirmed (D14/D15).** `cannot merge bone tree with the existing skeleton`: the skeletal-mesh export renamed the armature and exported an outer empty as an extra root bone. D14 alone did not remove that extra root. A missing `/<Mod>/_STALKER2/SkeletalMeshes/SK_Stalker` in ZoneKit (it exists only under `/Game`) is unrelated.
 5. **Superseded.** The Jellyfish test (unmodified UDP through an older build) did not fire or reload; the causes were D11/D12/D14/D15, all fixed and confirmed in LadybugMod.
 6. Triangle-count effect of Nanite-off export is untested.
@@ -279,6 +457,377 @@ Making the unedited torso match the donor **exactly in local space** removes the
 - Save base-game assets or the shared `SK_stalker_Skeleton`. Declining its checkout prompt after packaging is correct.
 
 
+## Plan: authoring weapon sockets in Blender without opening SKEL (2026-11-10)
+
+**Status: Blender authoring, socket transport and a mesh-only writer are implemented;
+native persistence and mesh reimport pass; gameplay acceptance remains outstanding.** The user's ZoneKit skeleton editor crashes,
+blocking socket placement. The proposed workaround is to author socket markers in Blender
+and apply their transforms as **mesh-only sockets on the mod-owned skeletal mesh**, without
+opening or saving the shared skeleton.
+
+This section is the implementation plan for the socket transport/writer required by the
+older **Plan: sight alignment for custom weapon models** below. Retain its measurements as
+evidence, but do not depend on its proposed manual **Create Mesh Socket** step: the workaround
+must work without opening either asset editor. Automatic sight-line calibration is a later,
+separate feature; first deliver reliable manual socket placement.
+
+### Implementation record (2026-11-10)
+
+- Versioned setup catalogue enumerates `num_sockets()` / `get_socket_by_index()`,
+  including inherited and shadowed records, source ownership and reference-bone frames.
+  An AnimPose evaluated with an explicit source mesh supplies **reference** bone frames
+  (not the sequence's animated pose). A bare unregistered component returned uninitialized
+  transforms in the native probe; no skeleton-editing API or committed bone edits are involved.
+- Named Empty arrows, fixed donor identity/bone, persistent local frame, selection,
+  visibility, per-socket enable/reset, confirmed reset-all and edit-preserving refresh.
+  Markers transfer with the weapon controls into Rigify; template changes do not reset them.
+  The catalogue identifies the FBX component root: its markers preview on the Weapon
+  control while preserving the original game parent in the manifest.
+- Import manifests carry explicit enabled/reset entries. The generated writer validates
+  the whole payload, refuses unmanaged/external changes, copies inherited sockets
+  independently into the exact mod-owned destination mesh, verifies before saving and
+  preserves all unrelated sockets. It never saves a skeleton or changes bone/animation references.
+  Fresh/reimported meshes without sockets receive independent donor copies, including
+  baseline sockets, after validating destination bones and unchanged donor placement.
+- Installed bindings: socket arrays are protected for both reads and writes; no removal
+  method is exposed. `Object.rename` accepts `name` and `outer`, not `new_name` /
+  `new_outer`. A distinct socket from a duplicated skeleton can be re-owned by a mesh;
+  mesh lookup then resolves it. Source socket values remained unchanged in the probe.
+- **Intentional deviation from the proposed removal contract:** reset restores the donor
+  transform but retains an Arsenal-created baseline mesh override and its management
+  record, with an explicit importer warning. Do not describe this as live inheritance
+  or physical deletion. Failed additions likewise report the rollback limitation.
+- Both generated scripts accept `--sockets-only`: setup refreshes only the source JSON,
+  while import updates sockets without reimporting assets or copying CFG.
+- Asset-free Python and Blender regression tests cover schema, ownership, no-op/repeat,
+  reset, rollback, quaternion tolerances, full bone/object transforms, moving-child
+  animation, Rigify transfer and blend save/reload. Native checks use only the external
+  disposable `ArsenalSocketProbe` mod. No user's mod is a write target.
+- Verification: 111 focused plain-Python tests, 14 Blender marker tests (including the
+  real UDP FBX/reference catalogue), and 7 registration/reload tests pass. Production
+  reference frames agree with the donor FBX within 0.001 cm.
+- Native disposable-mod checks pass add/update/repeat/reset/save and a fresh-process
+  reload with the shared donor unchanged. A production-exported FBX also passes fresh
+  import with a new mod-owned skeleton, all 14 donor sockets, mesh reimport/reapplication
+  and a second fresh-process reload.
+  ZoneKit still exits 1 for the installation's existing Cloud DDC Host / S2_DLC1 errors;
+  the Python commandlet reports successful execution and writes explicit proof reports.
+- Cook and first-/third-person runtime consumers remain acceptance gates. A persisted
+  mesh override or correct Blender preview is not proof of every game's socket consumer.
+
+### Existing Rigify scene placement correction (2026-11-10)
+
+- E9's saved late socket import reproduced a missing donor-to-rig rest-space
+  transform: `SilencerMuzzleSocket` was at Z=6.05 cm while the barrel bone was at
+  Z=153.00 cm. Tests on an origin-centred donor did not cover this path.
+- Socket conversion now retains the reference-space embedding during Rigify merge.
+  Older rigs recover it from the weapon backup and the preserved child-bone rest
+  frames, not the current animation pose or the differently oriented Weapon control.
+- Refresh migrates old marker frames while preserving their authored game-relative
+  transforms and enabled states. Stale frames block export until refreshed.
+- Read-only validation against E9 places `SilencerMuzzleSocket` at
+  (56.342, -10.835, 154.132) cm, beside the barrel, and `SilencerMuzzle` at
+  (77.638, -10.618, 154.097) cm, ahead at the suppressed muzzle-effect point.
+  All 14 game-relative socket transforms remain unchanged. The user's blend is not saved.
+- 16 Blender socket tests, 7 registration tests and 111 focused Python tests pass.
+  New coverage compares early and late socket import on a raised/rotated/scaled
+  generated rig, old-frame migration, edit preservation and armature-object movement.
+
+### Outcome and boundaries
+
+- The artist can see, select, translate and rotate existing donor socket markers against
+  their weapon in Blender, save the blend, and use the normal Export All/import/package flow.
+- The generated ZoneKit importer applies the changes without opening SKEL, the skeletal-mesh
+  editor or an animation preview. No recurring manual ZoneKit edits are required.
+- Preserve donor bone names, reference-pose hierarchy, animation tracks, montage/collection
+  references and additive playback settings. Socket edits are not bone edits.
+- Never save, rename, reparent or otherwise mutate a shared `/Game` socket, skeleton or mesh,
+  even temporarily. Only verified mod-owned destination assets may be written.
+- Initial scope: transforms of **existing named sockets on their original bones**. Include
+  mount, muzzle/ejection, camera/eye-point and other donor sockets, not just silencer/laser.
+  Their runtime consumers must still be verified individually.
+- New socket names, parent-bone changes, static world-mesh sockets and automatic sight/rail
+  alignment are distinct follow-up capabilities unless explicitly approved for the first release.
+- Do not substitute animation-camera offsets, attachment vertex shifts or speculative CFG
+  fields for a failed socket update.
+
+### Evidence, limitations and references
+
+- Epic documents mesh-specific sockets on a SkeletalMesh, separate from its shared Skeleton:
+  [Skeletal Mesh Sockets](https://dev.epicgames.com/documentation/en-us/unreal-engine/skeletal-mesh-sockets-in-unreal-engine).
+- Epic's [SkeletalMesh Python API](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/SkeletalMesh?application_version=5.1)
+  documents `add_socket(socket, add_to_skeleton=False)`, `num_sockets()` and
+  `get_socket_by_index()`. These are reference signatures, not proof of this ZoneKit build's
+  save/cook behavior; feature-test the installed bindings.
+- [SkeletalMeshSocket](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/SkeletalMeshSocket?application_version=5.1)
+  documents editor-writable relative location/rotation/scale, but read-only socket/bone names.
+  Earlier local investigation found these names reject `set_editor_property` and
+  `unreal.duplicate_object` is unavailable. Correctly cloning a donor socket is the first blocker.
+- The supplied ZoneKit wiki's `guides/assets/animations-and-attachments.md` reports mesh socket
+  overrides and a socket re-outering technique. Treat that as a lead to test, **not permission
+  to move a socket object out of a shared skeleton**. Use only a proven independent copy.
+  Its `guides/zone-kit/python-scripting.md` documents headless scripting and binding limitations.
+- Epic's [FBX static-mesh pipeline](https://dev.epicgames.com/documentation/en-us/unreal-engine/fbx-static-mesh-pipeline-in-unreal-engine)
+  documents `SOCKET_` helper naming. Do not assume this automatically imports skeletal sockets
+  from Blender. Prefer explicit socket metadata plus the generated Python importer.
+- No verified public fix for the particular SKEL editor crash was established. Bypassing the
+  asset editor may avoid an editor-preview crash, but loading, saving or cooking the same
+  asset could still fail. The proof-of-concept must distinguish these cases.
+
+### Existing integration points
+
+- [unreal_setup.py](stalker2_arsenal/unreal_setup.py), `export_sockets`: currently exports a flat
+  `weapon_sockets.json` with name, bone, location, rotation and scale, using owner properties
+  and two named lookups. The earlier socket survey found this misses skeleton sockets.
+  Replace enumeration with verified effective-socket enumeration and retain ownership/source data.
+- [import_weapon.py](stalker2_arsenal/import_weapon.py), `_socket_offset` and `_import_attachments`:
+  currently use a Y-reflected translation plus the bone head, ignoring full socket/bone
+  rotation. This approximation is not a suitable foundation for editable socket round-trips.
+- [export_static_mesh.py](stalker2_arsenal/export_static_mesh.py) and
+  [export_animation.py](stalker2_arsenal/export_animation.py): reuse the existing mapped game
+  joints, backup/rest skeleton and source-unit conversions. Do not build a second incompatible
+  mapping system or change established mesh/animation export conventions.
+- [export_unreal.py](stalker2_arsenal/export_unreal.py): extend the versioned import manifest
+  with validated socket overrides; keep editable state in the blend.
+- [unreal_import.py](stalker2_arsenal/unreal_import.py): apply sockets after destination mesh
+  creation/reimport, including on runs that skip mesh reimport. Validate that no later import
+  step replaces the mesh or removes its socket overrides.
+- Generated setup/import scripts embed their source modules. Regenerate them after changes;
+  updating the installed add-on alone does not update old generated scripts.
+
+### Phase 0: evidence pack and disposable fixtures
+
+Keep all extracted assets, example blends, generated scripts/reports and test-mod output outside
+the checkout. No user's real mod is a test target.
+
+**Extract from ZoneKit, read-only:**
+
+1. The actual donor weapon skeletal mesh and its associated skeleton path, plus an inventory
+   of every effective socket: name, parent bone, relative location/rotation/scale, object path,
+   actual owner/outer and whether it is mesh-owned or skeleton-owned. Preserve both records
+   if a name exists on both owners and record which lookup resolves.
+2. The donor reference-pose bone hierarchy and complete bone transforms needed to reproduce
+   socket placement, including the weapon root and a moving child such as the shutter.
+3. Representative socket records: `SilencerMuzzleSocket`, `LaserSocket` where present,
+   `CameraSocket`, `AimSocket`, one optic eye socket named after its attachment SID, and one
+   socket on a non-root/moving bone. Use actual donor names; do not require a missing laser/optic.
+4. The compatible stock attachment meshes needed for visual checks, their original pivots,
+   and the CFG fields identifying attachment mesh/socket and any effect socket names.
+5. A known-good idle, aim and silencer-attach sequence sufficient to check that markers follow
+   bones, and the mod-owned SK path actually referenced by the exported weapon CFG.
+6. ZoneKit build/version, the precise crash trigger (opening SKEL, selecting a socket, saving,
+   etc.), and the relevant crash/log excerpt if available. Avoid collecting unrelated logs.
+
+**Create in Blender, using synthetic geometry where possible:**
+
+- An unedited donor round-trip scene, plus a disposable custom-weapon scene with imported
+  rest rig and recognizable muzzle/sight reference geometry.
+- A marker on the root bone and another on a translated/rotated child. Test zero offset,
+  a +1 cm move on each source axis, and a known 15-degree rotation on each source axis.
+- A raised-sight example (+1 cm), a moved silencer mount, a rotated laser/muzzle direction,
+  and an animated shutter example. These can share one test blend.
+- A scene with translated/rotated armature-object transforms and a uniformly scaled scene;
+  include unsupported nonuniform/mirrored/sheared cases for explicit validation errors.
+- Do not add exported bones named after sockets. Markers must remain non-bone authoring objects.
+
+**Prepare a disposable ZoneKit test mod:**
+
+- Own a weapon mesh copy, with paths clearly distinct from base-game and real-mod assets.
+  Create the mod through the normal Mod Editor workflow if needed; do not assume a mod-creation
+  Python API exists.
+- Record baseline socket values, asset references and on-disk hashes of the donor packages.
+  Record whether source packages are dirty before the test so pre-existing dirty state is not
+  misattributed to the probe.
+- A tiny package/game test must identify the scratch weapon independently of the real weapon.
+  Do not overwrite or unsubscribe the user's working mod as an unannounced test step.
+
+### Phase 1: prove the ZoneKit writer before building UI
+
+1. Run a read-only capability probe: enumerate sockets and available copy/add/remove/rename
+   APIs, read transforms and owners, and identify the destination mesh's bone names.
+   Never assume ordinary Unreal Python helpers are present in ZoneKit.
+2. Establish a safe independent socket-copy method. Prefer a supported duplication mechanism
+   if exposed. If unavailable, test copying through a **disposable skeleton/mesh duplicate**
+   and moving only that duplicate's socket into the destination mesh. Confirm the socket
+   object is distinct and the base asset's arrays/ownership remain unchanged.
+3. If independent copying is not available, stop this approach and document the failing
+   bindings. Evaluate a mod-owned skeleton alternative only with explicit approval and an
+   animation-reference/cook compatibility test; do not silently replace the donor skeleton.
+   Do not resort to hand-patching serialized asset bytes as the default solution.
+4. Add a mesh-only copy of one existing socket, preserving its name/bone and using
+   `add_to_skeleton=False`. Change location by a known 1 cm, then rotation independently.
+   Check mesh lookup resolves the new socket rather than the inherited one.
+5. Save **only** the scratch mod-owned mesh and reload it in a fresh process. Verify name,
+   bone, transform and ownership after reload, and confirm the donor skeleton is unchanged.
+6. Re-run the same operation: exactly one mesh override remains; no `.001` names or duplicate
+   effective sockets. Restore the original transform and explicitly remove the test override,
+   confirming inherited socket lookup returns the donor again.
+7. Reimport the scratch mesh and repeat socket application. Prove the final persisted result
+   survives the actual importer order, not just a one-off console edit.
+8. Cook/package and verify one attachment and one camera/effect socket in game. Mesh lookup
+   success in Python alone does not prove that every game subsystem honors mesh overrides.
+   Do not change animations to mask a failed runtime socket consumer.
+
+**Gate:** do not implement the full authoring UI until independent copy, save/reload,
+idempotence, source isolation and at least one runtime mesh-override path are established.
+Use the console without opening asset editors, or a headless commandlet if asset loading permits.
+Close an editor holding the same test assets before a saving commandlet; never run two writers.
+
+### Phase 2: socket data contract and full transform conversion
+
+- Version the setup socket catalogue and import-manifest section. Identify source mesh/skeleton,
+  stable socket name, source parent game bone, source ownership, baseline transform and override
+  transform. Qualify identities by source mesh; a global name-only deduplication can mix weapons.
+- Define units as Unreal centimeters and transforms as **socket relative to parent game bone**.
+  Store location, an unambiguous rotation representation and scale, documenting component order.
+  Prefer quaternion/matrix math internally; convert to Unreal Rotator with named arguments at
+  the boundary. Do not treat Blender XYZ Euler angles as Unreal roll/pitch/yaw.
+- Derive the basis conversion from existing import/export behavior and the donor rest transforms.
+  Conceptually, convert the marker's world transform to the exported parent bone's frame using
+  `inverse(parent_bone_world) @ marker_world`, then apply the verified Blender/Unreal basis/unit
+  conversion. Validate multiplication order and handedness with fixtures, not a guessed Y flip.
+- Blender bone parenting includes parent inverses and bone-tail conventions. Use evaluated full
+  matrices, not `head_local + offset`, and anchor to the exported game joint frame rather than
+  a Rigify control's display axes or tail.
+- Define the reference frame independently of the current animation frame. A posed rig must
+  not bake an animation pose into the stored rest-relative socket transform. Marker previews
+  follow animation while the authored local offset remains unchanged.
+- Preserve all untouched effective donor sockets and the existing hierarchy. Export only explicit
+  overrides; a baseline-only blend produces no socket mutations.
+- Reject unknown/ambiguous bones, duplicate names, nonfinite values, singular transforms and
+  unsupported shear/mirroring/nonuniform scale. Do not silently normalize or use identity fallbacks.
+  Preserve donor scale; initially restrict scale editing unless its runtime behavior is verified.
+- Legacy flat socket JSON remains readable. Missing socket data in an older blend/export means
+  unchanged behavior, not removal of every mesh socket.
+
+### Phase 3: Blender authoring and persistence
+
+- Add a dedicated socket-marker collection and a **Weapon Sockets** section in Create Your
+  Custom Weapon. Store marker identity, parent game bone, source/baseline and edit state in
+  registered properties saved with the blend, not in object-name parsing alone.
+- Import existing sockets as named Empty arrows/axes. Clearly distinguish mount points,
+  camera/eye points and effects; show both socket name and parent bone.
+- Provide selection/focus, visibility, reset selected to donor and reset all with confirmation.
+  Preserve unchanged baseline markers; do not put custom weapon/attachment meshes in this collection.
+- Re-import/refresh must reconcile by stable identity without duplicating markers or discarding
+  edits. If the donor/bone mapping changes, flag affected overrides for explicit review.
+- Initial UI edits transform only; socket renaming and reparenting are disabled. New sockets
+  should not be implied by duplicating or renaming an Empty.
+- Disabling an override/resetting to inherited behavior is explicit. Deleting a marker must
+  either request override removal or report a missing required marker; never leave stale writes.
+- Keep marker transforms separate from preview attachment geometry. Audit the existing simplified
+  attachment-placement path so adding markers cannot double-translate the silencer or change
+  established mesh pivots. Any corrected preview placement needs targeted compatibility tests.
+
+### Phase 4: generated importer, safe updates and removal
+
+- Validate the entire socket payload and destination ownership before the first mutation.
+  The destination must be the mod-owned mesh used by the weapon CFG, not a similarly named donor.
+- Capture old mesh socket state for affected names. Create/update only Arsenal-managed overrides,
+  preserving unrelated mesh sockets and any user-authored entries; conflicts require an explicit
+  diagnostic rather than overwriting silently.
+- Include managed-name metadata and explicit removal requests so resetting a previously exported
+  socket actually removes its old override on the next import. An absent legacy payload is not
+  a removal request. Never remove an inherited skeleton socket.
+- Apply after mesh import and before the final save; support existing-mesh/socket-only imports.
+  If later reimport recreates the mesh, reapply from the same authoritative payload.
+- Verify expected effective name, parent, owner and transform before saving; save only on change.
+  Report socket counts, before/after transforms, removed overrides, destination path and failures.
+- Fail the socket step explicitly on unsupported APIs/readback/save failure; never report success
+  after skipping a requested socket. Restore captured destination state where safely possible.
+  Do not use blanket Save All or allow a source-skeleton checkout prompt as normal behavior.
+- Keep `unreal_import.py` self-contained when embedded. Older manifests lacking socket settings
+  continue to work. Regenerated scripts carry the new implementation.
+
+### Validation and acceptance
+
+**Automated, plain Python:** schema/version handling; duplicate and unknown-bone errors;
+mod-path guards; supported/missing binding mocks; complete validation before mutation; no-op,
+add, update and managed removal; unrelated socket preservation; save failure/rollback reporting;
+repeat import without duplication; missing legacy payload produces no writes.
+
+**Automated, Blender 5.2.2+:** marker import/display and full transform round-trip; no-op donor
+export; axis/rotation fixtures on root and moving child; arbitrary supported object transforms;
+frame-independent local offsets under animation; no marker bones in FBX; blend save/reload;
+reset/removal manifest; refresh preserves edits; unchanged mesh pivots and existing attachments.
+
+**Real ZoneKit:** retain a probe report for API capabilities, distinct object ownership,
+pre/post/reloaded socket values, unchanged source packages and final runtime mesh path. Run
+repeat import, mesh reimport, socket-only update, reset and cook on disposable content.
+
+**Game:** silencer and laser alignment where available, attach animation versus final mounted
+position, muzzle flash and shell ejection, iron sights, scope mount versus scope eye point,
+aim/hip-fire transitions and moving-part behavior. Test world/dropped/NPC views separately:
+their static or third-person meshes may not consume the first-person mesh's sockets.
+Confirm the vanilla donor weapon and another weapon using its skeleton remain unchanged.
+
+**Proposed numeric thresholds:** no-op/round-trip translation error <= 0.001 cm and angular error
+<= 0.01 degrees; repeat save/reload within the same thresholds and scale within 0.00001.
+Compare orientations through matrices/quaternions, not raw Euler equality. Record any engine
+quantization that requires an evidence-based tolerance adjustment.
+
+**Done means:** a saved blend can drive repeated export/import/package cycles, the requested
+socket is correct in game without opening SKEL, disabling an override restores donor behavior,
+and shared assets, bone hierarchy and unrelated animation behavior remain unchanged.
+
+### Questions for the user before implementation
+
+These are pending decisions, not assumed permissions:
+
+1. Which sockets block the current weapon: silencer/laser mounts, muzzle/ejection, iron-sight
+   camera, optic mounts/eye points, or others? Supply exact names if known; otherwise provide
+   a screenshot of the misalignment and the donor weapon/template name.
+
+   All related sockets need manual re-alignment.
+
+2. Does the crash occur on opening SKEL, opening the skeletal mesh, selecting a socket, changing
+   its transform or saving? Can the ordinary Mod Editor and Python console load the mod normally?
+   Provide the ZoneKit build and focused crash excerpt if available.
+
+   A: The crash is specific to my PC and does not happen for other users. It happens on opening SKEL or a Skeletal mesh file.
+
+3. May the test use a new disposable mod and an external copy of the weapon project? Identify
+   the working blend/export folder and mod-owned SK to copy, or approve synthetic fixtures first.
+   No permission to modify the real working mod is implied.
+
+   A: I have backups of all files, the current E9Mod is fine for testing.
+
+4. Is editing transforms of existing sockets sufficient for the first release, or are brand-new
+   names/parent-bone changes required? If new names are needed, list the intended game consumers.
+
+   A: The names should be kept, only placement needs to be user editable.
+
+5. Confirm the proposed Blender UI: named Empty arrows, a socket list with parent bone,
+   per-socket override/reset, plus optional attachment previews. Should camera/aim sockets be
+   editable immediately or protected behind an advanced toggle?
+
+   A: Named empties are fine, and everything should be editable immediately.
+
+6. Is first-person behavior sufficient initially, or must dropped/world and NPC views also be
+   delivered at the same time? Identify any separate world/third-person mesh assets in use.
+
+   A: First person and third person behaviour should be correct.
+
+7. Should template changes preserve authored socket edits for review or reset them after
+   confirmation? Distribution defaults currently reset on template changes; socket edits may
+   refer to entirely different donor bones, so this needs an explicit policy.
+
+   A: As they will be based on the initial imported model, changing the template should not affect them after that section is complete.
+
+8. If mesh sockets are ignored by a required runtime consumer, is a separately owned skeleton
+   acceptable as a researched fallback, or must this remain a strict no-skeleton-change feature?
+
+   A: I'm happy with any solution that works and results in a correct in game function.
+
+9. Can the user run the disposable cooked test and supply screenshots for attachment, ADS and
+   vanilla-donor checks? In-editor preview alone cannot close the runtime acceptance gate.
+
+   A: Yes
+
+**Suggested first deliverable after answers:** a read-only socket/capability report, followed
+by one disposable mesh-only `SilencerMuzzleSocket` or `CameraSocket` save/reload/runtime experiment.
+Only then implement the full Blender authoring/export workflow.
+
 ## Plan: sight alignment for custom weapon models
 
 A new model whose sights are higher or lower (or further left/right) than the template's will aim through the wrong point, because the camera's aimed position is set by the weapon skeleton's sockets, and those are the template's.
@@ -415,7 +964,9 @@ Ordered by value to an artist. "Needs test" means it cannot be validated without
 2. **Blank-slate regression run**: done with Bird Mod; D11–D20 held without hand repairs.
 3. **Sight alignment for new models**: mesh-only `CameraSocket` and scope eye-point overrides on `SK_<weapon>`. See "Plan: sight alignment for custom weapon models". After item 1.
 4. **Fire, equip and weapon-only clips in Blender**: done and confirmed (D25, D26).
-5. **Silencer and laser attachments**: import meshes from CFG, place on exported sockets, export their transforms.
+5. **Silencer and laser attachments**: mesh import/placement, custom definitions and socket-marker
+   authoring are implemented. Verify cooked placement, attach/detach behaviour and effects in game;
+   moving markers does not automatically reposition Blender attachment-preview geometry.
 6. **Pre-flight validation panel**: single "Check Everything" button covering skeleton/bone names, action coverage per montage, attachment list, naming rules, CFG sanity, and the montage status; output as a plain-language checklist.
 7. **Weapon control editor** (create controls from selected weapon bones) and **arbitrary cameras** from the previous plan.
 8. **Regression matrix and release**: run the animation matrix on all five templates (only the pistol has been tested in game); produce the release zip only when the user decides (zips are git-ignored).
