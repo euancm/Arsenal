@@ -154,6 +154,7 @@ def create_marker(scene, state, entry):
     marker.empty_display_type = 'ARROWS'
     marker.empty_display_size = 2
     marker.show_in_front = True
+    marker.show_name = True
     marker.color = {'Mount': (0.2, 0.8, 0.2, 1), 'View': (0.2, 0.5, 1, 1),
                     'Effect': (1, 0.5, 0.1, 1)}[socket_group(entry.socket_name)]
     marker.hide_render = True
@@ -166,6 +167,48 @@ def create_marker(scene, state, entry):
     marker.matrix_basis = frame_matrix(entry) @ socket_matrix(json.loads(entry.baseline))
     entry.marker = marker
     return marker
+
+
+def parent_preview(obj, marker, rig):
+    world = obj.matrix_world.copy()
+    obj.parent = marker
+    obj.parent_type = 'OBJECT'
+    obj.matrix_parent_inverse = marker.matrix_world.inverted()
+    obj.matrix_world = world
+    # Socket parenting provides rigid animation; retain the binding for export only.
+    for modifier in obj.modifiers:
+        if modifier.type == 'ARMATURE' and modifier.object == rig:
+            modifier.show_viewport = False
+            modifier.show_render = False
+
+
+def marker_rest_matrix(marker):
+    rig = marker.parent
+    if (rig is None or rig.type != 'ARMATURE' or marker.parent_type != 'BONE'
+            or marker.parent_bone not in rig.data.bones):
+        raise RuntimeError(f'Socket marker {marker.name} has an invalid bone parent.')
+    return (rig.matrix_world @ rig.data.bones[marker.parent_bone].matrix_local
+            @ bone_tail(rig, marker.parent_bone) @ marker.matrix_parent_inverse @ marker.matrix_basis)
+
+
+def preview_rest_matrix(obj):
+    """Keep authored socket edits, but exclude the current bone animation pose."""
+    marker = obj.parent
+    if marker is None or not getattr(marker, 'arsenal_socket_id', ''):
+        return obj.matrix_world.copy()
+    return marker_rest_matrix(marker) @ obj.matrix_parent_inverse @ obj.matrix_basis
+
+
+def bind_attachment_previews(scene):
+    state = scene.arsenal_sockets
+    markers = {entry.socket_name: entry.marker for entry in state.entries if entry.marker}
+    for item in scene.arsenal_cfg.attachments:
+        mounts = [(item.mesh_object, item.socket)]
+        if item.kind == 'iron_sight' and item.front_object != item.mesh_object:
+            mounts.append((item.front_object, item.front_socket))
+        for obj, socket in mounts:
+            if obj and socket in markers:
+                parent_preview(obj, markers[socket], state.rig)
 
 
 def refresh_markers(scene, rig, path):
@@ -282,7 +325,66 @@ def rebind_markers(scene, source, target, source_to_target):
         entry.marker.matrix_basis = frame @ local
 
 
-def export_payload(scene, mesh_path):
+def is_legacy_backup_marker(obj, rig):
+    from . import convert_to_rigify
+    backup_id = rig.get(convert_to_rigify.RETARGET_WEAPON_BACKUP_ID)
+    if not backup_id or not obj.users_collection or any(
+            not collection.get(convert_to_rigify.RETARGET_BACKUP_COLLECTION_MARKER, False)
+            for collection in obj.users_collection):
+        return False
+    parent = obj.parent
+    while parent is not None:
+        if (parent.type == 'ARMATURE' and parent.get(convert_to_rigify.RETARGET_BACKUP_MARKER, False)
+                and parent.get(convert_to_rigify.RETARGET_BACKUP_ID) == backup_id):
+            return True
+        parent = parent.parent
+    return False
+
+
+def marker_problem(scene, state, entry):
+    marker = entry.marker
+    if marker is None or marker.type != 'EMPTY':
+        return 'its marker is missing'
+    if marker.name not in scene.objects:
+        return f'marker {marker.name} is not in the scene'
+    if (marker.parent != state.rig or marker.parent_type != 'BONE'
+            or marker.parent_bone != bone_name(entry.game_bone, state.rig)):
+        return f'marker {marker.name} is not parented to its original bone'
+    if marker.arsenal_socket_id != entry.identity:
+        return f'marker {marker.name} has a different socket ID'
+    if marker.constraints:
+        return f'marker {marker.name} has constraints'
+    if marker.animation_data:
+        return f'marker {marker.name} has animation data (keyframes or drivers)'
+    if marker.matrix_parent_inverse != Matrix.Identity(4):
+        return f'marker {marker.name} has a parent inverse'
+    return ''
+
+
+def restore_marker(scene, state, entry):
+    """Clear everything export_payload rejects; the caller sets the marker transform."""
+    marker = entry.marker
+    if marker is None or marker.type != 'EMPTY':
+        return create_marker(scene, state, entry)
+    if marker.name not in scene.objects:
+        if state.collection is None:
+            state.collection = bpy.data.collections.new('Weapon Sockets')
+        if state.collection.name not in scene.collection.children_recursive:
+            scene.collection.children.link(state.collection)
+        if marker.name not in state.collection.objects:
+            state.collection.objects.link(marker)
+    marker.animation_data_clear()
+    marker.constraints.clear()
+    marker.arsenal_socket_id = entry.identity
+    marker.parent = state.rig
+    marker.parent_type = 'BONE'
+    marker.parent_bone = bone_name(entry.game_bone, state.rig)
+    marker.matrix_parent_inverse = Matrix.Identity(4)
+    return marker
+
+
+def check_markers(scene):
+    """Raise one error naming every marker that would block export; returns the socket state."""
     state = getattr(scene, 'arsenal_sockets', None)
     if state is None or not state.entries:
         return None
@@ -291,18 +393,36 @@ def export_payload(scene, mesh_path):
     if state.frame_version != FRAME_VERSION:
         raise RuntimeError('Refresh weapon sockets to update their rig reference space before exporting.')
     checked_matrix(state.rig.matrix_world)
+    animated = []
+    problems = []
+    for entry in state.entries:
+        marker = entry.marker
+        problem = marker_problem(scene, state, entry)
+        if problem.endswith('has animation data (keyframes or drivers)'):
+            animated.append(entry.socket_name)
+        elif problem:
+            problems.append(f'Socket {entry.socket_name}: {problem}. Press Reset Socket to fix it '
+                            '(this also restores the donor placement).')
+        elif any(obj != marker and obj.arsenal_socket_id == entry.identity
+                 and not is_legacy_backup_marker(obj, state.rig) for obj in scene.objects):
+            problems.append(f'Socket {entry.socket_name} has duplicate markers; delete the duplicate.')
+    if animated:
+        problems.append(
+            f'Socket markers have keyframes or drivers: {", ".join(animated)} (often added by Auto Keying). '
+            'To keep their current placement, select those markers and use Object > Animation > '
+            'Clear Keyframes, and remove any drivers. Reset Socket would discard the placement.')
+    if problems:
+        raise RuntimeError('\n'.join(problems))
+    return state
+
+
+def export_payload(scene, mesh_path):
+    state = check_markers(scene)
+    if state is None:
+        return None
     entries = []
     for entry in state.entries:
         marker = entry.marker
-        if (marker is None or marker.type != 'EMPTY' or marker.name not in scene.objects
-                or marker.parent != state.rig or marker.parent_type != 'BONE'
-                or marker.parent_bone != bone_name(entry.game_bone, state.rig)
-                or marker.arsenal_socket_id != entry.identity
-                or marker.constraints or marker.animation_data
-                or marker.matrix_parent_inverse != Matrix.Identity(4)):
-            raise RuntimeError(f'Socket {entry.socket_name}: restore its marker, original parent and static local transform.')
-        if sum(obj.arsenal_socket_id == entry.identity for obj in scene.objects) != 1:
-            raise RuntimeError(f'Socket {entry.socket_name} has duplicate markers; delete the duplicate.')
         transform = matrix_socket(frame_matrix(entry).inverted() @ marker.matrix_basis)
         baseline = json.loads(entry.baseline)
         if max(abs(a - b) for a, b in zip(transform['scale'], baseline['scale'])) > 0.00001:
@@ -316,6 +436,110 @@ def export_payload(scene, mesh_path):
     root = '/' + mesh_path.strip('/').split('/')[0]
     validate_weapon_sockets({'weapon_sockets': payload, 'game_root': root, 'weapon_skeleton': mesh_path})
     return payload
+
+
+RETICLE_MATERIAL = 'mark'
+
+
+def sight_centre(obj):
+    """Area-weighted world centre of the faces using a reticle (`*mark*`) material, or None."""
+    if obj is None or obj.type != 'MESH':
+        return None
+    slots = {index for index, slot in enumerate(obj.material_slots)
+             if slot.material and RETICLE_MATERIAL in slot.material.name.casefold()}
+    total, centre = 0.0, Vector()
+    for polygon in obj.data.polygons:
+        if polygon.material_index in slots:
+            centre += polygon.center * polygon.area
+            total += polygon.area
+    return obj.matrix_world @ (centre / total) if total > 0 else None
+
+
+def scope_eye_targets(scene):
+    """(scope item, eye socket entry, donor item) for each scope with a mesh. The eye socket is named after
+    the referenced SID, or the donor SID for a custom scope; the donor item is the referenced scope with
+    that SID (or the imported donor entry named after it), whose donor placement calibrates the eye point."""
+    entries = {entry.socket_name.casefold(): entry for entry in scene.arsenal_sockets.entries}
+    scopes = [item for item in scene.arsenal_cfg.attachments if item.kind == 'scope' and item.mesh_object]
+    donors = {item.name.strip().casefold(): item for item in scopes}
+    # A referenced scope wins over the imported donor entry with Reference Existing turned off.
+    donors.update({item.existing_sid.strip().casefold(): item for item in scopes if item.use_existing})
+    result = []
+    for item in scopes:
+        sid = (item.existing_sid if item.use_existing else item.template_sid).strip().casefold()
+        entry = entries.get(sid)
+        if entry and entry.marker:
+            result.append((item, entry, donors.get(sid)))
+    return result
+
+
+def marker_baseline_matrix(entry):
+    """Rest world matrix of the marker at its donor transform."""
+    marker = entry.marker
+    parent = marker_rest_matrix(marker) @ marker.matrix_basis.inverted()
+    return parent @ frame_matrix(entry) @ socket_matrix(json.loads(entry.baseline))
+
+
+def donor_sight_centre(scene, donor):
+    """The donor scope's reticle centre with its mount socket at the donor transform (rest pose)."""
+    point = sight_centre(donor.mesh_object)
+    mount = next((entry for entry in scene.arsenal_sockets.entries if entry.socket_name == donor.socket), None)
+    if point is None or mount is None or mount.marker is None:
+        return point
+    return marker_baseline_matrix(mount) @ marker_rest_matrix(mount.marker).inverted() @ point
+
+
+def aligned_eye_basis(entry, shift):
+    """The marker basis of the donor eye point moved by `shift`, without changing its eye relief."""
+    marker = entry.marker
+    baseline = marker_baseline_matrix(entry)
+    forward = baseline.col[0].xyz.normalized()
+    shift = shift - forward * shift.dot(forward)
+    parent = marker_rest_matrix(marker) @ marker.matrix_basis.inverted()
+    return parent.inverted() @ Matrix.Translation(shift) @ baseline
+
+
+def align_eye_points(context, active_only=None):
+    """Keep each scope's donor eye-to-reticle relationship at the rest pose.
+
+    The donor eye point moves sideways/vertically by as much as the reticle centre moved from its donor
+    placement: through mount socket edits, or by a custom scope's mesh differing from its donor's.
+    A custom scope's eye socket must be added by hand in ZoneKit, so its marker (the donor's) is left
+    alone and the transform is returned instead. Returns (moved, custom, missing) lists."""
+    scene = context.scene
+    rig = scene.arsenal_sockets.rig
+    pose_position = rig.data.pose_position
+    rig.data.pose_position = 'REST'
+    context.view_layer.update()
+    moved, custom, missing = [], [], []
+    try:
+        for item, entry, donor in scope_eye_targets(scene):
+            if active_only is not None and entry != active_only:
+                continue
+            point = sight_centre(item.mesh_object)
+            reference = donor_sight_centre(scene, donor) if donor else None
+            if point is None or reference is None:
+                missing.append(item.name)
+                continue
+            basis = aligned_eye_basis(entry, point - reference)
+            transform = matrix_socket(frame_matrix(entry).inverted() @ basis)
+            if not item.use_existing:
+                custom.append((item.name, entry.socket_name, entry.game_bone, transform))
+                continue
+            shift = (basis.translation - entry.marker.matrix_basis.translation).length
+            entry.marker.matrix_basis = basis
+            entry.enabled = True
+            moved.append((entry.socket_name, shift))
+    finally:
+        rig.data.pose_position = pose_position
+        context.view_layer.update()
+    return moved, custom, missing
+
+
+def eye_view_rotation(marker):
+    """Viewport rotation looking along the marker's +X with its +Z up."""
+    axes = Matrix(((0, 0, -1), (-1, 0, 0), (0, 1, 0)))
+    return (marker.matrix_world.to_quaternion().to_matrix() @ axes).to_quaternion()
 
 
 class ARSENAL_SocketEntry(bpy.types.PropertyGroup):
@@ -366,6 +590,10 @@ class ARSENAL_OT_SocketRefresh(bpy.types.Operator):
             if rig is None:
                 raise RuntimeError('Import the weapon rig first.')
             count = refresh_markers(context.scene, rig, path)
+            for entry in state.entries:
+                entry.marker.show_name = True
+            context.view_layer.update()
+            bind_attachment_previews(context.scene)
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             report(self, {'ERROR'}, str(error))
             return {'CANCELLED'}
@@ -419,15 +647,80 @@ class ARSENAL_OT_SocketReset(bpy.types.Operator):
             return {'CANCELLED'}
         entries = list(state.entries) if self.all_sockets else [state.entries[state.active_index]]
         for entry in entries:
-            if entry.marker is None:
-                create_marker(context.scene, state, entry)
-            else:
-                entry.marker.parent = state.rig
-                entry.marker.parent_type = 'BONE'
-                entry.marker.parent_bone = bone_name(entry.game_bone, state.rig)
-                entry.marker.matrix_parent_inverse = Matrix.Identity(4)
-                entry.marker.matrix_basis = frame_matrix(entry) @ socket_matrix(json.loads(entry.baseline))
+            marker = restore_marker(context.scene, state, entry)
+            marker.matrix_basis = frame_matrix(entry) @ socket_matrix(json.loads(entry.baseline))
             entry.enabled = True
+        return {'FINISHED'}
+
+
+class ARSENAL_OT_SocketAlignSights(bpy.types.Operator):
+    bl_idname = 'arsenal.socket_align_sights'
+    bl_label = 'Align Eye Points to Sights'
+    bl_description = ('Move each scope eye point sideways and vertically so that looking along it passes through '
+                      'the centre of the scope\'s reticle (mark) surface, keeping the eye distance. Custom scopes '
+                      'report the socket to add in ZoneKit instead')
+    bl_options = {'REGISTER', 'UNDO'}
+    active_only: bpy.props.BoolProperty(default=False)
+
+    @classmethod
+    def description(cls, context, properties):
+        return ('Align only the selected eye point to its scope\'s reticle centre'
+                if properties.active_only else cls.bl_description)
+
+    def execute(self, context):
+        state = context.scene.arsenal_sockets
+        if state.rig is None or not state.entries:
+            report(self, {'ERROR'}, 'Import weapon socket markers first.')
+            return {'CANCELLED'}
+        active = state.entries[state.active_index] if self.active_only else None
+        try:
+            moved, custom, missing = align_eye_points(context, active)
+        except RuntimeError as error:
+            report(self, {'ERROR'}, str(error))
+            return {'CANCELLED'}
+        lines = [f'{name}: moved {shift:.2f} cm' for name, shift in moved]
+        for name, donor, bone, transform in custom:
+            location = ', '.join(f'{value:.3f}' for value in transform['location'])
+            lines.append(f'Custom scope {name}: add a mesh socket named after its SID on {bone} at '
+                         f'({location}) with rotation 0, 0, 0 (aligned copy of {donor}; that marker is unchanged)')
+        if missing:
+            lines.append('No reticle (mark material) found on: ' + ', '.join(missing))
+        if not moved and not custom:
+            report(self, {'WARNING'}, 'No scope eye point could be aligned. ' + ' '.join(lines)
+                   if lines else 'No scope with a mesh has an eye point socket marker.')
+            return {'CANCELLED'}
+        for line in lines:
+            self.report({'INFO'}, line)
+        report(self, {'INFO'}, f'Aligned {len(moved)} eye points'
+               + (f', {len(custom)} custom (see the Info log)' if custom else ''))
+        return {'FINISHED'}
+
+
+class ARSENAL_OT_SocketViewEye(bpy.types.Operator):
+    bl_idname = 'arsenal.socket_view_eye'
+    bl_label = 'View Through Eye Point'
+    bl_description = ('Look from the selected socket marker along its forward axis, as the aimed camera does. '
+                      'Orbit or press Numpad 0 to leave the view')
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area and context.area.type == 'VIEW_3D'
+
+    def execute(self, context):
+        state = context.scene.arsenal_sockets
+        if not state.entries or state.entries[state.active_index].marker is None:
+            report(self, {'ERROR'}, 'The selected socket marker is missing; reset it to recreate it.')
+            return {'CANCELLED'}
+        marker = state.entries[state.active_index].marker
+        view = context.space_data.region_3d
+        distance = 20.0
+        forward = marker.matrix_world.col[0].xyz.normalized()
+        view.view_perspective = 'PERSP'
+        view.view_rotation = eye_view_rotation(marker)
+        view.view_location = marker.matrix_world.translation + forward * distance
+        view.view_distance = distance
+        context.space_data.clip_start = min(context.space_data.clip_start, 0.1)
         return {'FINISHED'}
 
 
@@ -453,6 +746,10 @@ class ARSENAL_PT_WeaponSockets(bpy.types.Panel):
         row.operator('arsenal.socket_select')
         row.operator('arsenal.socket_reset')
         row.operator('arsenal.socket_reset', text='Reset All').all_sockets = True
+        row = layout.row(align=True)
+        row.operator('arsenal.socket_align_sights')
+        row.operator('arsenal.socket_align_sights', text='Align Selected').active_only = True
+        layout.operator('arsenal.socket_view_eye', icon='HIDE_OFF')
         if state.collection:
             layout.prop(state.collection, 'hide_viewport', text='Hide Markers')
         entry = state.entries[state.active_index]
@@ -465,4 +762,5 @@ class ARSENAL_PT_WeaponSockets(bpy.types.Panel):
 
 CLASSES = (ARSENAL_SocketEntry, ARSENAL_SocketState, ARSENAL_UL_WeaponSockets,
            ARSENAL_OT_SocketRefresh, ARSENAL_OT_SocketSelect, ARSENAL_OT_SocketReset,
+           ARSENAL_OT_SocketAlignSights, ARSENAL_OT_SocketViewEye,
            ARSENAL_PT_WeaponSockets)

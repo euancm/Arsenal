@@ -23,6 +23,7 @@ class ARSENAL_PT_AnimationPanel(bpy.types.Panel):
     def draw(self, context):
         col = self.layout.column()
         col.operator("anim.arsenal_add_keyframe", text = 'Add keyframe')
+        col.operator("anim.arsenal_copy_grip")
         col.operator("pose.constraints_clear", text = 'Clear constraints')
         col.operator("nla.bake")
         col.separator()

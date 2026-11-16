@@ -345,6 +345,7 @@ with (Path(__file__).parent / 'resources' / 'weapon_templates.json').open(encodi
 for _key, _preset in TEMPLATES.items():
     if _key in PRESETS:
         for _field in ('label', 'enum_id', 'category', 'animation', 'mesh', 'part_tokens', 'ammo_types', 'attachments',
+                       'attachment_mounts', 'attachment_options', 'inventory_size',
                        'general_ref', 'settings_ref', 'slot'):
             PRESETS[_key][_field] = _preset[_field]
     else:

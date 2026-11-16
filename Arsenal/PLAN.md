@@ -35,7 +35,7 @@ ZoneKit Mod Editor         package (cook) the mod, then install/replace the pak 
 
 | Stage | State |
 |---|---|
-| Template selection and setup-script generation | 38 individual standard base-game firearms, using installed CFG donor asset/stat/upgrade definitions. Original five enum numbers preserved. Named/unique variants excluded. Only the pistol replacement workflow is tested end to end; other donors remain experimental. |
+| Template selection and setup-script generation | 38 individual standard base-game firearms, using installed CFG donor asset/stat/upgrade definitions. Original five enum numbers preserved. Named/unique variants excluded. Pistol replacement is tested end to end; the user also reports successful TRS-301 export, packaging and gameplay testing, with reload and default-attachment issues still open (2026-11-14). Other donors remain experimental. |
 | ZoneKit export of sequences, additive sequences, skeletal/static meshes, magazines, sockets, textures | Done; ran in ZoneKit for the pistol. Native socket reference frames and mod-owned writes have disposable ZoneKit coverage; cooked gameplay acceptance remains separate. |
 | ZoneKit mod copy + batch rename | Done. Uses `duplicate_asset` directly; revision-control checkout does not create a mod copy and caused unnecessary warning dialogs. |
 | Blender import (pairing, LOD1/collision skip, smoothing, vertex-group attachments, DirectX normals, RMA split) | Done; materials tested with synthetic data only. |
@@ -98,14 +98,17 @@ not run locally; native ZoneKit import, cooking and non-pistol gameplay remain u
 
 ### Known non-pistol import issues
 
-Only replacing a pistol has been tested end to end. Testing more weapon types is planned.
-The following user-reported issues are tracked for follow-up, **not fixed by the UI/release work**:
+At the initial non-pistol testing stage, only replacing a pistol had been tested end to end.
+The later TRS-301 gameplay report is recorded below. The following user-reported issues were
+**not fixed by the UI/release work**. They are retained
+as the original observations; the follow-up implementation status below records subsequent fixes.
 
 - **Shotgun**: attachments import in incorrect positions; the pump mesh is missing.
   Aim-to-idle is split into character `idle_aim_to_idle` and weapon `aim_to_idle` actions.
   Custom bone shapes are chosen incorrectly; the user plans to add more shapes.
-- **Rifle**: attachments are correctly placed, but custom bone shapes are chosen incorrectly
-  (more shapes to be added by the user).
+- **Rifle (earlier observations)**: attachments were correctly placed in that test, but custom
+  bone shapes are chosen incorrectly (more shapes to be added by the user). See the
+  donor-specific placement issues below.
   - Hands animate but weapon does not: `Attach-RuColimScope02_01`,
     `Idle_IdleToOffsetAim_01`, `Idle_OffsetAim-Idle_01`, `Idle_OffsetAimToIdle_01`,
     `reload_renewal_GrenLauncher`, `reload_renewal_tactical_GrenLauncher`,
@@ -113,6 +116,594 @@ The following user-reported issues are tracked for follow-up, **not fixed by the
   - Weapon animates but hands do not: `mag_paired_detach_shift`, `ReloadRenewal_GL`,
     `ReloadRenewal_tactical_GL`, `shoot_GrenLauncher`, `shoot_GrenLauncher_end`.
 - **Sniper**: custom bone shapes are chosen incorrectly; the user plans to add more shapes.
+
+Additional user-reported testing (2026-11-12) uses the external working folder
+`D:\Euan\3D\Stalker Mods\IL86 Mod Working Folder`; it is not a bundled test fixture.
+These observations remain unverified by regression tests:
+
+- **Dnipro**:
+  - Magazines are incorrectly placed and have vertex group `Weapon` instead of
+    `jnt_clip_base`.
+  - The silencer is correctly placed.
+  - Laser attachments `SM_ls02_en_laser_right` and `SM_ls01_ru_laser_1` are incorrectly
+    placed.
+  - Iron sights are not imported.
+  - `idle` and `idle_aim` import with extra incorrect frames: frame 1 is correct, but an
+    incorrect wobble is visible by frame 5.
+  - Investigate the purpose of `twin_clip_shift_pose` and whether it is needed; its role
+    is currently unclear, so removal is not yet a decided fix.
+- **GP37**: magazines are incorrectly placed.
+- **Switching weapon templates / repeated setup**: after the ZoneKit setup script has
+  previously run for a different weapon, **Import Weapon** also imports that previous
+  weapon's magazines and attachments. The follow-up below confirms unscoped attachment
+  discovery as the cause and replaces it with exact donor paths.
+
+#### Import follow-up implementation (2026-11-12)
+
+The first fix batch uses the game's exact mesh/socket bindings instead of discovering every
+magazine and laser anywhere below the export folder:
+
+- The donor catalogue now records configured full/empty magazine meshes, each silencer/laser
+  mount, iron-sight mesh arrays and preinstalled parts. This includes Dnipro's front/rear sights
+  and the M860's default long pump grip, which are attachments rather than AnimMesh parts.
+- Setup exports those configured meshes. Blender filters by their exact donor paths, so previous
+  templates' unrelated attachments are excluded without deleting anything from the working folder.
+  Legitimately shared meshes remain included: Dnipro's increased magazine uses an AK74 mesh.
+- Magazine weighting uses the configured bone, including `jnt_clip_base` for Dnipro and GP37,
+  rather than silently falling back to `Weapon`.
+- Named mounts reuse the socket-marker reference-frame conversion, including rotation/scale
+  and the actual parent bone. The two Dnipro laser meshes use `LaserSocket` and `LaserSocket2`
+  respectively, not the first socket containing "laser".
+- Missing configured attachment files stop import before creating the weapon rig, with instructions
+  to regenerate and run setup. Missing named sockets also report an explicit error.
+- Control shapes are restricted to the donor family, with generic shapes shared. Base shapes
+  only apply to `Weapon`, not `jnt_clip_base`. New rifle/sniper shape assets are still needed.
+- `idle_aim_to_idle` / `aim_to_idle` pair as one transition using both original FBXs and the
+  character-side action name. Duplicate spellings on one side remain ambiguous.
+
+Existing generated setup scripts must be regenerated and run before testing the new attachment
+list in a fresh Blender scene. The external IL86 working folder has not been changed.
+
+Disposable Blender checks reproduce the previous cross-donor discovery, wrong magazine weights
+and missing laser rotation, then verify the fixes. Actual Dnipro and GP37 FBXs from the supplied
+folder verify magazine bone bindings and the bone-local geometry offset. A read-only native
+ZoneKit probe exported 113 socket records for Dnipro, GP37 and M860; all configured named mounts
+match those catalogues. Existing Dnipro/GP37 silencer and both laser meshes also pass numeric
+placement checks against those native reference frames. Native visual/gameplay acceptance of
+the newly included sights and pump is still required.
+
+Validation: 133 focused plain-Python tests pass. Six Blender suites run 125 tests with no
+failures and one optional UDP donor check skipped; the eight new import tests run with the
+external Dnipro/GP37 meshes and native catalogues. The native probe's Python script completed
+successfully without asset writes, although the commandlet returned exit 1 for the installed
+project's existing Cloud DDC configuration and missing DLC1 asset-domain errors.
+
+Idle investigation: the existing exported Dnipro `idle` FBX already changes weapon pose at frame
+6 (range 1-7); `idle_aim` already changes at frame 2 (range 1-4), before NLA or baking. The bake
+reproduces these changes. Native RAW evaluation reports five frame intervals for `idle`
+and two for `idle_aim`; the sampled idle frames 0-4 are constant, while `idle_aim` already
+has approximately 0.02446 cm of weapon-root movement between frames 0 and 1. End-frame/export
+sampling still needs investigation; do not flatten the clips speculatively. The rifle clips
+listed above remain open. `twin_clip_shift_pose` is a weapon-only one-interval donor sequence;
+its exact runtime use is still unverified, so it remains imported/exported rather than removed.
+
+### TRS-301 workflow and attachment follow-up (2026-11-13)
+
+User-reported observations from the external project
+`D:\Euan\3D\Stalker Mods\TRS 301 Mod Working Folder\TRS301.blend`.
+The source changes below are implemented and covered by focused regressions. The project
+is not bundled with the add-on and was inspected without saving; gameplay acceptance remains.
+
+Implemented workflow changes:
+
+- Parented attachment previews to their socket markers so translating/rotating a marker
+  visibly moves fitted silencers, sights and other attachments. Preserve authored placement,
+  animation behaviour and export transforms; avoid applying the socket offset twice.
+- Enabled **Viewport Display > Show Name** on new/refreshed socket markers.
+- Enabled **Viewport Display > Composition Guides > Center** on newly generated cameras.
+- Populated AR416's default front/rear sight attachments in **Custom Attachments** on import,
+  rather than only bringing their geometry into the scene. Expand the attachment **Type**
+  dropdown to cover all base-game attachment types.
+- Imported compatible scopes, grenade launchers and other existing attachments into Blender
+  as previews, with **Reference Existing** enabled by default. Compatibility must reuse the
+  existing items without overwriting or duplicating their meshes, textures or other assets.
+- Added a way to declare existing attachments compatible with the current custom weapon,
+  analogous in purpose to **Extra Weapon SIDs**. Concrete acceptance case: the existing M203
+  grenade launcher fits the custom TRS-301 without duplicating or modifying the launcher.
+  Export writes weapon-side compatibility plus a mod-owned CFG patch appending the weapon
+  to the existing item's `FittingWeaponsSIDs`, without overwriting numeric entries or
+  saving/duplicating its assets. Verify actual equip/fire behaviour in game.
+
+Confirmed export defects corrected; in-game retest required:
+
+- Inventory canvases were always pistol-sized (258 x 128). A native read-only texture
+  probe measured AR416/Dnipro at 648 x 258 and UDP at 258 x 128. Component canvases now
+  follow the donor's item grid (130 pixels per cell minus the two-pixel outer gutter).
+  Old rifle layers are rejected with an explicit re-render instruction. Actual rifle
+  render, PNG export and selected-image sizing are tested; camera edits are retained.
+- Part of the original AR416 model (reported as roughly half of it) appears with the custom
+  TRS-301. The existing CFG emits nine static parts without clearing the donor's twelve-entry
+  array, allowing trailing donor entries (including its original body at index 9) to remain.
+  `WeaponStaticMeshParts` now uses `{bskipref}`. This confirms a source of donor geometry,
+  not that every possible runtime cause has been eliminated.
+
+Validation and remaining acceptance:
+
+- Focused CFG, inventory, socket, camera, registration, static export, IK export, setup,
+  animation-import and distribution suites pass. Real Dnipro/GP37 magazine and accessory
+  transforms still match their native reference catalogue. Inventory snapshots stay in
+  rest pose while previews follow animation, and static socket offsets are not baked twice.
+- All 38 existing template records retain their original fields and enum IDs. Added
+  compatible-item metadata and inventory dimensions are regenerated from installed CFGs.
+- The native size probe completed and wrote its measurements; commandlet exit 1 also
+  reported the installation's existing Cloud DDC Host and missing DLC1-domain errors.
+- The saved TRS301 project hash was unchanged. It contains an unassigned `Attachment1`
+  silencer entry; assign a mesh, enable Reference Existing with a valid SID, or remove that
+  entry before exporting. Existing projects are not automatically repopulated or saved.
+- Regenerate setup for expanded previews in a fresh scene. For the edited TRS301 project,
+  keep its scene, configure attachments explicitly, refresh sockets, re-render all inventory
+  layers, and regenerate/export/import/repackage. M203 runtime compatibility and removal
+  of the reported AR416 remnant still require an in-game check.
+- Earlier idle end-frame/wobble and unmatched rifle-half investigations remain open.
+  Exact runtime use of `twin_clip_shift_pose` is not established; no source animation
+  was flattened, discarded or guessed. Additional rifle/sniper control shapes still
+  require suitable artist-supplied assets.
+
+Further user-reported TODOs (2026-11-14):
+
+- **M203 grenade launcher preview: fixed (Blender preview only).** `SK_gla` is mounted
+  correctly at `SocketOffset` (`jnt_offset`, identity); native ZoneKit bounds match the
+  Blender import. The misplacement was the spare rounds stored in the same mesh: bones
+  `jnt_m406_charge`, `jnt_m406_shell` and `jnt_vog25_charge` sit about 10 cm to the side and
+  up to 20 cm back, and flattening the preview onto `Weapon` left them floating beside the
+  gun. A native probe of every other skeletal attachment found no other parked rounds
+  (`SK_gl01_ru_glaunch_1` keeps its round in the tube; `SK_grim0_glaunch` is the round; PKP
+  belt bullets are part of the visible belt), so `import_weapon.PARKED_ROUND_BONES` is an
+  explicit table and the preview drops vertices dominated by those bones. Existing scenes
+  need the launcher re-imported, or the floating rounds deleted by hand.
+- **Character mesh: replaced (needs one real setup run).** The animation FBX preview mesh
+  `SK_stalker` is a ~18k-vertex placeholder without hand/glove materials. The player's
+  real first-person body is `Player` → `Player_SEL_07_MeshGenerator` → `Player_sel_07`
+  (`ObjPrototypes.cfg`, `AttachMeshPrototypes.cfg`): `SK_pla_sel_07`, same
+  `SK_stalker_Skeleton`, 95,193 LOD0 vertices, 13 textured slots. Setup now exports it as an
+  export-only `character_meshes` selection (never copied into the mod) together with its
+  textures in `materials.json`; headless ZoneKit exported all 31 textures for the 13
+  materials. **Create Base Skeleton** imports `SK_pla_sel_07.glb` when present, bakes its
+  bind pose into the master's rest pose (the body skeleton may differ from the animation
+  skeleton), binds it to the master and applies its textures, replacing `SK_stalker`.
+  Older exports keep the placeholder. With the real TRS idle FBX standing in for the body,
+  the rebound mesh matched the placeholder within 0.05 mm at rest and posed. Armature
+  modifiers driven by the baked armatures are muted during animation import and retarget
+  bakes, so the denser body does not slow them.
+- **Body export crash (2026-11-14).** FBX export of `SK_pla_sel_07` crashed ZoneKit with an
+  access violation in the user's editor setup run (after "Waiting for skinned assets to be
+  ready 0/1") and headless, even with LODs, morph targets, vertex colours and collision
+  off. Exports run before sockets, textures and checkout, so that run copied nothing into
+  the mod. Weapon skeletal meshes still export to FBX from the editor. The body now uses the
+  glTF exporter (`unreal.GLTFExporter.export_to_gltf`, skin weights on, no material baking or
+  images; textures still come from `export_textures`), which exported a 4.8 MB `.glb`
+  headless through `export_package`. Blender's glTF import is metre-scale with every bone's
+  axes turned by the same quarter turn relative to the FBX skeleton (joint positions fit
+  the FBX rig with scale 100 and no global rotation). `_gltf_import` applies the ×100
+  scale, and `_conform_mesh_to_rest` keeps the most common per-bone 90° axis offset (the
+  importer convention; a single bone bound a quarter turn away is still baked in). On the
+  real body: 56,545 vertices, 12 materials, distance from strongly weighted vertices to
+  their bone preserved within 0.1 µm and the worst edge stretch 1.5%.
+- **Body imported 100× too big (2026-11-14).** In the user's scene the body came in about
+  6300 units tall and mangled, and the Rigify heel/toe bones were huge and turned sideways.
+  Blender's glTF importer divides by `unit_settings.scale_length`; Arsenal scenes use 0.01,
+  so the import was already in centimetres before the ×100. `_gltf_import` now forces unit
+  scale 1.0 during import and restores it, as `_fbx_import` does. `_check_body_scale`
+  compares the hips-to-head span with the master and rejects a mismatch. Any body import
+  failure now keeps the preview mesh and reports a warning instead of failing Create Base
+  Skeleton. The heels are sized from the master's first child's foot vertices
+  (`generate_metarig.create_leg`), so the oversized body caused the huge heel bones.
+  Verified in Blender 5.2 and 5.3 at unit scales 1.0 and 0.01: body about 41 × 133 × 159 cm,
+  identity transform relative to the master.
+- **Body materials (2026-11-14).**
+  - Body colour textures now link their alpha to the Principled BSDF's Alpha, so the thread
+    cards render. Weapon materials do not, because weapon colour alpha may hold other data.
+  - The right hand (`MI_han_01_a_01_fov`, slot `han_player_R`) was untextured. Setup's
+    parameter walk missed its inherited `Albedo` (`T_han_01_a_01_D`), even though the PNG
+    was exported.
+    - Setup now fills a missing colour parameter from
+      `MaterialEditingLibrary.get_material_instance_texture_parameter_value`, verified
+      headless.
+    - Blender falls back to the `_D` texture beside a material's `_N` texture, so existing
+      exports work without rerunning setup.
+- **Design review follow-up (2026-11-14).**
+  - Generated setup and import scripts carry `ARSENAL_VERSION` (from `bl_info`) and log it
+    when they run.
+  - Setup exports the textured player body last, after the mod copies are renamed and
+    saved, so a native crash there loses nothing.
+  - Long steps report progress:
+    - Blender's import and retarget loops print the percentage, count, elapsed time and
+      estimated time left to the system console and update the cursor progress.
+    - ZoneKit setup exports show a cancellable `ScopedSlowTask` dialog (cancel stops before
+      any mod writes).
+    - The import script shows one non-cancellable step per stage. `ScopedSlowTask`,
+      `make_dialog` and `should_cancel` were checked headless; the on-screen dialog still
+      needs an interactive editor check.
+  - Large modules stay as they are for now. Splitting `weapon_cfg.py` and `unreal_import.py`
+    is optional and would not change behaviour.
+  - User decisions: see "Scope decisions (2026-11-14)" under Known issues.
+- **Export, progress and message fixes (2026-11-14).**
+  - Export All failed with `bpy_prop_collection.__contains__: expected a string or a tuple of
+    strings` on TRS301. `rig_action_slot` tested `None in rig.pose.bones` for object-level
+    curves (a keyed rig location); Blender collections reject non-string keys. Bone-less curves
+    are now skipped. A factory-scene regression test fails without the fix. On a copy of the
+    blend, export then reached a correct IK check: `aim_to_idle` uses IK while
+    `upper_arm_ik.L` has an unkeyed non-rest pose.
+  - Messages appeared twice because Blender already pops up an operator's ERROR reports and
+    logs a finished operator's reports to the console. The completion wrapper now skips its
+    own popup when Blender shows the error (an ERROR report or an exception), and skips its
+    console line when Blender has already logged the message. Cancelling without an error
+    report still opens the Arsenal popup.
+  - Console progress reads `Importing: 65% (42/64 idle, elapsed …, about … left)`, and the
+    cursor updates in whole percents. Blender draws the cursor number as `%2u.%02u` and cannot
+    label it. A live status-bar label would need `wm.redraw_timer`, which reports a warning
+    per call, or a modal rewrite of import and retarget.
+  - Weapon **Max Ammo** writes the weapon's `MaxAmmo`; each magazine writes its own. Game
+    weapons set it to their default magazine (M16 30, PM 8, Dnipro 30), while tube-fed
+    shotguns and revolvers rely on it alone (SPSA 8, Ram-2 14, M860 6, Rhino 6).
+    User decision: keep the field as it is. Don't derive it from the default magazine or hide it.
+- **Unkeyed IK upper-arm twist (D29, 2026-11-14).** TRS301's `aim_to_idle` was blocked
+  because `upper_arm_ik.L` was unkeyed but posed (rotation Y 4.74, scale 1.009, location
+  ~1e-4). The user rarely keys this control. The suggested fallback, copying it from `idle`,
+  would not work, because `idle` does not key it either. Every action that does key it
+  contains Rigify **Snap IK->FK (Action)** output.
+  - Export now derives the unkeyed rotation/scale of `upper_arm_ik.*` and `thigh_ik.*` per
+    frame from the FK limb, using Rigify's no-pole IK->FK snap:
+    1. Twist about Y (Rigify's lock) until the IK upper arm points along the FK upper arm.
+    2. Match the FK scale.
+    - `hand_ik`/`foot_ik` are not moved.
+    - The fallback runs only for limbs that use IK somewhere in the clip.
+  - The solver is tighter than Rigify (1e-3 rad, exact scale versus Rigify's 1° and 1%). The
+    keyed reload values sit inside Rigify's own tolerance of the solved ones.
+  - Validation no longer flags those derived channels. Unkeyed twist with the pole on still
+    resets to rest and is still flagged. A sub-1e-4×length shoulder/hip location (snap
+    noise) is treated as rest.
+  - On a copy of TRS301, all 64 actions now export (120 FBXs). The solve adds about
+    104 s to a 7-minute export.
+  - `test_export_ik_controls.py` generates a Rigify human and checks that a wrongly twisted,
+    unkeyed IK upper arm puts the elbow on the FK elbow.
+- **Export speed-ups (D30, 2026-11-14).** A profile of five TRS301 actions (43.7 s) found:
+  - FBX writing: 28%;
+  - IK twist solve: 25%;
+  - donor template sampling: 15%;
+  - rig sampling: 12%;
+  - template import: 8%.
+
+  The user approved three changes:
+  1. **Faster twist solve.** A secant solve on the signed elbow angle about the
+     shoulder-to-wrist axis replaces the golden-section search. All IK limbs are solved
+     together, so each rig update serves every limb. The old search is kept as a fallback if
+     the solve doesn't converge.
+     - TRS301's 22 IK actions: 62 s → 16 s.
+     - Largest twist difference from the old solver: 0.13°, inside Rigify's 1° snap
+       tolerance.
+  2. **Template sampling.** This replaces the planned on-disk sample cache. `sample_template`
+     evaluates the imported template's own F-curves instead of calling `frame_set`, which
+     re-evaluated the whole scene, including the Rigify rig. There's nothing to invalidate.
+     - Empty F-curves are skipped, as Blender does.
+     - Templates with parents, constraints, drivers, NLA or non-transform channels fall back
+       to `frame_set`.
+     - All 120 TRS301 templates (at substep frames) match `frame_set` exactly: 98 s → 13 s.
+  3. **Incremental export.** `animation_cache.py` fingerprints each action and stores the
+     result in `<output>/arsenal_animation_cache.json`. Unchanged actions keep their FBXs.
+     The fingerprint covers:
+     - the action's keys;
+     - the rig's rest data, constraints, drivers and unkeyed custom properties;
+     - the source skeleton and the mapping;
+     - each donor template's size and time;
+     - the scene FPS and `BAKE_SUBSTEPS`;
+     - the export source code.
+
+     Driven settings, the IK/FK switch and pose channels are left out, because they depend on
+     the frame or the last action played. Each FBX's size and time are recorded too, so a
+     deleted or replaced file is re-exported. Skipped files are still returned and listed in
+     the import manifest. **Re-export Unchanged Animations** forces a full bake.
+  - Export now shows the same console and cursor progress as import and retargeting.
+  - Results on a copy of TRS301 (64 actions, 120 FBXs):
+    - full export: about 440 s → 343 s;
+    - rerun in a new Blender session: 4.6 s (64 unchanged);
+    - after editing one key in `idle`: 6 s (only `idle` re-exported).
+  - **Permanently rejected (user decision):** parallel background Blender processes and a
+    custom FBX writer. Do not propose them again.
+
+### TRS-301 gameplay report and remaining work (2026-11-14)
+
+The user successfully exported, packaged and tested the external `TRS301.blend` project in
+game. This confirms that the current project reaches gameplay; it does not close every
+earlier feature-specific acceptance check or establish that other rifle donors work.
+
+**Runtime fixes (implemented; cooked-game retest required):**
+
+- **`reload` / `reload_tactical`:** just after magazine insertion, the left arm goes badly
+  out of pose for one or two frames. This occurs in game, not at Blender's whole frames.
+  The saved `upper_arm_ik.L` Euler Y keys contain full-turn jumps from Rigify snapping:
+  both clips jump near frames 45-46, and tactical also jumps at 64-67 and 69-70.
+  Quarter-frame baking faithfully exported the intervening arm spins. Existing native
+  RAW/COMPRESSED tracks agree and reproduce elbow steps of 36.35 cm (`reload`) and
+  33.13 cm (`reload_tactical`); compression is not the source of those jumps.
+  Export now unwraps keyed IK-base Euler Y curves and their handles on a temporary action
+  during subframe sampling. The original action, slots and keys are restored on failure too.
+  No hand keys, switches, constraints, donor hierarchy or additive settings are changed.
+  Disposable exports of both real clips preserve all mapped whole-frame joint positions
+  within 0.00005 cm and round-trip the corrected arms through FBX within 0.00012 cm.
+  Acceptance: both reloads play through insertion without the transient arm error in game.
+- **Default attachments:** the iron sights and flash hider float high above the weapon.
+  All three custom meshes in the saved project are rig-parented, not socket-parented.
+  Export only recognised marker parenting, so it wrote weapon-space vertices and the game
+  added the configured socket transform again. First-person custom attachment export now
+  resolves each mesh's configured mount, including separate front/rear sockets, and removes
+  its complete rest-space transform regardless of preview parenting. Missing or conflicting
+  mounts fail explicitly. Already marker-parented meshes and bone-local magazines retain
+  their existing placement. Real sight/flash-hider FBXs reconstruct their authored geometry
+  within 0.001 cm after applying the mount, without changing the saved blend or socket edits.
+  Acceptance: both default parts sit on their intended mounts in game.
+
+Validation: 23 IK-export, 20 socket-marker/export, 5 static-mesh and 98 plain-Python importer/
+world-socket tests pass; one optional external-donor marker test is skipped. The real-project
+FBX probes above pass separately. Read-only native evaluation confirmed the original reload
+spins. A fresh corrected-reload import using a cloned skeleton in a newly scaffolded disposable
+mod crashed the headless ZoneKit commandlet immediately after FBX scene loading, so corrected
+native reimport and cooked gameplay are not claimed as verified. No real mod or shared skeleton
+was a write target; the disposable mod was removed after the process exited.
+
+**Retest result and texture update (2026-11-14):** the user confirmed in game that the reload
+arm flash is fixed. A later texture edit did not appear in game. Evidence from the real export
+and mod: Export All at 20:11 wrote new texture PNGs, but `import_trs301.json/.py` stayed at
+18:13, and ZoneKit replaced the meshes at 20:14 while the six texture assets stayed at 16:11.
+Two defects combined:
+
+- The moved `EN_GoloScope_1` and `M701_Colim_Scope` socket markers each had an Auto Keying
+  location key. Marker validation correctly blocked export, but only after textures were
+  copied, so new PNGs sat beside an old import script. Its error also suggested Reset Socket,
+  which discards the alignment. Export All now checks markers before writing anything and lists
+  every keyed marker with the placement-preserving fix (Clear Keyframes).
+- Generated importers skipped existing weapon texture and material assets unless run with
+  `--overwrite`, even though meshes and animations were replaced. They now replace exported
+  textures, verify the reimport, and refresh mod-owned material instances.
+
+Verified on disposable copies of the real blend/export: Export All stops in 0.15 s with no file
+changes; with keys cleared in memory, the import script generates with both sight edits enabled.
+Plain-Python importer tests (121) and Blender socket-marker tests (22, one optional skip) pass.
+Gameplay check of the updated texture remains pending; the user's blend was not saved.
+
+**User-owned asset edits (not add-on fixes):**
+
+- Remove AO under the iron sight.
+- Fix jerky fingers in the empty reload.
+- Update the finger pose in `idle_aim` to match the rest of the animation.
+- Line up scopes by changing sight socket placement.
+
+Keep these edits in the external weapon project. Re-export, run the fresh ZoneKit importer,
+repackage and check the edited poses, attachment placement and scope alignment in game.
+Reload the updated add-on before Export All. Changed export source invalidates the animation
+cache automatically. These probes do not save the user's project or modify the real mod.
+
+### Custom red-dot scope feasibility
+
+Status: investigation only; no custom optic has been imported, packaged or tested in game.
+The requested donor mesh `SM_rds02_en_goloscope_1` belongs to attachment SID
+`EN_GoloScope_1`. Installed CFGs include third-party changes, so their complete fitting-
+weapon lists must not be treated as clean retail defaults or bundled dependencies.
+
+**Existing support and donor evidence**
+
+- Custom `Scope` entries can already inherit `EN_GoloScope_1`, export their own static mesh
+  and item definitions, and define price, weight, text and inventory images. A disposable
+  Blender probe confirmed inherited CFG generation and the donor `source_sid` manifest.
+  Custom purchasable attachments also enter the existing generic trader-stock path.
+- The donor inherits `TemplateScope`: nonmagnified zoom by default, collimator aiming
+  post-processing and offset-aim support. Reuse this behaviour initially rather than
+  introducing a magnified-scope rendering path.
+- The exported donor has three distinct material slots: glass, body and mark. The mark is
+  a separate planar surface, not just paint on the housing. The material manifest records
+  `SightMask` references to `T_ScopesMasks` for glass/mark and a glass `DirtMask`, but does
+  not capture material parents, scalar/vector parameters or static switches.
+- Importing the donor FBX preserves all three material names. The current material exporter
+  leaves these names to existing game-material lookup, which provides a useful reuse path,
+  but this has not yet been proved by a cooked custom-scope test.
+- On the M16 donor, the mount `GoloScopeSocket` is on `jnt_offset`; the separate
+  `EN_GoloScope_1` socket is on `jnt_wpn_m160`. Mount placement and aiming/eye placement
+  must be treated independently.
+
+**Requirements and unresolved gates**
+
+1. Start with a mod-owned custom housing while preserving donor optical surfaces, their
+   UVs and their exact glass/mark material identities. Preserve the pivot and socket-local
+   coordinate convention; do not export the FBX's `UCX_` collision object as visible geometry.
+2. Resolve custom-SID aiming before investing in the final mesh. The SID-named donor eye
+   socket suggests a lookup dependency, but the lookup/fallback for a new SID needs a runtime
+   experiment. The current socket writer can override or clone existing donor socket names;
+   it does not author an arbitrary new eye-socket name. A new named socket on a mod-owned mesh
+   or skeleton, or a verified alternate aiming configuration, may be necessary.
+3. Check actual donor scope attach/detach entries and notifies. The importer can remap an
+   existing donor entry to one custom SID. A focused Python probe confirms that retaining
+   the original SID alongside the custom scope produces no replacement, while two custom
+   replacements for the same source raise an ambiguity error. Coexisting sights therefore
+   need explicit SID mappings that preserve the original entries, not broader substitution.
+4. For a custom reticle or lens appearance, inspect native material parents and effective
+   texture/scalar/vector/switch parameters, including atlas selection and any dynamic
+   overrides. Clone only the required material instances/textures into the mod. The generic
+   weapon PBR exporter cannot reproduce these optical materials; material role/reference
+   support would be needed for repeatable add-on export without hand edits.
+5. Define unique item/mesh/localization IDs and mod-owned asset paths. Decide whether this
+   is TRS301-only or a reusable attachment owned by one mod. Current custom IDs and export
+   context are weapon-bound; an attachment-only project/export is not presently available.
+6. Configure both item fitting-weapon lists and each weapon's compatible-attachment entry,
+   mount and ADS alignment. Review inherited upgrade requirements and folded/hidden irons.
+   Wider compatibility requires per-weapon work, not just extending one SID list.
+7. Supply standalone, fitted-weapon and upgrade icons as needed, localized name/description,
+   balancing and acquisition rules. Decide whether the original sight remains available.
+   Keep stock items and shared base-game assets unchanged.
+
+**Recommended proof before tooling**
+
+- Use a disposable external mod and one weapon. Create a visibly distinct new scope item
+  and mesh while reusing donor optical materials/geometry and inherited behaviour.
+- Pass gates: separate inventory identity; correct physical mount and ADS alignment;
+  stable reticle/visibility during firing, sway, crouch/lean and offset aim; clean attach/
+  detach and return to irons; correct first-/third-person and dropped-weapon appearance;
+  save/reload and cooked-package operation without editor-only or third-party dependencies.
+- Then test coexistence with the original scope. Only after these pass, add authoring for
+  custom eye sockets, explicit animation variants and optical-material roles. A separate
+  attachment-only export mode is optional later work, not a prerequisite for a TRS301 optic.
+
+No saved weapon project, real mod, shared skeleton or base-game material was modified by
+this investigation. Native shader parameters and custom-SID runtime lookup remain unverified.
+
+### Trijicon custom scope report (2026-11-15)
+
+User test: custom scope `Guntrs301_AttachTrijicon` (copied from `EN_GoloScope_1`) appeared
+in the inventory, but when attached it was invisible, played no attach animation, and the
+rifle could neither fire nor sprint. Its description listed many compatible weapons.
+
+- Cause: `AnimCollection_fp_trs301` had no `AttachingBySID` entry for the custom SID.
+  `new_attachment_sid` only replaced a donor key that was no longer configured; the
+  TRS301 still offers `EN_GoloScope_1`, so nothing was added. The generated CFGs were
+  correct. This amends D27: a custom attachment whose donor stays configured gets an
+  alias entry copied from the donor's. Mod-owned montages with `AnimNotify_AttachItem`
+  notifies spawning the donor are duplicated as `<montage>_<SID>` and their notifies
+  rebound. Several customs sharing one donor each get an alias (no longer an error).
+- Native proof: `zonekit_tools/test_attachment_alias_zonekit.py` (disposable
+  `ArsenalSocketProbe` mod, M16 collection copy) created the alias with both notifies
+  rebound and left the donor entry unchanged. A repeat run was a no-op, and the result
+  was verified saved in a fresh process.
+- Eye socket: derived base-game optics (`M701_Scope`, `UDP_Deadeye_Colim`) have
+  SID-named eye sockets on their weapon mesh, and no CFG field names a per-scope socket.
+  A custom scope probably needs a mesh socket named after its SID. This is inferred from
+  data and unverified in game. ZoneKit cannot name a new `SkeletalMeshSocket`; the
+  only rename, `SkeletalMesh.rename_socket`, also renames the shared skeleton socket.
+  Restoring the name leaves `/Game/.../SK_m160_Skeleton` dirty, and
+  `EditorLoadingAndSavingUtils.reload_packages` refuses to reload modified packages.
+  Automating this would risk saving a base-game skeleton, so it was rejected. The
+  importer warns instead and the user adds the mesh socket by hand.
+- Fits list (resolved 2026-11-16): the in-game list was exactly the base `EN_GoloScope_1`
+  list (`[0]=GunViper_PP` … `[11]=nwpack_GunGP3A_DMR`) with `[0]` replaced by TRs-301.
+  Struct-level `{bskipref}` on the inherited scalar `FittingWeaponsSIDs` therefore merged by
+  index instead of clearing the list. `attach_prototypes` now writes `[0] = <weapon SID>`
+  and `[1..31] = empty`, the base game's null placeholder (`FITTING_WEAPONS_OVERWRITE = 32`,
+  above the largest base list of 12). Unverified in game: whether the UI skips `empty`
+  cleanly. The struct-element arrays `WeaponStaticMeshParts`/`CompatibleAttachments` show no
+  merged donor entries. The user's imported `EN_GoloScope_1` entry had **Reference
+  Existing** off, so a second custom "Holographic sight" was exported as well.
+- Unresolved: default Cost/Weight 2500/0.1 against the donor's 3700/0.3.
+- Custom reticle (2026-11-16): the golo mark MI `MI_rds02_en_goloscope_1_mark` →
+  `MI_PBR_WeaponMark_01` → `M_PBR_WeaponMark_01` (translucent) samples texture parameter
+  `SightMask` = `/Game/_Stalker_2/weapons/attachments/rds/T_ScopesMasks`. That texture is
+  512×512 sRGB, TC_DEFAULT, a 2×2 atlas of 256 px cells: R holds the sharp mark, G the glow,
+  and B is about 0. `SightMaskID = 0` selects the top-left cell (circle-cross); the top-right
+  cell is a dot. Colour, brightness (5), parallax depth (-250) and mark parallax (12) come
+  from the golo MI. `scope_reticles.py` packs a user image into the top-left cell (mask =
+  max(RGB)·A, glow = three 6 px box blurs). The importer creates a mod-owned child MI of the
+  game mark MI that overrides only `SightMask`, and assigns it to the scope's AnimMesh and
+  world meshes in place of the slot-name lookup. Unverified in game.
+- Reticle colour (2026-11-15): `M_PBR_WeaponMark_01` is single-colour. It tints the mask's
+  red channel with `SightColor(RGB)Int(A)` and the glow with `SighAddColor(RGB)Int(A)`, scaled
+  by `SightBrightnes` and `NVGSightBrightnes`. For the golo these are (1, 0.036, 0.036, 1),
+  (0.333, 0.305, 0.305, 0.436), 5 and 3. The user chose to match the game: keep the generated
+  glow and expose these four parameters (**Custom Reticle Colours**), not a full-colour image or
+  custom master material. Colour-only entries have no file. The importer clears the child MI's
+  overrides on each run before applying the texture and parameters.
+- Canted aim jiggle (2026-11-16): `IdleToOffsetAim_01`, `OffsetAim-Idle_01` and
+  `OffsetAimToIdle_01` are character-only clips that use the donor M16's FK left arm. Its
+  hand sits about 32–35 cm along the weapon instead of the TRs-301's 17 cm grip. The weapon
+  is not animated in these clips. **Copy Hand Grip** (`anim.arsenal_copy_grip`) copies
+  `idle_aim`'s arm IK channels as constant keys; it was verified on a copy of the blend.
+- Eye points: **Align Eye Points to Sights** keeps the donor's eye-to-reticle offset
+  perpendicular to the line of sight. The reticle centre is the area-weighted centre of
+  `*mark*` faces at rest pose. The donor is a referenced scope with the SID or, failing that,
+  the imported entry named after it. On TRS301 it reported the Trijicon eye point 0.21 cm
+  above the golo copy's, with no forward change.
+
+### Dropped-weapon attachment mounts (2026-11-16)
+
+- User reports the dropped TRS301's silencer and Trijicon misplaced, while its magazine and
+  iron sights appear correct. The existing generated world socket payload contains only
+  `jnt_clip_base`; configured silencer/scope mount sockets are absent.
+- World export now includes full rest-pose transforms for every configured attachment mount,
+  including Reference Existing items and both iron-sight mounts, plus the stock silencer/laser
+  slots when enabled. Convert from the marker's rest frame to the static world mesh's
+  root-relative space; respect Use Edits and keep magazine mount generation unchanged.
+  Custom attachments still use their socket-local AnimMesh geometry in both views.
+- Export All preflights these mounts before writing outputs. The existing static-socket importer
+  creates/updates them only on the mod-owned world mesh; shared attachment meshes and skeletons
+  are not changed. Regenerate with Export All, run the fresh importer and repackage.
+- Read-only probe of the saved TRS301: the new payload has ten unique mounts. Reconstructing the
+  custom Trijicon from its socket-local vertices matches its world export within 0.00002 cm;
+  iron-sight and muzzle-device reconstruction also match within 0.00001 cm. No project save
+  or changes to the real mod were made. In-game placement still requires a packaged retest.
+- Validation: 203 focused regression tests passed (one additional external-donor fixture test
+  skipped), including rotated/scaled rigs, animated parent bones, shared mounts, disabled edits,
+  paired/single-mesh iron sights, stock slots and preflight failure. Native verification on a
+  disposable world-mesh copy was blocked: ZoneKit crashed during static-mesh duplication under
+  NullRHI, before socket application. Its scratch asset was removed. A rendering-enabled retry
+  stalled during startup and was stopped; no scratch assets or test editor processes remain.
+
+### Runtime and upgrade follow-up (2026-11-15)
+
+- Inventory and upgrade image composition confirmed correct in game by the user.
+- Extra Weapon SIDs for scopes deferred at the user's request until full automatic base-weapon
+  support is possible. A Fits list alone is not compatibility: other weapons need matching
+  attach/detach montage aliases and custom-SID eye sockets. The current importer only prepares
+  this project's weapon; do not advertise a Fits-only workaround as working scope compatibility.
+- Upgrade effects now have one selector per effect type and a fixed signed Value input (optional
+  range), with a sentence explaining each type. The exact Base Effect remains under Advanced.
+  Special behaviour types (calibre/ammo/flags/fire modes/weapon patterns) use a filtered behaviour
+  selector and reject numerical overrides. Existing prototype enum IDs and values are unchanged.
+  Modification is the game's IsModification classification, used for hardware/feature conversions;
+  it does not enable numerical overrides or create hardware. Added directly related tooltips.
+- Read-only check of the 20:33 TRS301 save and current FBXs: sampled aim/offset hand and finger
+  rotations match the exported FBXs (no >0.04-degree error). The action joins differ, however:
+  the aimed grip versus idle_to_aim's fingers differs by up to 23.77 degrees; the canted actions'
+  fingers differ by up to 47.63 degrees. Copy Hand Grip can now copy Fingers Only, including
+  finger masters/palms, without replacing arm animation. An in-memory test on all five transitions
+  reduced the finger mismatch to <0.1 degree; the real blend was not saved.
+  The saved canted clips also retain a different left-hand grip relative to Weapon: up to
+  38.78 degrees / 17.50 cm from the current idle_aim. Reapplying Arm IK from idle_aim on an
+  in-memory copy reduced this to <0.04 degrees / 0.002 cm. User reports the wrist jerk with
+  any sight in both directions, and the finger twitch even with bare iron sights.
+- White-on-transparent reticle input is valid: source has alpha 0..1 and the exported 256-cell
+  mask has only 1.63% lit pixels. The large square is not explained by an opaque input background.
+  The imported texture round-trips with identical pixels. Root cause found in the exported game
+  material graph: SightMask uses SAMPLERTYPE_VirtualColor and T_ScopesMasks has virtual streaming
+  enabled, but import_reticles forced it off on the replacement. Import now copies that flag from
+  the parent's SightMask rather than making it an ordinary texture. Regenerate the importer with
+  Export All and rerun it before packaging; no art change is needed.
+  Verified with the real importer in headless ZoneKit on disposable mod-owned assets: virtual
+  streaming matches the parent, SightMask reads back correctly, and both assets save successfully.
+  The parameter setter's falsey return is not reliable here; assignment is validated by readback.
+  Both scratch assets were deleted. Focused Blender suites passed (13 upgrade, 53 CFG,
+  11 registration and 26 IK-control tests), plus 133 plain-Python setup/import/notification tests.
+  Runtime animation repairs were validated in memory only; the user must apply them to the
+  working blend and retest the regenerated package in game.
+
+### Inventory image templates and standalone framing (2026-11-16)
+
+- Weapon inventory canvases now use the size of the bundled template PNG for the weapon type
+  (`resources/inventory_templates/<type>_{inventory,upgrade}.png`; pistol 258×128, rifle,
+  SMG and shotgun 648×258, sniper, DMR and Gauss 908×258). PKP and RPG-7 fall back to the
+  preset size. This was the user's choice ("Use the sizes from the templates"). The weapon CFG
+  still inherits the donor grid, so the SMG, Obrez, Rhino, M10, SVU, Gvintar and sniper
+  canvases are wider than their donor's ItemGridWidth implies. In-game composition of these
+  canvases is unverified.
+- Standalone canvases follow the item's inventory grid (`resources/attachment_grids.json`,
+  built from ItemPrototypes and AttachPrototypes by `zonekit_tools/build_attachment_grids.py`).
+  Spans are 128, 262 and 388 pixels for 1, 2 and 3 cells, matching 50 of 55 retail icons.
+  The exceptions are EN_GLaunch_1 and EN_BuckLaunch_1 (2×1 grid, 388-wide icons) and
+  RU_ColimScope_1 and RU_X2Scope_1 (1×1 grid, 262-wide icons). They are not overridden.
+- Every standalone render uses the MagazineStandalone camera. `frame_camera` translates it
+  (and changes ortho_scale for ortho cameras) to centre the evaluated vertices with a 1.15
+  margin; rotation and lens are kept. Verified read-only on TRS301.blend: the golo copy,
+  muzzle device and Trijicon render centred at 128×128.
+- Standard and Upgrade cameras get packed template guides (marked `arsenal_inventory_template`)
+  unless the camera already has a user background. Removing a camera background does not
+  release its image user (users stays 1), so stale guides are removed by checking camera references.
+- Reference Existing attachments render inventory and upgrade layers. The inventory layer becomes
+  the compatible-attachment `WeaponSpecificIcon`; they have no standalone image.
 
 ### Automatic custom attachment stock (2026-11-12)
 
@@ -271,6 +862,44 @@ The mesh-space additive conversion tried for these (D21) made things much worse 
 
 ## Known issues
 
+Scope decisions (2026-11-14, from the user's review answers):
+
+- **Verified in game by the user:**
+  - trader/NPC stock;
+  - English localisation (other languages are set up in ZoneKit and assumed correct);
+  - the standard upgrade tree;
+  - composed inventory icons;
+  - the dropped-in-world model.
+
+  Custom upgrade trees are untested.
+- **Tested through the TRS-301 project:** attachment placement and effects, M203
+  compatibility, and the leftover AR416 model fix.
+- **Manual for now:**
+  - **Sight alignment.** For each `aim_` action:
+    1. Use Snap IK to FK.
+    2. Put the hands in IK.
+    3. Add a Child Of → Weapon constraint.
+    4. Move the Weapon bone until the sights line up.
+
+    No automatic method is planned.
+  - **Dnipro `idle`/`idle_aim` wobble.** Clear keyframes after frame 1.
+  - **Control shapes.** The user adds them as needed.
+- **Out of scope:**
+  - **New sounds:** Wwise licensing.
+  - **New ammo types:** ZoneKit does not support them yet.
+  - **Removing a weapon:** delete the mod folder.
+  - **LODs:** handled by Nanite.
+  - **NPC and third-person handling:** relies on bug reports.
+  - **Not wanted:**
+    - a project health view, Upgrade Project operator, mod backups or resumable crash
+      records;
+    - an unattended editor test harness, because the user prefers human control;
+    - data-driven replacements for hard-coded tables;
+    - game-update detection;
+    - save-game SID warnings;
+    - licence changes.
+- **Blender:** the latest release is supported, with 5.2.2 LTS as the minimum.
+
 E9 automatic audio and inventory composition (2026-11-10):
 
 - The exported UDP-based setup has `FireEventOneShot` but no loop/break pair.
@@ -356,7 +985,9 @@ fresh export/import/package/in-game verification remain required.
 | D25 | Setup exports every additive sequence except the `*_add` idle companions, which the import script rebuilds (`export_additive_overlays`). The Blender importer also reads `AS_FP_Player_<w>_*` (offset aim) and pairs a one-sided clip with the other side's `idle` as a stand-in; export writes only the real half (status "weapon only" / "character only") and keeps the template's filename with the weapon token swapped. Overlays are exported like every other clip, edited or not. | Supersedes "export only edited overlays" in the plan below: reload, melee, `break_bullet` and the aim transitions are overlays (local and mesh space) and have always been exported unedited, game-confirmed. Fire, equip and offset aim follow the same path, so one rule covers all. `idle_boltlock` / `break_bullet_idle` place the weapon object exactly like the weapon idle, so the player idle is a valid stand-in. |
 | D26 | The development-only missing-clip import helper imports and retargets clips a converted blend does not have yet; its former Import New Animations panel button/operator has been removed. Existing actions are untouched. The importer reveals the master armature (kept in a hidden collection after conversion) while it bakes. The retarget rests every control on a fresh output action before baking and keys each limb's `IK_FK` to FK. | A hidden armature is not evaluated, so the visual-keyed bake recorded the idle instead of the clip (weapon `idle_boltlock` came out equal to idle). An unkeyed control posed by another clip was baked in as compensation (a posed `tweak_spine.003` changed the fresh `idle` curves by up to 5.8), and an unkeyed IK switch left at IK by an edited reload would play the new clip's arm through rest IK controls. |
 | D27 | The import script (`sync_collection_sids`) replaces donor magazine SID keys in `reloading`, `one_hand_reloading` and `attaching_by_sid`, and donor silencer/laser SID keys in `attaching_by_sid`, using manifest magazines/attachments. It moves the full struct value to the configured SID and removes the donor key. An existing target value is preserved; obsolete donor duplicates from earlier imports are removed. Explicit nested editor properties and `export_text` readback verify the exact keys and values before saving; readback/save failures restore the original. It never uses `import_text`. | E9Mod's donor magazine and silencer SIDs caused stuck reload/attach states. The initial insert-only approach left obsolete keys behind; the user reported these duplicate entries did not work properly. Replacement, rather than adding aliases, is required. `dir()` in ZoneKit does not list the internal map fields. Silencer detach remains unanimated, matching the base game. |
-
+| D28 | `_remove_imported` deletes every action an FBX import created, regardless of users. Retarget bakes only importer-marked clips once any exist, and pins the source/rig object matrices it started with (restoring the source's afterwards). The per-frame solve updates the depsgraph only when a bone's parent space depends on a control posed since the last update (ancestors plus constraint subtargets, since Rigify routes limb parents through `ORG-` copies), solves children of unconstrained controls locally with `convert_local_to_pose`, and repeats a pass only when the evaluated pose has not converged. Each keyed rotation is made compatible with the control's previous key (quaternion hemisphere, Euler winding). | TRS-301 (user setup, Blender 5.2.2): raw takes `jnt_root\|Unreal Take\|Base Layer.NNN` survived import with a stray Scene user (not reproducible with `--factory-startup`; add-on bisect inconclusive). Retarget baked 194 actions instead of 64 in 32 minutes, and the raw takes' object location keys left the master at (-16.75, -17.49, 126.32), so every clip after the first `jnt_` name (e.g. `reload`, but not `aim_to_idle`) was baked against a displaced source. Depsgraph updates were 96% of the bake time; a 4-clip M16 retarget went from 25 s to 9.5 s with identical worst error (0.36). Old and new outputs then differed only in the sign of `jnt_selector_level` quaternion keys: both versions flipped hemispheres between frames near 180° (also `jnt_clip_base_full` in reload), which interpolates the long way between frames and spoils the substep export (D20). `test_retarget_animation.py` covers all four failures. |
+| D29 | Amends D23 for IK base controls. When an action leaves `upper_arm_ik.*`/`thigh_ik.*` rotation or scale unkeyed while that limb uses IK with the pole off, export solves them per frame from the FK limb, like Rigify's IK->FK snap, instead of resetting them to rest. The hand/foot IK controls are not moved. | Artists key the IK hand but rarely the IK upper arm. Rest twist bends the elbow arbitrarily, and the leftover viewport value depends on the last action played. `idle` does not key the control either, so copying it from `idle` would not help. The snap's twist is what keyed clips already contain. |
+| D30 | Export skips an action whose fingerprint (keys, rig, mapping, donor templates, FPS, export code) and FBX files are unchanged, and lists its existing FBXs in the manifest. **Re-export Unchanged Animations** forces a full bake. Template poses are read from F-curves, not `frame_set`. Parallel Blender workers and a custom FBX writer are permanently rejected. | Artists usually edit a few clips at a time, but every export re-baked all 64. Reading template curves gives identical samples without re-evaluating the rig. User decision on the rejected options. |
 ### Attachment notify SID follow-up (D27)
 
 - E9Mod's exported UDP player silencer montage backup contains two
@@ -1011,13 +1642,13 @@ Ordered by value to an artist. "Needs test" means it cannot be validated without
 
 1. **Final aim offset and crouch lean**: fixed and confirmed (D22, D23). **Sprint → aim and first aim after reload**: fixed and confirmed (D24).
 2. **Blank-slate regression run**: done with Bird Mod; D11–D20 held without hand repairs.
-3. **Sight alignment for new models**: mesh-only `CameraSocket` and scope eye-point overrides on `SK_<weapon>`. See "Plan: sight alignment for custom weapon models". After item 1.
+3. **Sight alignment for new models**: done by hand for now (see Scope decisions under Known issues). The socket-override design in "Plan: sight alignment for custom weapon models" is kept for reference only.
 4. **Fire, equip and weapon-only clips in Blender**: done and confirmed (D25, D26).
 5. **Silencer and laser attachments**: mesh import/placement, custom definitions and socket-marker
    authoring are implemented. Verify cooked placement, attach/detach behaviour and effects in game;
    moving markers does not automatically reposition Blender attachment-preview geometry.
 6. **Pre-flight checks**: current checks run automatically in Export All. Expand skeleton/bone, montage-action coverage and attachment checks as needed without adding another required workflow button.
-7. **Weapon control editor** (create controls from selected weapon bones) and **arbitrary cameras** from the previous plan.
+7. **Weapon control editor** (create controls from selected weapon bones) and **arbitrary cameras** from the previous plan: optional. The user is unsure they are needed, and weapon controls are already generated for the donor's bones.
 8. **Regression matrix and release**: expand real-donor animation/gameplay testing beyond the pistol to the individual weapon templates. Installable release packaging is implemented; zips stay outside the checkout and publication uses reviewed GitHub Releases.
 9. **Completion notifications (implemented)**: Blender import, retarget and Export All show one completion popup per operation, including warnings or failure; nested import steps do not create extra popups. Generated ZoneKit setup/export and import scripts show an OK dialog using `EditorDialog`, with success/warning/error categories. Detailed reports and exceptions remain available. Background Blender runs log instead of opening a popup; Unreal's unattended mode handles dialogs without waiting. ZoneKit dialogs still need an interactive editor check.
 

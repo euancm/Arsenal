@@ -305,6 +305,10 @@ struct.end
 
 - **Append**: `[*] = Value` adds to the end of an array.
 - **Overwrite**: Use `{bskipref}` on the array container to wipe the old array and start fresh.
+  - _Caveat_: on an item inheriting through `refurl`/`refkey`, a struct-level `{bskipref}` on a
+    scalar array such as `FittingWeaponsSIDs` was observed to merge by index: the inherited
+    entries beyond those you write survived. To truly replace such a list, write every index the
+    parent uses and set unused ones to `empty`, the base game's null placeholder.
 
 ```ini
 AllowedSaveTypes : struct.begin {bskipref}

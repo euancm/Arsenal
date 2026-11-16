@@ -12,7 +12,93 @@ with open(os.path.join(os.path.dirname(__file__), 'resources', 'upgrade_defaults
 EFFECT_ITEMS = tuple((sid, f'{value["Type"].split("::")[-1]}: {sid}',
                       f'Base values: {value["ValueMin"]} to {value["ValueMax"]}', value['enum_id'])
                      for sid, value in DEFAULTS['effects'].items())
-NON_NUMERIC = {'FlagEffect', 'ChangeCaliber', 'ChangeAmmoTypes'}
+NON_NUMERIC = {'FlagEffect', 'ChangeCaliber', 'ChangeAmmoTypes', 'ChangeFireTypes', 'ChangeWeaponPattern'}
+EFFECT_HELP = {
+    'DispersionAimModifier': ('Aimed Spread', 'Changes bullet spread while aiming down sights; negative tightens the group.'),
+    'AimingMovementSpeed': ('Aiming Movement Speed', 'Changes movement speed while aiming; positive means faster movement.'),
+    'AimingTime': ('Aim Transition Time', 'Changes the time needed to aim down sights; negative means faster aiming.'),
+    'MaxDurability': ('Maximum Durability', 'Changes maximum item durability; positive increases its durability pool.'),
+    'ArmorPiercing': ('Armour Penetration', 'Changes the ability to penetrate armour; positive increases penetration.'),
+    'BulletDropLength': ('Bullet Drop Distance', 'Changes the distance before bullet drop takes effect; positive extends that distance.'),
+    'FlagEffect': ('Feature Flag', 'Enables the feature named by the base effect, such as switching to canted aim.'),
+    'ChangeAmmoTypes': ('Ammunition Types', 'Replaces compatible ammunition with the list defined by the selected base effect.'),
+    'ChangeCaliber': ('Calibre Conversion', 'Changes calibre using the selected base effect; compatible ammunition and hardware must also match.'),
+    'ChangeFireTypes': ('Fire Modes', 'Changes available firing modes to those defined by the selected base effect.'),
+    'ChangeWeaponPattern': ('Weapon Pattern', 'Switches weapon behaviour to the pattern defined by the selected base effect.'),
+    'CoverPiercing': ('Cover Penetration', 'Changes the ability to shoot through cover; positive increases penetration.'),
+    'MinBulletDistanceDamage': ('Damage Falloff Distance', 'Changes the distance at which bullet damage starts falling off; positive extends that distance.'),
+    'BaseDamage': ('Damage', 'Changes base bullet damage; positive increases damage.'),
+    'DispersionPerIterationRadiusExtension': ('Spread Growth Per Shot', 'Changes how much bullet spread grows with each shot; negative reduces growth.'),
+    'DispersionMaxRadiusExtension': ('Maximum Spread Growth', 'Changes the maximum extra spread reached during sustained fire; negative lowers the cap.'),
+    'Dispersion': ('Spread', 'Changes bullet dispersion; negative tightens the group.'),
+    'DispersionOffsetAimModifier': ('Canted Aim Spread', 'Changes bullet spread in canted aim; negative tightens the group.'),
+    'DurabilityDamagePerShot': ('Wear Per Shot', 'Changes durability damage caused by each shot; negative reduces wear.'),
+    'IdleSwayYModifier': ('Vertical Sway', 'Changes vertical weapon sway while idle; negative reduces sway.'),
+    'EffectiveFireDistance': ('Effective Range', 'Changes effective firing distance; positive extends range.'),
+    'HideEquipmentTime': ('Holster Time', 'Changes the time needed to put the weapon away; negative means faster holstering.'),
+    'HoldBreathDrain': ('Hold Breath Stamina Drain', 'Changes stamina consumption while holding breath; negative reduces consumption.'),
+    'IdleSwayXModifier': ('Horizontal Sway', 'Changes horizontal weapon sway while idle; negative reduces sway.'),
+    'BulletSpeedSlowdown': ('Bullet Slowdown', 'Changes projectile speed loss; negative reduces slowdown, retaining speed for longer.'),
+    'Recoil': ('Recoil', 'Changes weapon kick when firing; negative reduces recoil and positive increases it.'),
+    'RecoilRadiusNormalizationInterval': ('Recoil Recovery Interval', 'Changes the interval for recoil to settle; negative means faster recovery.'),
+    'ShowEquipmentTime': ('Draw Time', 'Changes the time needed to draw the weapon; negative means faster drawing.'),
+    'WeaponItemWeight': ('Weapon Weight', 'Changes the weight of the weapon item; negative makes it lighter.'),
+}
+EFFECT_TYPES = sorted({row['Type'].split('::')[-1] for row in DEFAULTS['effects'].values()})
+EFFECT_TYPE_ITEMS = tuple((kind, *EFFECT_HELP[kind], index) for index, kind in enumerate(EFFECT_TYPES))
+BEHAVIOUR_ITEMS = {
+    kind: tuple(entry for entry in EFFECT_ITEMS
+                if DEFAULTS['effects'][entry[0]]['Type'].split('::')[-1] == kind)
+    for kind in NON_NUMERIC
+}
+
+
+def effect_type(item):
+    return DEFAULTS['effects'][item.prototype]['Type'].split('::')[-1]
+
+
+def get_effect_type(item):
+    return EFFECT_TYPES.index(effect_type(item))
+
+
+def set_effect_type(item, value):
+    kind = EFFECT_TYPES[value]
+    # Prefer effects actually used by weapon upgrades, rather than similarly named armour effects.
+    weapon_effects = {sid for rows in DEFAULTS['templates'].values()
+                      for row in rows for sid in row['EffectPrototypeSIDs']}
+    candidates = [sid for sid, row in DEFAULTS['effects'].items() if row['Type'].split('::')[-1] == kind]
+    item.prototype = min(candidates, key=lambda sid: (sid not in weapon_effects, DEFAULTS['effects'][sid]['enum_id']))
+    item.custom = kind not in NON_NUMERIC
+
+
+def behaviour_items(item, context):
+    return BEHAVIOUR_ITEMS.get(effect_type(item), ())
+
+
+def get_behaviour(item):
+    return DEFAULTS['effects'][item.prototype]['enum_id']
+
+
+def set_behaviour(item, value):
+    item.prototype = next(sid for sid, row in DEFAULTS['effects'].items() if row['enum_id'] == value)
+
+
+def get_effect_value(item):
+    return item.value_min
+
+
+def set_effect_value(item, value):
+    item.value_min = item.value_max = value
+
+
+def get_effect_range(item):
+    return item.get('use_range', False) or item.value_min != item.value_max
+
+
+def set_effect_range(item, value):
+    item['use_range'] = value
+    if not value:
+        item.value_max = item.value_min
 
 
 def effect_changed(item, context):
@@ -21,6 +107,7 @@ def effect_changed(item, context):
     item.value_min = float(defaults['ValueMin'].rstrip('%f'))
     item.value_max = float(defaults['ValueMax'].rstrip('%f'))
     item.beneficial = defaults['Positive'].split('::')[-1]
+    item['use_range'] = item.value_min != item.value_max
 
 
 def tree_changed(cfg, context):
@@ -106,7 +193,7 @@ def collect(info):
                 raise RuntimeError(f'Unknown effect for upgrade "{item.name}".')
             if effect.custom:
                 if DEFAULTS['effects'][effect.prototype]['Type'].split('::')[-1] in NON_NUMERIC:
-                    raise RuntimeError('Caliber, ammo-type and flag effects cannot use numerical overrides.')
+                    raise RuntimeError('Caliber, ammo-type, flag, fire-mode and weapon-pattern effects cannot use numerical overrides.')
                 if not all(math.isfinite(value) for value in (effect.value_min, effect.value_max)) \
                         or effect.value_min > effect.value_max:
                     raise RuntimeError(f'Upgrade "{item.name}" needs finite effect values with Min <= Max.')

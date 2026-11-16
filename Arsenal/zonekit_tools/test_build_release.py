@@ -20,7 +20,7 @@ class ReleaseTests(unittest.TestCase):
         for name in build_release.RESOURCES:
             path = self.addon / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b'BLENDER-v test' if path.suffix == '.blend' else b'{}')
+            path.write_bytes({'.blend': b'BLENDER-v test', '.png': b'\x89PNG\r\n\x1a\n'}.get(path.suffix, b'{}'))
         for name in ('LICENSE', 'NOTICE.md'):
             (self.root / name).write_text(name, encoding='ascii')
 

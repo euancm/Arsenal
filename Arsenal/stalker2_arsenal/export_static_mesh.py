@@ -1,8 +1,10 @@
+import json
 import os
 import re
 
 import bmesh
 import bpy
+from mathutils import Matrix
 
 WEAPON_COLLECTION = 'Weapon'
 WORLD_PREFIX = 'world:'
@@ -86,8 +88,11 @@ def validate_names(weapon_name, category):
 
 def weapon_meshes(rig, scene):
     result = []
+    cfg = getattr(scene, 'arsenal_cfg', None)
+    references = {obj for item in (cfg.attachments if cfg else ()) if item.use_existing
+                  for obj in (item.mesh_object, item.front_object) if obj}
     for obj in scene.objects:
-        if obj.type != 'MESH' or not obj.vertex_groups:
+        if obj.type != 'MESH' or not obj.vertex_groups or obj in references:
             continue
         bound = obj.parent == rig or any(
             modifier.type == 'ARMATURE' and modifier.object == rig for modifier in obj.modifiers)
@@ -191,8 +196,31 @@ def classify_meshes(rig, scene, bone_joints):
     return main, main_bones, weighted[1:]
 
 
-def extract_whole(rig, backup, obj, bone_name, world_joints=None):
-    """Return (bmesh, materials) of the entire mesh, positioned relative to bone_name's head."""
+def attachment_socket_markers(scene, rig):
+    """Resolve custom mounts independently of attachment-preview parenting."""
+    cfg = getattr(scene, 'arsenal_cfg', None)
+    state = getattr(scene, 'arsenal_sockets', None)
+    entries = {entry.socket_name: entry.marker for entry in state.entries} if state else {}
+    result = {}
+    for item in cfg.attachments if cfg else ():
+        if item.use_existing:
+            continue
+        mounts = [(item.mesh_object, item.socket)]
+        if item.kind == 'iron_sight' and item.front_object != item.mesh_object:
+            mounts.append((item.front_object, item.front_socket))
+        for obj, name in mounts:
+            marker = entries.get(name)
+            if marker is None or marker.parent != rig:
+                raise RuntimeError(
+                    f'Attachment "{item.name}" needs socket marker "{name}". Refresh weapon sockets before exporting.')
+            if obj in result and result[obj] != marker:
+                raise RuntimeError(f'Attachment mesh "{obj.name}" is assigned to different sockets.')
+            result[obj] = marker
+    return result
+
+
+def extract_whole(rig, backup, obj, bone_name, world_joints=None, socket=None):
+    """Return the whole mesh in socket-local space, or relative to the bone head for bone mounts."""
     part = bmesh.new()
     part.from_mesh(obj.data)
     if world_joints is not None:
@@ -202,8 +230,19 @@ def extract_whole(rig, backup, obj, bone_name, world_joints=None):
         bmesh.ops.delete(part, geom=unwanted, context='FACES')
     head_world = rig.matrix_world @ rig.data.bones[bone_name].head_local
     to_source_units = backup.matrix_world.to_3x3().inverted_safe()
+    if socket is None and obj.parent and getattr(obj.parent, 'arsenal_socket_id', ''):
+        socket = obj.parent
+    socket_local = None
+    if socket and world_joints is None:
+        from .weapon_sockets import marker_rest_matrix, preview_rest_matrix
+        socket_local = marker_rest_matrix(socket).inverted() @ preview_rest_matrix(obj)
+    world = obj.matrix_world
+    if socket and world_joints is not None:
+        from .weapon_sockets import preview_rest_matrix
+        world = preview_rest_matrix(obj)
     for vert in part.verts:
-        vert.co = to_source_units @ (obj.matrix_world @ vert.co - head_world)
+        vert.co = (socket_local @ vert.co if socket_local is not None
+                   else to_source_units @ (world @ vert.co - head_world))
     deform_layer = part.verts.layers.deform.active
     if deform_layer is not None:
         part.verts.layers.deform.remove(deform_layer)
@@ -227,6 +266,48 @@ def world_magazine_sockets(rig, backup, bone_joints, magazines, mesh_path, root_
         location = to_source_units @ (head - root)
         entries.append({'name': name, 'location': [location.x, -location.y, location.z],
                         'rotation': [0.0, 0.0, 0.0], 'scale': [1.0, 1.0, 1.0]})
+    return {'version': 1, 'units': 'cm', 'mesh': mesh_path, 'entries': entries}
+
+
+def world_mesh_sockets(scene, rig, backup, bone_joints, magazines, mesh_path):
+    """Mount the same attachment meshes on skeletal and root-relative world carriers."""
+    from . import weapon_sockets
+    root_bone = 'Weapon'
+    if root_bone not in rig.data.bones:
+        _main, main_bones, _others = classify_meshes(rig, scene, bone_joints)
+        root_bone = max(main_bones, key=main_bones.get)
+    payload = world_magazine_sockets(rig, backup, bone_joints, magazines, mesh_path, root_bone)
+    entries = payload['entries'] if payload else []
+    cfg = getattr(scene, 'arsenal_cfg', None)
+    names = set()
+    for item in cfg.attachments if cfg else ():
+        names.add(item.socket)
+        if item.kind == 'iron_sight' and (item.use_existing or item.front_object != item.mesh_object):
+            names.add(item.front_socket)
+    if cfg and cfg.allow_silencer and not any(item.kind == 'silencer' for item in cfg.attachments):
+        names.add('SilencerMuzzleSocket')
+    if cfg and cfg.allow_laser and not any(item.kind == 'laser' for item in cfg.attachments):
+        names.add('LaserSocket')
+    state = weapon_sockets.check_markers(scene)
+    markers = {entry.socket_name: entry for entry in state.entries} if state else {}
+    if names and (state is None or state.rig != rig):
+        raise RuntimeError('Refresh weapon sockets on the export rig before exporting world attachment mounts.')
+    if not names:
+        return payload
+    root = rig.matrix_world @ rig.data.bones[root_bone].head_local
+    to_world_mesh = (backup.matrix_world.to_3x3().inverted_safe().to_4x4()
+                     @ Matrix.Translation(-root))
+    for name in sorted(names):
+        entry = markers.get(name)
+        if entry is None:
+            raise RuntimeError(f'World attachment mount {name} has no socket marker. Refresh weapon sockets.')
+        marker = entry.marker
+        rest = weapon_sockets.marker_rest_matrix(marker)
+        if not entry.enabled:
+            rest = (rest @ marker.matrix_basis.inverted() @ weapon_sockets.frame_matrix(entry)
+                    @ weapon_sockets.socket_matrix(json.loads(entry.baseline)))
+        transform = weapon_sockets.matrix_socket(to_world_mesh @ rest)
+        entries.append({'name': name, **transform})
     return {'version': 1, 'units': 'cm', 'mesh': mesh_path, 'entries': entries}
 
 
@@ -266,6 +347,7 @@ def export_static_meshes(context, rig, backup, bone_joints, category, output_roo
     _name, plan = plan_static_meshes(rig, bone_joints, category, output_root, scene)
     targets = {label: (stem, path) for label, stem, path in plan}
     main, main_bones, others = classify_meshes(rig, scene, bone_joints)
+    attachment_markers = attachment_socket_markers(scene, rig)
 
     saved_scale = scene.unit_settings.scale_length
     active = context.view_layer.objects.active
@@ -275,7 +357,11 @@ def export_static_meshes(context, rig, backup, bone_joints, category, output_roo
         jobs.append((bone_name, [(part, materials, main)]))
     for obj, bones in others:
         dominant = max(bones, key=bones.get)
-        part, materials = extract_whole(rig, backup, obj, dominant)
+        marker = attachment_markers.get(obj)
+        if marker is None:
+            part, materials = extract_whole(rig, backup, obj, dominant)
+        else:
+            part, materials = extract_whole(rig, backup, obj, dominant, socket=marker)
         jobs.append((obj.name, [(part, materials, obj)]))
     root_bone = 'Weapon' if 'Weapon' in rig.data.bones else max(main_bones, key=main_bones.get)
     for obj in world_meshes(main, main_bones, others, bone_joints):

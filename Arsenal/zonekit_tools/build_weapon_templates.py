@@ -85,6 +85,60 @@ def asset_path(value):
     return match[1].split('.', 1)[0]
 
 
+def attachment_mounts(setup, attachments, meshes):
+    mounts = {}
+
+    def add(sid, socket):
+        if sid == 'empty':
+            return
+        path = asset_path(meshes[sid]['MeshPath'])
+        if path in mounts and mounts[path] != socket:
+            raise ValueError(f'Attachment mesh {path} has conflicting sockets: {mounts[path]}, {socket}')
+        mounts[path] = socket
+
+    for row in setup['CompatibleAttachments'].values():
+        if not isinstance(row, dict):
+            continue
+        sid = row['AttachPrototypeSID']
+        if sid == 'empty':
+            continue
+        attach = resolve(attachments, sid)
+        kind = attach['AttachType'].split('::')[-1]
+        if kind == 'Magazine':
+            if attach['Magazine']['HasMultipleMeshes'] == 'false':
+                add(row.get('MeshPrototypeSID', attach['MeshPrototypeSID']), row['Socket'])
+            else:
+                for mesh in attach['Magazine']['MeshArray'].values():
+                    if isinstance(mesh, dict) and mesh['MagazineMeshType'].split('::')[-1] in ('Full', 'Empty'):
+                        add(mesh['MeshPrototypeSID'], row['Socket'])
+        elif kind == 'IronSight':
+            for mesh in attach['IronSight']['MeshArray'].values():
+                if isinstance(mesh, dict):
+                    add(mesh['MeshPrototypeSID'], mesh['Socket'])
+        else:
+            add(row.get('MeshPrototypeSID', attach['MeshPrototypeSID']), row['Socket'])
+    return [{'mesh': path, 'socket': socket} for path, socket in mounts.items()]
+
+
+def attachment_options(setup, attachments, meshes):
+    preinstalled = {row['AttachSID'] for row in setup['PreinstalledAttachmentsItemPrototypeSIDs'].values()
+                    if isinstance(row, dict)}
+    result = []
+    for row in setup['CompatibleAttachments'].values():
+        if not isinstance(row, dict) or row['AttachPrototypeSID'] == 'empty':
+            continue
+        sid = row['AttachPrototypeSID']
+        attach = resolve(attachments, sid)
+        kind = attach['AttachType'].split('::')[-1]
+        if kind == 'Magazine':
+            continue
+        mount_setup = dict(setup, CompatibleAttachments={'[0]': row})
+        result.append({'sid': sid, 'kind': kind, 'socket': row['Socket'],
+                       'preinstalled': sid in preinstalled, 'properties': row,
+                       'mounts': attachment_mounts(mount_setup, attachments, meshes)})
+    return result
+
+
 def build(folder, destination):
     items = parse(folder / 'ItemPrototypes.cfg')
     items.update(parse(folder / 'ItemPrototypes' / 'WeaponPrototypes.cfg'))
@@ -139,8 +193,12 @@ def build(folder, destination):
             'base_weapon': sid, 'label': label, 'enum_id': enum_id,
             'category': category, 'animation': animation.lower(), 'mesh': mesh.lower(),
             'part_tokens': sorted(part_tokens),
+            'inventory_size': [int(item['ItemGridWidth']) * 130 - 2,
+                               int(item['ItemGridHeight']) * 130 - 2],
             'ammo_types': [row['AmmoType'].split('::')[-1] for row in setup['AmmoTypeProjectiles'].values()],
             'attachments': attachment_meshes, 'general_ref': item['GeneralWeaponSetup'],
+            'attachment_mounts': attachment_mounts(setup, attachments, mesh_by_sid),
+            'attachment_options': attachment_options(setup, attachments, mesh_by_sid),
             'settings_ref': settings_ref,
             'slot': 'WeaponPistol' if item['ItemSlotType'].endswith('::Pistol') else 'WeaponPrimary',
         }

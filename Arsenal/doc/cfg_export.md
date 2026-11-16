@@ -35,16 +35,46 @@ Custom upgrade trees additionally write `UpgradePrototypes/<ID>UpgradePrototypes
 - Damage and range: damage, armor damage, piercing, bleeding, distances, loudness, comfort, UI stat bars.
 - Handling and fire: tick the **Available Fire Modes** checkboxes for Semi-automatic, Burst and Automatic. At least one stays enabled; the last checked mode cannot be switched off. Under **Fire Mode Settings**, the dropdown shows only enabled modes. Select a mode and tick **Default fire mode** to make it the sole starting mode; the previous default is cleared automatically. The current default cannot be unchecked without choosing another, and disabling its available-mode checkbox selects an enabled replacement automatically. Burst Length appears when Burst is selected and is at least two shots. Fire interval, recoil and dispersion radius, aiming times and jam values are shared across modes, not separate per-mode settings. Export replaces the inherited `FireTypes` list, writes `DefaultFireType`, and uses `EFireType::Queue` / `FireQueueCount` for bursts. Existing blends without these settings keep their template's inherited modes until edited.
 - Ammo and magazines: max ammo, caliber, and a magazine list (name, full/empty mesh objects, capacity, preinstalled, cost, weight, reload multipliers). If the list is empty, magazines are detected from extra weapon meshes (names containing `full` / `empty`).
-- Attachments: silencer, laser, and either the unchanged template upgrade tree or an editable custom tree.
+- Attachments: existing game attachments or custom meshes, and either the unchanged template upgrade tree or an editable custom tree.
 
-Under **Attachments & Upgrades**, add custom silencer/laser entries to configure mod-owned
-attachment IDs, meshes, sockets, price, weight, text and images. Each mesh must be separate and
-weighted to a mapped weapon bone so static export includes it. Custom entries inherit the
-matching game attachment's behaviour but restrict fitting to this weapon and use their own mesh
-prototype. Adding a custom type replaces the corresponding base-game compatibility option;
-without custom entries the existing checkbox behaviour is unchanged. Custom attachments are
-available without the donor laser's upgrade requirement. Set the socket explicitly
-(`SilencerMuzzleSocket` or `LaserSocket` normally).
+**Import Weapon** fills **Attachments & Upgrades** with the donor's compatible attachments.
+AR416's front/rear sights are one custom iron-sight item with two editable meshes. Other
+items, including scopes and grenade launchers, default to **Reference Existing**. Optional
+previews start hidden; show the desired mesh in Blender's Outliner to inspect its fit.
+These previews are rigid reference poses, not independently animated underbarrel weapons.
+Regenerate and run setup before a fresh import to export the expanded preview catalogue.
+
+To reuse the M203, add a **Grenade Launcher** entry, enable **Reference Existing**, enter
+`EN_GLaunch_1`, and choose `SocketOffset` for an AR416-based weapon. A preview mesh is optional.
+Export writes the weapon's compatible-attachment entry and a mod-owned CFG patch appending
+the custom weapon to that item's `FittingWeaponsSIDs`. It does not duplicate or save the
+launcher's game assets, redefine its behaviour, or add it to traders again. The original
+fitting-weapon entries are preserved. Other mods' referenced items must be installed.
+Remove an entry to stop declaring that compatibility; re-export/import updates its CFG.
+Existing projects keep their current list rather than being silently repopulated.
+
+For a custom item, disable **Reference Existing**, set **Base Attachment SID** to the game
+item whose behaviour it should inherit, and assign its separate, weighted mesh and socket.
+The **Type** menu includes every real base-game attachment type; custom magazines still use
+**Ammo & Magazines**, and animated underbarrel launchers/shotguns currently require
+**Reference Existing**. Custom iron sights have separate rear/primary and front mesh/socket
+fields. **Preinstalled** makes an item come fitted and hidden in inventory.
+Price, weight, text and standalone image controls apply only to custom items. Referenced
+items still have **Inventory image** and **Upgrade image** layers, because they show the item
+on this weapon. The inventory layer is written as `WeaponSpecificIcon`; see
+[Inventory images](inventory_images.md).
+
+A custom item lists only this weapon in its in-game **Fits:** text. Its inherited
+`FittingWeaponsSIDs` list is overwritten entry by entry, with unused donor entries set to
+`empty`: struct-level `{bskipref}` alone merged the donor's list by index in game. An imported
+scope entry whose **Reference Existing** was turned off is exported as a separate custom copy
+(for example a second "Holographic sight"); turn it back on to keep using the game item.
+
+Custom silencer/laser entries replace the corresponding checkbox fallback. Donor upgrade
+requirements are retained while **Use Base Weapon Upgrade Tree** is enabled; manually added custom
+entries have no donor upgrade requirement. Set the socket explicitly
+(`SilencerMuzzleSocket` or `LaserSocket` normally). See [Weapon sockets](weapon_sockets.md)
+to bind an existing project's previews without reimporting its weapon.
 
 Every purchasable magazine and custom attachment has its own **Language**, **Display Name**, **Description**
 and optional **Text Key Override**. Its ID is not its displayed name. Text exports through the
@@ -60,6 +90,51 @@ stay in the blend in case you later make the magazine purchasable; existing Zone
 not deleted.
 
 Rendered images are exported and referenced automatically; see [Inventory images](inventory_images.md).
+
+### Custom scope reticle
+
+A custom scope can replace the reticle it inherits. In its **Attachments & Upgrades** entry,
+choose or open an image under **Reticle Image**:
+
+- Use a square image, ideally a **256 x 256** PNG (any format Blender opens works; larger square
+  images are scaled down, non-square images are stretched).
+- Draw the reticle in **white on black or transparent**, centred on the aim point. Only brightness
+  is used: each pixel's strength is its brightest RGB channel times its alpha. Colours in the image
+  are ignored; set the colour with the controls below.
+- Leave about 35 pixels of empty margin; a soft glow is generated around the mark on export,
+  as in the game's own reticle texture. The Goloscope reticle spans about 167 pixels of its
+  256-pixel cell with an 8-pixel centre dot, as a size reference.
+
+Tick **Custom Reticle Colours** to override the game material's colour parameters. Colours are
+linear, as in the game's material. Defaults are the Goloscope's values:
+
+| Control | Game parameter | Goloscope value |
+|---|---|---|
+| Reticle Colour, Intensity | `SightColor(RGB)Int(A)` | (1.0, 0.036, 0.036), 1.0 |
+| Glow Colour, Intensity | `SighAddColor(RGB)Int(A)` | (0.333, 0.305, 0.305), 0.436 |
+| Brightness | `SightBrightnes` | 5 |
+| Night Vision Brightness | `NVGSightBrightnes` | 3 |
+
+Leave it unticked to keep the values of the game scope this one is based on. Colours work with
+or without a reticle image: without one, the inherited reticle shape is recoloured. Parallax
+and the rest of the game material are unchanged. A reticle is a single colour plus a glow
+colour; the game material does not support multi-coloured reticle images.
+
+The scope mesh needs exactly one material slot whose name contains `mark` and matches a game
+reticle material such as `MI_rds02_en_goloscope_1_mark`. That slot's material must not use its
+own textures. The importer creates a mod-owned material instance of that game material with
+your reticle and colours and assigns it to the scope's first-person and world meshes; the game
+material is not modified. Each import resets that instance to the game values before applying
+the current settings. Export All stops before writing anything if these conditions are not met.
+Clear the image and untick the colours to go back to the inherited reticle. Reticle colours are
+not yet verified in game.
+
+White-on-transparent input is supported; an opaque reticle square is not a reason to add a black
+background. The generated atlas is a mask, not a transparent sprite. It must match the game
+material's texture sampler: the Goloscope uses a **Virtual Color** sampler, so its replacement
+mask must enable **Virtual Texture Streaming**. The importer copies this flag from the inherited
+`SightMask` texture. If an earlier export produced a filled coloured square, use **Export All**,
+run the newly generated importer and repackage to repair the mod-owned texture setting.
 
 ### Sharing an existing magazine
 
@@ -224,6 +299,11 @@ Select an upgrade to edit:
   IDs, separated by commas. Update those lists if you rename or remove a referenced upgrade.
 - **Cost**, **Weapon Part**, **Column**, **Position** and **Connection Lines** define the technician
   screen layout. Connectors are comma-separated `Top`, `Down` or `None`.
+- **Modification** writes the game's `IsModification` flag: game templates use it for hardware
+  and feature conversions (rails, lasers, canted aim), not ordinary stat upgrades. It is not a
+  switch to enable custom values and does not create an attachment or an effect by itself.
+  Leave it off for a plain damage/recoil upgrade, or retain the donor's setting when editing.
+- **Hide Without Required Item** hides an upgrade until its required item is available.
 - **Prerequisite Upgrade IDs**, **Mutually Exclusive Upgrade IDs** and **Interchangeable Upgrade IDs**
   are remapped to this weapon's mod-owned upgrade SIDs on export. Invalid IDs, self-references,
   duplicate references and prerequisite cycles block export instead of generating a broken tree.
@@ -240,13 +320,21 @@ Select an upgrade to edit:
 - **Select Image** packs a custom module illustration at its original dimensions and exports a
   mod-owned UI texture. **X** restores the donor illustration. This is separate from the large
   weapon/component **Upgrade image** preview.
-- **Functionality** lists existing game effects. Add/remove effects or enable **Custom Values** to
-  create a mod-owned numerical version of the chosen effect. For +15% damage, select
-  `DamagePos20Effect`, enable Percentage and set Minimum/Maximum to `15`; for -20% recoil,
-  select `RecoilDown20Effect` and set both to `-20`. Signed values modify the affected game stat,
-  not a generic "improvement" amount. Benefit controls the game's benefit/penalty presentation;
-  the effect can also be hidden from upgrade details. Caliber, ammo-type and flag effects use
-  their existing behaviour and cannot take numerical overrides.
+- **Functionality** groups effects by the stat they change. Choose **Damage**, **Recoil**, etc.
+  once rather than searching through every 10/15/20-percent game preset. The Effect menu tooltip
+  and the text below it explain each type. Selecting a numerical type enables **Custom Values**.
+  For +15% damage, choose **Damage**, enable **Percentage** and set **Value** to `15`; for
+  -20% recoil, choose **Recoil** and set **Value** to `-20`.
+  **Value Range** exposes separate Minimum/Maximum inputs if needed. Signed values modify the
+  affected game stat, not a generic "improvement" amount: negative recoil is beneficial, whereas
+  negative damage is a penalty. Set **Benefit** to match the intended presentation; it does not
+  reverse the numerical sign. **Show Effect in Upgrade Details** controls presentation only.
+  **Advanced: Base Effect** retains the exact game prototype selector for specialised inheritance.
+  Changing that prototype resets the values to its defaults. Existing projects retain their exact
+  prototypes, custom values and ranges until edited.
+- Calibre, ammunition, feature flags, fire modes and weapon-pattern changes keep a **Base Effect**
+  selector because they encode behaviour, not a single signed number. They cannot take numerical
+  overrides. Their required hardware and weapon configuration must still be compatible.
 
 The **+ / -** buttons add/remove custom upgrades and effects. An empty custom tree is permitted.
 **Reset Tree to Template** replaces the custom tree, text and image assignments after confirmation.
@@ -294,7 +382,8 @@ does not guarantee that its settings win when two files define the same SID.
 ## Taken from the template weapon
 
 Recoil pattern, blend curve, camera shake and audio events (not editable). The base upgrade
-tree is unchanged unless custom-tree editing is enabled. The silencer and laser attachment blocks are UDP-style.
+tree is unchanged unless custom-tree editing is enabled. Fresh imports retain donor-specific
+attachment settings; legacy silencer/laser checkbox fallbacks still use UDP-style blocks.
 
 ## Name and description (localisation)
 
@@ -308,7 +397,7 @@ Text updates use Unreal's native array and struct text APIs, without requiring t
 
 Languages absent from the asset fall back to English, so fill in English first. Type `\n` for a line break in the description. Exported values, including non-Latin text, quotes and line breaks, are checked against the asset before saving. A failed write or save produces a warning, not a successful localisation update; the JSON and all SID/language values in the Output Log remain available for diagnosis or manual recovery. Multiline log values use literal `\n` escapes.
 
-Before packaging, open your mod in the Mod Editor and update its AnimCollection options to use your weapon's first-person collection. Save these options. Localisation no longer needs a routine manual update; resolve any import warnings before packaging and testing in game.
+No manual AnimCollection or localisation step is needed before packaging: the import script repoints the weapon's AnimCollection and writes the text entries. Check any import warnings in the Output Log, then package and test in game.
 
 ### Recovering missing ZoneKit setup
 
@@ -321,8 +410,7 @@ No donor FBXs are exported during recovery, and shared `/Game` assets are not sa
 Missing donors, failed saves or failed reference repairs stop recovery explicitly.
 
 Regenerate the import script after updating the add-on; older generated scripts
-cannot acquire this behaviour by reloading Blender. Continue to save the Mod
-Editor's AnimCollection options before packaging.
+cannot acquire this behaviour by reloading Blender.
 
 ## Notes
 

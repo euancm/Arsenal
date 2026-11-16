@@ -7,7 +7,7 @@ Developer documentation for the importer module integrated into Stalker 2 Arsena
 - Blender with the FBX importer enabled. The minimum supported version is Blender 5.2.2; earlier versions are not supported.
 - The asset directory must contain `Animations/Player` and `Animations/Weapons`. The add-on accepts either the folder containing `Animations`, or the `Animations` folder itself.
 - The base-skeleton operation is designed for a blank scene. It refuses to run if the active scene already contains an armature.
-- These operators import animation and the character mesh included in the character idle FBX. Weapon meshes and materials are imported by **Import Weapon** (see "Attachments, sockets and textures").
+- These operators import animation and the player's first-person body. Setup exports the textured body `SK_pla_sel_07` next to the animations; exports made before it fall back to the bare `SK_stalker` preview mesh included in the character idle FBX. Weapon meshes and materials are imported by **Import Weapon** (see "Attachments, sockets and textures").
 - No third-party Python packages are required.
 
 ## Installation and Quick Start
@@ -51,6 +51,13 @@ It identifies files by filename stem, not by directory name:
 
 Matching is case-insensitive. Suffixes are compared after `casefold()`, and the character-side spelling is used for the generated action name. Matching suffixes present on both sides form pairs. A suffix with more than one file on either side is ambiguous and skipped.
 
+The known `idle_aim_to_idle` / `aim_to_idle` naming variation is paired as one transition,
+using the original character-side action name and both original donor file paths. It is
+not imported as two actions with idle stand-ins. Duplicate files under either spelling
+remain ambiguous rather than being selected arbitrarily.
+
+Leftover halves that differ only by a trailing number, one character and one weapon (`sight_holographic_attach_BuckGrenLaunch2` and `sight_holographic_attach_BuckGrenLaunch` on the M16), are paired as a **variant pair** (`is_variant_pair`). The character-side suffix names the action, and the baked action records both file names (`stalker2_source_pair`). Export writes each half under its own donor file name. Actions baked before variant pairing used an idle stand-in for the missing half and lack this record. Export skips them with a warning, so delete the action, then import and retarget it again.
+
 A suffix found on only one side (`idle_boltlock` and `break_bullet_idle` are weapon-only, the offset aim clips character-only) is paired with the other side's `idle` as a **stand-in** (`stand_in_half`). The bake runs for the real half's length, and export writes only the real half. `*_add` keys have no stand-in: those additive idles are rebuilt by the ZoneKit import script and stay unpaired.
 
 The idle pair used to create the base skeleton is found through the same scan and must have the suffix `idle`. The exact expected files are `AS_fp_udp_idle.FBX` and `AS_udp_fp_idle.FBX`.
@@ -68,10 +75,11 @@ The **Create Base Skeleton** operator calls `_create_base_skeleton` and performs
 7. Renames the armature and its data to `STALKER 2 Master Armature` and `STALKER 2 Master Skeleton`.
 8. Clears armature animation data and resets all pose-bone location, rotation, and scale channels to their identity values.
 9. Sets the armature and retained character mesh object scales to `(1, 1, 1)`. The mesh remains linked to the armature through its existing parent and Armature modifier.
-10. Removes weapon-side meshes and other temporary imported objects, the imported idle actions, and the default startup objects named `Camera`, `Cube`, and `Light`.
-11. Creates and activates a camera parented to the `jnt_camera` bone.
+10. When the export contains `_STALKER2/SkeletalMeshes/player/sel/sel_07/SK_pla_sel_07.glb` (exported as glTF because FBX export of this mesh crashes ZoneKit), imports that textured body, bakes its bind pose into the master's rest pose, parents it to the master with an Armature modifier and applies its textures from `materials.json`. It then replaces the preview mesh. The body's colour textures also drive the material's alpha, so thin cards such as the clothing threads show correctly. If the body cannot be imported, or comes in at the wrong size, the preview mesh is kept and a warning explains why.
+11. Removes weapon-side meshes and other temporary imported objects, the imported idle actions, and the default startup objects named `Camera`, `Cube`, and `Light`.
+12. Creates and activates a camera parented to the `jnt_camera` bone.
 
-All mesh objects imported from the character idle FBX are retained. In the supplied assets this is `SK_stalker`. Weapon-side mesh objects are removed. The mesh is not joined to the armature or otherwise altered beyond setting its object scale to identity.
+With the body export, the scene keeps one character mesh, `SK_pla_sel_07`. Older exports keep the mesh objects imported from the character idle FBX (`SK_stalker`, untextured), which are not joined to the armature or otherwise altered beyond setting their object scale to identity. Run setup again to export the body for an existing project. Mesh skinning is paused while animations are baked, so the denser body does not slow imports or retargeting.
 
 ### Camera Configuration
 
@@ -84,6 +92,7 @@ The active camera is named `STALKER 2 First Person Camera` and has these setting
 | Local location | `(0, -bone.length, 0)` (bone head) |
 | Local Euler rotation | `(90°, 0°, 0°)` |
 | Lens | `18 mm` |
+| Composition guide | Center |
 | Sensor fit / width | Horizontal / `36 mm` |
 | Clip range | `0.01` to `10000` Blender units |
 
@@ -128,7 +137,7 @@ Generated actions carry the custom property `stalker2_animation_importer`. If an
 
 Import All continues after a pair-level failure and reports the suffix and error. Scanning reports unmatched and ambiguous suffix counts. Base creation reports an error when the root is invalid, the idle pair is missing, the scene already has an armature, or the character skeleton lacks `jnt_camera`.
 
-The final scene objects are cleaned per pair. The add-on removes imported actions even if the FBX importer assigns them a fake user. It does not perform a global purge of unrelated orphaned materials or images.
+The final scene objects are cleaned per pair. The add-on removes the actions created by each FBX import even if they have a fake user or another user; some Blender setups give them a stray Scene user, and a surviving raw take (`jnt_root|Unreal Take|Base Layer.001` and similar) keys object transforms. It does not perform a global purge of unrelated orphaned materials or images.
 
 ## User Interface and Internal API
 
@@ -146,7 +155,8 @@ Operators:
 | `bpy.ops.stalker2.create_base_skeleton()` | Build the idle-derived armature, retain the character mesh, and create the camera |
 | `bpy.ops.stalker2.scan_animations()` | Scan and report matching, unmatched, and ambiguous files |
 | `bpy.ops.stalker2.import_animations()` | Import and bake all matching pairs onto the tagged armature |
-| `bpy.ops.stalker2.import_new_animations()` | On a converted rig, import and retarget only the pairs the blend has no action for |
+
+The development-only helper `import_new_animations(context, rig, backup, root, weapon_name)` imports and retargets only the pairs a converted blend has no action for; it has no operator or button.
 
 Core helpers are module-level functions to keep the import, bake, and cleanup behavior testable: `_scan_library`, `_create_base_skeleton`, `_import_fbx`, `_put_action_on_nla`, `_copy_bone_transforms`, `_bake_parameters`, and `_import_pair`.
 
@@ -196,16 +206,64 @@ Note: weapon-rig root motion (`jnt_offset`) is baked in world space so aim poses
 
 ### Bone shapes
 
-Each weapon bone is given the library shape whose name words all appear in the bone name; the most specific shape wins (`jnt_magazine_tab` gets `customboneshape_pistol_magazinerelease`, not the plain magazine). Shapes are read from `stalker2_arsenal/shapes/weapon_bone_shapes.blend`: to add one, save a mesh named `customboneshape_<words>` into that file (class words like `pistol` are optional matches). Bones with no matching shape keep the default.
+Each weapon bone is given the most specific matching library shape. Family words such as
+`pistol`, `shotgun`, `rifle`, `smg` and `sniper` restrict a shape to that donor family;
+shapes without a family word are shared. A base shape is only used for the `Weapon`
+control, never a magazine bone such as `jnt_clip_base`. For example, a shotgun gets
+the shotgun base and magazine shapes rather than the pistol versions.
+
+Shapes are read from `stalker2_arsenal/shapes/weapon_bone_shapes.blend`: to add one,
+save a mesh named `customboneshape_<family>_<part>` or `customboneshape_<part>` into
+that file. Bones with no appropriate shape keep Blender's default display; additional
+rifle and sniper shapes still need to be supplied.
 
 
 ## Attachments, sockets and textures
 
-The ZoneKit setup script also exports the magazine, silencer and laser meshes for the chosen template, the weapon's sockets (`weapon_sockets.json`) and the textures of every exported mesh's materials (`Textures/` and `materials.json`). Import Weapon brings the attachments in weighted to `jnt_magazine` (magazines) or the `Weapon` bone, with an Armature modifier, skips collision (`UCX_`) meshes and lower LODs, positions silencers and lasers at their socket when the socket file is present, and builds each material's image nodes from `materials.json`. Nanite meshes are exported with Nanite temporarily off so the full-detail mesh is written rather than the reduced fallback.
+The ZoneKit setup script exports the chosen template's configured magazines, silencers,
+lasers, iron sights, compatible scopes and underbarrel weapons, and preinstalled parts,
+including the M860's default pump grip. It also
+exports the weapon's sockets (`weapon_sockets.json`) and every exported mesh's material
+textures (`Textures/` and `materials.json`). The attachment catalogue comes from the
+game's weapon and attachment definitions, including each mesh's exact mounting socket.
+
+Import Weapon only reads attachments belonging to the current donor, even if an export
+folder contains files left by another template. A mesh named after another weapon may
+still be valid when the game explicitly shares it: for example, Dnipro's increased
+magazine references an AK74 mesh.
+
+Direct bone-mounted attachments use an Armature modifier and the configured bone, such as
+`jnt_magazine` or `jnt_clip_base`. Named mounts use the catalogue's complete reference-bone and socket
+transforms, including rotation and scale. Different laser models can use `LaserSocket`
+and `LaserSocket2`; they are not all placed at the first laser socket. Missing named
+sockets or a catalogue from another donor stop import with an error.
+Named-socket previews follow their marker live, with the armature deformation disabled
+to avoid applying bone animation twice. Inventory and world-mesh snapshots exclude the
+current animation pose but retain authored socket edits.
+
+The attachment list is populated on a fresh import: default iron sights use editable custom
+meshes, and other items default to **Reference Existing**. Optional meshes start hidden.
+Skeletal underbarrel assets are imported as rigid previews without retaining their source
+armatures, and are not duplicated into the mod by setup. Spare rounds parked beside the
+launcher in its mesh (the M203's `jnt_m406_*` and `jnt_vog25_charge` bones) are left out of
+the preview. Existing edits and attachment lists
+are not replaced. See [Attachment configuration](cfg_export.md).
+
+**After updating, regenerate and run the ZoneKit setup script for the selected template
+before importing into a new Blender scene.** Previously generated scripts do not include
+the new attachment list; old exports may be missing sights, pump grips or shared magazines.
+Missing configured attachment files stop import before a weapon rig is created and identify
+the files to re-export. Keep existing edited projects safe rather than importing over them.
+
+Collision (`UCX_`) meshes and lower LODs are skipped. Materials are built from `materials.json`.
+Nanite meshes are exported with Nanite temporarily off so the full-detail mesh is written
+rather than the reduced fallback.
 
 Meshes import with smooth shading and their original hard edges (kept as Sharp Edge marks; the FBX custom normals are dropped so the mesh stays editable). If the FBX carries none, the edges on UV island boundaries are marked sharp. Textures named `rain` are skipped; an `RMA` texture goes through a Split Colour node (red to Roughness, green to Metallic). Import Weapon also fills the Magazines list (Detect Magazines); silencers, lasers and other accessories are never detected as magazines.
 
-All magazine meshes (default, increased/big/twin; full and empty) are exported from ZoneKit and imported; Detect Magazines names the standard one Default and the others Increased/Twin/Drum. Normal Map nodes are set to the DirectX convention.
+Configured magazine meshes (default, increased/big/twin; full and empty, excluding half
+variants) are exported from ZoneKit and imported; Detect Magazines names the standard
+one Default and the others Increased/Twin/Drum. Normal Map nodes are set to the DirectX convention.
 
 Montages: Python cannot edit montage slot tracks; rebuilding a montage with AnimMontageFactory
 loses its slot name, notifies and length, and consolidate_assets on /Game assets crashes ZoneKit

@@ -16,6 +16,7 @@ import types
 
 CONFIG = None
 PATCHER_SOURCE = None
+ARSENAL_VERSION = None
 
 try:
     import unreal
@@ -25,6 +26,8 @@ except ImportError:
 GAME = '/Game'
 ANIM_CLASSES = ('AnimSequence', 'AnimMontage')
 SKIP_SIDE_FOLDERS = ('tp', 'characters', 'zombie', 'skins')
+# Player -> Player_SEL_07_MeshGenerator -> Player_sel_07 (ObjPrototypes / AttachMeshPrototypes.cfg).
+CHARACTER_MESH = '/Game/_STALKER2/SkeletalMeshes/player/sel/sel_07/SK_pla_sel_07'
 REPORT = []
 
 
@@ -40,6 +43,39 @@ def warn(message):
     print('WARNING: ' + message)
     if unreal is not None:
         unreal.log_warning(f'[Arsenal setup] {message}')
+
+
+class Progress:
+    """ZoneKit progress dialog; does nothing outside ZoneKit or if this build lacks ScopedSlowTask."""
+
+    def __init__(self, total, label, cancellable=False):
+        self.total, self.label, self.cancellable, self.task = total, label, cancellable, None
+
+    def __enter__(self):
+        if unreal is not None and self.total:
+            try:
+                self.task = unreal.ScopedSlowTask(self.total, self.label)
+                self.task.__enter__()
+            except Exception:
+                self.task = None
+            else:
+                try:
+                    self.task.make_dialog(self.cancellable)
+                except Exception:
+                    pass
+        return self
+
+    def step(self, text):
+        if self.task is None:
+            return
+        if self.cancellable and self.task.should_cancel():
+            raise RuntimeError(f'{self.label} was cancelled.')
+        self.task.enter_progress_frame(1, text)
+
+    def __exit__(self, *error):
+        if self.task is not None:
+            self.task.__exit__(*error)
+        return False
 
 
 def token_pattern(tokens):
@@ -126,9 +162,15 @@ def export_additive_overlays(result):
     result['sequences'].sort()
 
 
+def mesh_packages(selection):
+    """Meshes exported with full detail and textures; the character body is exported but never copied."""
+    keys = ('skeletal_meshes', 'static_meshes', 'character_meshes')
+    return [package for key in keys for package in selection.get(key, [])]
+
+
 def exported(selection, config):
     """Packages exported to FBX for Blender (the template's original names)."""
-    packages = list(selection['sequences']) + list(selection['skeletal_meshes']) + list(selection['static_meshes'])
+    packages = list(selection['sequences']) + mesh_packages(selection)
     if config.get('export_additive'):
         packages += selection['additive']
     return packages
@@ -152,8 +194,8 @@ def mod_package(package, mod):
     return f'/{mod}' + package[len(GAME):]
 
 
-def export_file(package, export_dir):
-    return os.path.join(export_dir, *package[len(GAME) + 1:].split('/')) + '.fbx'
+def export_file(package, export_dir, extension='.fbx'):
+    return os.path.join(export_dir, *package[len(GAME) + 1:].split('/')) + extension
 
 
 def build_plan(assets, config, additive_of=None):
@@ -161,9 +203,14 @@ def build_plan(assets, config, additive_of=None):
     for package in config.get('attachment_meshes', []):
         if package not in selection['static_meshes']:
             selection['static_meshes'].append(package)
+    # The player's textured first-person body; the animation preview mesh is a bare placeholder.
+    character = config.get('character_mesh', CHARACTER_MESH)
+    selection['character_meshes'] = [character] if character else []
     plan = {'selection': selection, 'exports': [], 'copies': []}
     for package in exported(selection, config):
-        plan['exports'].append((package, export_file(package, config['export_dir'])))
+        # FBX export of the player body crashes ZoneKit; glTF exports it safely.
+        extension = '.glb' if package in selection['character_meshes'] else '.fbx'
+        plan['exports'].append((package, export_file(package, config['export_dir'], extension)))
     for package in copied(selection):
         source = mod_package(package, config['mod'])
         plan['copies'].append((package, source, renamed(source, config)))
@@ -227,11 +274,32 @@ def nanite_fallback_off(asset):
     return restore
 
 
+def export_gltf(asset, filename):
+    """Skinned mesh only: textures come from export_textures, so no material baking or images."""
+    options = unreal.GLTFExportOptions()
+    for name, value in (
+        ('export_vertex_skin_weights', True),
+        ('bake_material_inputs', unreal.GLTFMaterialBakeMode.DISABLED),
+        ('texture_image_format', unreal.GLTFTextureImageFormat.NONE),
+    ):
+        try:
+            options.set_editor_property(name, value)
+        except Exception as error:
+            warn(f'glTF option {name}: {error}')
+    messages = unreal.GLTFExporter.export_to_gltf(asset, filename, options, set())
+    errors = list(messages.get_editor_property('errors') or [])
+    if errors or not os.path.isfile(filename):
+        raise RuntimeError('; '.join(str(error) for error in errors) or 'the export produced no file')
+
+
 def export_package(package, filename, is_mesh):
     asset = unreal.EditorAssetLibrary.load_asset(package)
     if asset is None:
         raise RuntimeError('could not load the asset')
     os.makedirs(os.path.dirname(filename), exist_ok=True)
+    if filename.lower().endswith('.glb'):
+        export_gltf(asset, filename)
+        return
     options = unreal.FbxExportOption()
     # Only the full-detail LOD0; lower LODs just add SK_stalker_LOD1 style extras in Blender.
     try:
@@ -261,18 +329,28 @@ def export_package(package, filename, is_mesh):
         raise RuntimeError('the export produced no file')
 
 
-def run_exports(plan, config):
+def run_exports(plan, config, exports=None):
+    exports = plan['exports'] if exports is None else exports
     done = failed = 0
-    for package, filename in plan['exports']:
-        is_mesh = package in plan['selection']['static_meshes'] or package in plan['selection']['skeletal_meshes']
-        try:
-            export_package(package, filename, is_mesh)
-            done += 1
-        except Exception as error:
-            failed += 1
-            warn(f'Export failed for {package}: {error}')
+    meshes = mesh_packages(plan['selection'])
+    with Progress(len(exports), 'Arsenal setup: exporting files for Blender', cancellable=True) as progress:
+        for index, (package, filename) in enumerate(exports):
+            progress.step(f'{index + 1}/{len(exports)}: {package.rsplit("/", 1)[-1]}')
+            try:
+                export_package(package, filename, package in meshes)
+                done += 1
+            except Exception as error:
+                failed += 1
+                warn(f'Export failed for {package}: {error}')
     log(f'Exported {done} files to {config["export_dir"]} ({failed} failed)')
     return done, failed
+
+
+def split_risky_exports(plan):
+    """The player body export has crashed ZoneKit before; run it after everything else is saved."""
+    risky = set(plan['selection'].get('character_meshes', []))
+    return ([item for item in plan['exports'] if item[0] not in risky],
+            [item for item in plan['exports'] if item[0] in risky])
 
 
 def _vector(value, names):
@@ -375,6 +453,25 @@ def _material_textures(material):
     return textures
 
 
+COLOUR_PARAMETERS = ('albedo', 'diffuse', 'basecolor', 'base_color')
+
+
+def _with_effective_colour(material, textures):
+    """Some instances (the player's right hand) inherit their albedo in a way the parameter walk misses."""
+    if any(word in name.casefold() for name in textures for word in COLOUR_PARAMETERS):
+        return textures
+    try:
+        editing = unreal.MaterialEditingLibrary
+        for name in editing.get_texture_parameter_names(material):
+            if any(word in str(name).casefold() for word in COLOUR_PARAMETERS):
+                texture = editing.get_material_instance_texture_parameter_value(material, name)
+                if texture is not None:
+                    return dict(textures, **{str(name): texture})
+    except Exception as error:
+        warn(f'Could not read the effective colour texture of {material.get_name()}: {error}')
+    return textures
+
+
 def export_textures(plan, config):
     """Export every texture used by the exported meshes' materials, with materials.json naming them."""
     library = unreal.EditorAssetLibrary
@@ -383,13 +480,13 @@ def export_textures(plan, config):
     materials = {}
     files = {}
     selection = plan['selection']
-    for package in list(selection['skeletal_meshes']) + list(selection['static_meshes']):
+    for package in mesh_packages(selection):
         asset = library.load_asset(package)
         for material in _material_slots(asset) if asset else []:
             if material is None or material.get_name() in materials:
                 continue
             entry = {}
-            for parameter, texture in _material_textures(material).items():
+            for parameter, texture in _with_effective_colour(material, _material_textures(material)).items():
                 name = texture.get_name()
                 if name not in files:
                     target = os.path.join(textures_dir, name + '.png')
@@ -672,6 +769,7 @@ def _main():
     validate(config)
     if unreal is None:
         raise RuntimeError('Run this script inside ZoneKit (it needs the unreal module).')
+    log(f'Arsenal setup script version {ARSENAL_VERSION or "unknown"}')
     registry, assets = registry_assets()
     additive_of = sequence_is_additive
     plan = build_plan(assets, config, additive_of)
@@ -688,8 +786,9 @@ def _main():
         export_sockets(plan, config)
         log('Socket catalogue refreshed; no mod assets were copied, renamed or saved.')
         return
+    safe_exports, risky_exports = split_risky_exports(plan)
     if config.get('export', True):
-        run_exports(plan, config)
+        run_exports(plan, config, safe_exports)
         for step in (export_sockets, export_textures):
             try:
                 step(plan, config)
@@ -713,6 +812,10 @@ def _main():
         library.save_directory(f'/{config["mod"]}', only_if_is_dirty=True, recursive=True)
         log(f'{problems} copies still reference a template asset' if problems else 'No stale references to template assets')
     write_report(config, plan, {})
+    if config.get('export', True) and risky_exports:
+        log('Mod assets are saved. Exporting the textured player body last.')
+        run_exports(plan, config, risky_exports)
+        write_report(config, plan, {})
     log('Setup finished. Next: in Blender, press Import Weapon with the ZoneKit export folder.')
 
 

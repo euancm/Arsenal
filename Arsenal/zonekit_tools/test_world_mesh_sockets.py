@@ -1,4 +1,4 @@
-"""Asset-free world magazine socket tests: python -m unittest Arsenal.zonekit_tools.test_world_mesh_sockets."""
+"""Asset-free world mesh socket tests: python -m unittest Arsenal.zonekit_tools.test_world_mesh_sockets."""
 import copy
 import importlib.util
 from pathlib import Path
@@ -165,7 +165,7 @@ class WorldSocketTests(unittest.TestCase):
     def test_dry_run_reports_and_validates_world_mounts_without_loading_assets(self):
         with patch.object(runtime, 'build_plan', return_value={}), patch('builtins.print') as output:
             runtime.print_plan(self.manifest, '')
-            output.assert_any_call('world magazine sockets: 1 on /TestMod/weapons/SM_test')
+            output.assert_any_call('world mesh sockets: 1 on /TestMod/weapons/SM_test')
             self.manifest['world_mesh_sockets']['mesh'] = '/Game/SM_test'
             with self.assertRaises(RuntimeError):
                 runtime.print_plan(self.manifest, '')

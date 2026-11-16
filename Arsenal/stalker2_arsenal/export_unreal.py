@@ -169,10 +169,9 @@ def write_unreal_import(context, *, animation_paths=None):
 
     from . import inventory_images, setup_panel, weapon_cfg, weapon_sockets, weapon_distribution
     info = weapon_cfg.build_context(context)
-    root_bone = 'Weapon' if 'Weapon' in rig.data.bones else max(main_bones, key=main_bones.get)
-    world_sockets = static_mesh.world_magazine_sockets(
-        rig, backup, bone_joints, info['magazines'],
-        info['world_mesh'].split("'")[1].split('.')[0], root_bone)
+    world_sockets = static_mesh.world_mesh_sockets(
+        context.scene, rig, backup, bone_joints, info['magazines'],
+        info['world_mesh'].split("'")[1].split('.')[0])
     socket_state = getattr(context.scene, 'arsenal_sockets', None)
     if socket_state is not None and socket_state.entries:
         if socket_state.rig != rig:
@@ -187,6 +186,9 @@ def write_unreal_import(context, *, animation_paths=None):
     ui_images = inventory_images.export_images(info)
     from . import weapon_upgrades
     ui_images.extend(weapon_upgrades.export_images(info))
+    from . import scope_reticles
+    scope_reticles.check_reticles(info)
+    reticles = scope_reticles.export_reticles(info, weapon_folder, relative)
     setup_config = setup_panel.build_config(context)
     setup_config.update(export_dir=output_root, dry_run=False, export=False)
 
@@ -196,6 +198,7 @@ def write_unreal_import(context, *, animation_paths=None):
         'distribution': weapon_distribution.payload(info),
         'localization': localization,
         'ui_images': ui_images,
+        'reticles': reticles,
         'magazines': magazines,
         'attachments': weapon_cfg.compatible_attachment_sids(info),
         'weapon': animation_name,
@@ -230,8 +233,11 @@ def write_unreal_import(context, *, animation_paths=None):
     with open(template, encoding='utf-8') as handle:
         script = handle.read()
     script = script.replace('BAKED_MANIFEST = None', f'BAKED_MANIFEST = {manifest_path!r}', 1)
+    version = setup_panel.addon_version()
+    script = script.replace('ARSENAL_VERSION = None', f'ARSENAL_VERSION = {version!r}', 1)
     with open(os.path.join(os.path.dirname(__file__), 'unreal_setup.py'), encoding='utf-8') as handle:
         setup_source = handle.read().rsplit("\nif unreal is not None or __name__", 1)[0]
+    setup_source = setup_source.replace('ARSENAL_VERSION = None', f'ARSENAL_VERSION = {version!r}', 1)
     with open(os.path.join(os.path.dirname(__file__), 'uasset_patch.py'), encoding='utf-8') as handle:
         setup_source = setup_source.replace('PATCHER_SOURCE = None', f'PATCHER_SOURCE = {handle.read()!r}', 1)
     script = script.replace('SETUP_SOURCE = None', f'SETUP_SOURCE = {setup_source!r}', 1)

@@ -102,7 +102,7 @@ class AddonRegistrationTests(unittest.TestCase):
             from unittest.mock import patch
             with patch.object(export_animation, 'find_export_rig', return_value=(None, None)):
                 export_animation.ARSENAL_PT_ExportPanel.draw(SimpleNamespace(layout=layout), bpy.context)
-            self.assertEqual(layout.properties, ['output_folder'])
+            self.assertEqual(layout.properties, ['output_folder', 'reexport_all'])
             self.assertEqual(layout.operators, ['object.arsenal_export_all'])
             setup_panel.ARSENAL_PT_SetupPanel.draw(SimpleNamespace(layout=layout), bpy.context)
             self.assertNotIn('dry_run', layout.properties)
@@ -188,6 +188,26 @@ class AddonRegistrationTests(unittest.TestCase):
                 self.assertEqual(bpy.context.scene.arsenal_cfg.setup_template, key)
         finally:
             addon.unregister()
+
+    def test_exportable_actions_ignore_object_level_curves(self):
+        from stalker2_arsenal import export_animation
+        data = bpy.data.armatures.new('ExportRig')
+        rig = bpy.data.objects.new('ExportRig', data)
+        bpy.context.scene.collection.objects.link(rig)
+        bpy.context.view_layer.objects.active = rig
+        bpy.ops.object.mode_set(mode='EDIT')
+        data.edit_bones.new('root').tail = (0, 0, 1)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        action = bpy.data.actions.new('object_and_bone_keys')
+        try:
+            rig.animation_data_create().action = action
+            rig.keyframe_insert('location', frame=1)
+            rig.pose.bones['root'].keyframe_insert('location', frame=1)
+            self.assertEqual(export_animation.exportable_actions(rig), [action])
+        finally:
+            bpy.data.objects.remove(rig)
+            bpy.data.armatures.remove(data)
+            bpy.data.actions.remove(action)
 
 
 if __name__ == '__main__':

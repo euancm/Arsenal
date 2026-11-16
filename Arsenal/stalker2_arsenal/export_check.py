@@ -83,6 +83,7 @@ def path_warnings(info, cfg_paths, written=None):
 
     defined = set()
     external = {item['existing_sid'] for item in info.get('magazines', []) if item.get('existing_sid')}
+    external.update(item['existing_sid'] for item in info.get('attachments', []) if item.get('existing_sid'))
     for text in texts.values():
         defined.update(SID_DEFINITION.findall(text))
     for path, text in texts.items():

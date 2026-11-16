@@ -1,0 +1,354 @@
+{
+ "EN_BuckLaunch_1": [
+  2,
+  1
+ ],
+ "EN_GLaunch_1": [
+  2,
+  1
+ ],
+ "EN_Silen_1": [
+  2,
+  1
+ ],
+ "EN_Silen_2": [
+  2,
+  1
+ ],
+ "EN_Silen_3": [
+  2,
+  1
+ ],
+ "EN_Silen_4": [
+  2,
+  1
+ ],
+ "EN_X2Scope_1": [
+  2,
+  1
+ ],
+ "EN_X3Scope_1": [
+  2,
+  1
+ ],
+ "EN_X4Scope_1": [
+  2,
+  1
+ ],
+ "EN_X8Scope_1": [
+  3,
+  1
+ ],
+ "G37_ScopeRail": [
+  2,
+  1
+ ],
+ "Gauss_Scope": [
+  2,
+  1
+ ],
+ "GunAK74_MagDefault": [
+  1,
+  2
+ ],
+ "GunAK74_MagIncreased": [
+  1,
+  2
+ ],
+ "GunAKU_MagDefault": [
+  1,
+  2
+ ],
+ "GunAKU_Silence_MagDefault": [
+  1,
+  2
+ ],
+ "GunAK_MagPaired": [
+  1,
+  2
+ ],
+ "GunAPB_MagIncreased": [
+  1,
+  2
+ ],
+ "GunArevPrecise_MagDefault": [
+  1,
+  2
+ ],
+ "GunArev_MagDefault": [
+  1,
+  2
+ ],
+ "GunBucket_MagIncreased": [
+  1,
+  2
+ ],
+ "GunD12_MagDefault": [
+  1,
+  2
+ ],
+ "GunD12_MagIncreased": [
+  1,
+  2
+ ],
+ "GunD12_MagLarge": [
+  1,
+  2
+ ],
+ "GunD12_MagPaired": [
+  1,
+  2
+ ],
+ "GunDecider_MagDefault": [
+  1,
+  2
+ ],
+ "GunDnipro_MagDefault": [
+  1,
+  2
+ ],
+ "GunDnipro_MagPaired": [
+  1,
+  2
+ ],
+ "GunDrowned_GLaunch": [
+  2,
+  1
+ ],
+ "GunDrowned_MagPaired": [
+  1,
+  2
+ ],
+ "GunFora230_MagIncreased": [
+  1,
+  2
+ ],
+ "GunFora_MagDefault": [
+  1,
+  2
+ ],
+ "GunFora_MagIncreased": [
+  1,
+  2
+ ],
+ "GunG37V2_MagPaired": [
+  1,
+  2
+ ],
+ "GunG37V2_Scope": [
+  2,
+  1
+ ],
+ "GunGP37_MagDefault": [
+  1,
+  2
+ ],
+ "GunGP37_MagLarge": [
+  2,
+  1
+ ],
+ "GunGP37_MagPaired": [
+  1,
+  2
+ ],
+ "GunGP3A_MagIncreased": [
+  1,
+  2
+ ],
+ "GunGP3A_MagLarge": [
+  1,
+  2
+ ],
+ "GunGrim_MagDefault": [
+  1,
+  2
+ ],
+ "GunGrim_MagIncreased": [
+  1,
+  2
+ ],
+ "GunGrim_MagLarge": [
+  1,
+  2
+ ],
+ "GunGvintar_MagIncreased": [
+  1,
+  2
+ ],
+ "GunIntegral_MagIncreased": [
+  1,
+  2
+ ],
+ "GunKharod_MagDefault": [
+  1,
+  2
+ ],
+ "GunKharod_MagPaired": [
+  1,
+  2
+ ],
+ "GunLavina_MagIncreased": [
+  1,
+  2
+ ],
+ "GunM10_MagDefault": [
+  1,
+  2
+ ],
+ "GunM10_MagIncreased": [
+  1,
+  2
+ ],
+ "GunM16_MagDefault": [
+  1,
+  2
+ ],
+ "GunM16_MagIncreased": [
+  1,
+  2
+ ],
+ "GunNovator_MagDefault": [
+  1,
+  2
+ ],
+ "GunPKP_Korshunov_MagLarge": [
+  2,
+  1
+ ],
+ "GunPKP_MagDefault": [
+  2,
+  1
+ ],
+ "GunPKP_MagIncreased": [
+  2,
+  1
+ ],
+ "GunPKP_MagLarge": [
+  2,
+  1
+ ],
+ "GunS15_MagDefault": [
+  1,
+  2
+ ],
+ "GunSKP_MagIncreased": [
+  1,
+  2
+ ],
+ "GunSotnyk_MagDefault": [
+  1,
+  2
+ ],
+ "GunSpitfire_MagDefault": [
+  1,
+  2
+ ],
+ "GunTank_MagLarge": [
+  2,
+  1
+ ],
+ "GunThreeLine_Scope": [
+  2,
+  1
+ ],
+ "GunViper_MagDefault": [
+  1,
+  2
+ ],
+ "GunViper_MagIncreased": [
+  1,
+  2
+ ],
+ "GunZubr_MagDefault": [
+  2,
+  1
+ ],
+ "GunZubr_MagIncreased": [
+  2,
+  1
+ ],
+ "Gun_GStreet_MagIncreased": [
+  1,
+  2
+ ],
+ "Gun_RatKiller_MagDefault": [
+  2,
+  1
+ ],
+ "Gun_Shakh_MagIncreased": [
+  1,
+  2
+ ],
+ "Gun_Silence_Silen": [
+  2,
+  1
+ ],
+ "Gvintar_Scope": [
+  2,
+  1
+ ],
+ "M701_Scope": [
+  3,
+  1
+ ],
+ "M860LongGrip": [
+  2,
+  1
+ ],
+ "NightStalker_Silen": [
+  2,
+  1
+ ],
+ "RU_GLaunch_1": [
+  2,
+  1
+ ],
+ "RU_Silen_1": [
+  2,
+  1
+ ],
+ "RU_Silen_2": [
+  2,
+  1
+ ],
+ "RU_Silen_3": [
+  2,
+  1
+ ],
+ "RU_X4Scope_1": [
+  2,
+  1
+ ],
+ "RU_X8Scope_1": [
+  2,
+  1
+ ],
+ "SVDM_Scope": [
+  2,
+  1
+ ],
+ "SVU_Scope": [
+  2,
+  1
+ ],
+ "Sharpshooter_Silen": [
+  2,
+  1
+ ],
+ "Sofmod_Silen": [
+  2,
+  1
+ ],
+ "TemplateScopeX2": [
+  2,
+  1
+ ],
+ "TemplateScopeX3": [
+  2,
+  1
+ ],
+ "TemplateScopeX4": [
+  2,
+  1
+ ]
+}

@@ -93,6 +93,7 @@ classes = (
     convert_to_rigify.ConvertToRigifyByMappingOperator,
     retarget_animation.RetargetAnimationOperator,
     animation.AddKeyFrameOperator,
+    animation.CopyGripOperator,
     animation.BakeAnimationOperator,
     panel.ARSENAL_PT_AnimationPanel,
     panel.ARSENAL_PT_MainPanel,

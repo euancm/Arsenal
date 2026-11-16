@@ -48,7 +48,7 @@ generated alongside them. Standard is shared for inventory layers, Upgrade for l
 and MagazineStandalone for standalone magazine icons; authored framing and clipping are retained.
 
 Trader/NPC defaults follow the weapon template and remain saved in the blend. The global
-**Stock Custom Attachments** option makes purchasable custom magazines, silencers and lasers
+**Stock Custom Attachments** option makes purchasable custom magazines and attachments
 follow enabled weapon traders at half the weapon's effective stock chance. The importer combines
 all weapons' distribution into one mod-wide CFG; back up `<mod folder>/Arsenal/distribution.json`
 with your mod. See [CFG export](cfg_export.md#trader-and-npc-inventories) for gates, quantities,
@@ -126,6 +126,9 @@ Blender tests document their command in each module's opening docstring. For exa
 
 Registration, camera placement, IK-control validation, mapping storage, static meshes, CFG,
 inventory images, weapon upgrades and socket-marker tests use disposable synthetic scenes.
+The [weapon-import regressions](../zonekit_tools/test_weapon_import.py) also run without assets;
+optional external Dnipro/GP37 exports and a matching native socket catalogue enable the real-mesh
+magazine and accessory placement checks. Their fixtures are read-only and no blend is saved.
 Animation round-trip, new-animation and skeleton-export tests need an external weapon blend or
 donor FBX as specified in their docstrings. Native ZoneKit socket/collection persistence tests
 require a disposable `ArsenalSocketProbe` mod and a second fresh process. Never point those tests

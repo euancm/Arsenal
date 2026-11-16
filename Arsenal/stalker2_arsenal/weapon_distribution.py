@@ -442,7 +442,8 @@ def payload(info):
     sids = [f'Gun{info["weapon_id"]}_Mag{magazine["name"]}'
             for magazine in info['magazines']
             if not magazine['preinstalled'] and not magazine.get('existing_sid')]
-    sids.extend(item['sid'] for item in info['attachments'])
+    sids.extend(item['sid'] for item in info['attachments']
+                if not item.get('existing_sid') and not item.get('preinstalled'))
     for sid in sids:
         distribution_compose.identifier(sid)
     if len(set(sids)) != len(sids):

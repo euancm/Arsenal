@@ -25,6 +25,24 @@ def forced_pose_position(*objects):
                 pass
 
 
+@contextlib.contextmanager
+def muted_deformers(*armatures):
+    """Skip skinning meshes while baking; bakes only read bones, and the dense player body dominates updates."""
+    muted = [modifier for obj in bpy.data.objects if obj.type == 'MESH'
+             for modifier in obj.modifiers
+             if modifier.type == 'ARMATURE' and modifier.object in armatures and modifier.show_viewport]
+    for modifier in muted:
+        modifier.show_viewport = False
+    try:
+        yield
+    finally:
+        for modifier in muted:
+            try:
+                modifier.show_viewport = True
+            except ReferenceError:
+                pass
+
+
 def set_array_indices(array, indices):
     for i in range(len(array)):
         array[i] = True if i in indices else False

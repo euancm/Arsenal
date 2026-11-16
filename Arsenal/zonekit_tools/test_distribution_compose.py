@@ -353,6 +353,23 @@ class CompositionTests(unittest.TestCase):
                 composer.update_mod(str(content), record, distribution.DEFAULTS)
             self.assertEqual(combined.read_bytes(), before)
 
+    def test_mod_name_case_change_keeps_other_weapons(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            content = Path(temporary) / 'Content'
+            composer.update_mod(str(content), distribution.payload(self.info('Alpha', traders=[trader()])),
+                                distribution.DEFAULTS)
+            bravo = distribution.payload(self.info('Bravo', traders=[trader()]))
+            bravo['mod'] = 'TESTMOD'
+            composer.update_mod(str(content), bravo, distribution.DEFAULTS)
+            state = json.loads((content.parent / 'Arsenal' / 'distribution.json').read_text())
+            self.assertEqual(state['mod'], 'TESTMOD')
+            self.assertEqual({record['mod'] for record in state['weapons'].values()}, {'TESTMOD'})
+            self.assertEqual(sorted(state['weapons']), ['Alpha', 'Bravo'])
+            other = distribution.payload(self.info('Alpha'))
+            other['mod'] = 'OtherMod'
+            with self.assertRaisesRegex(RuntimeError, 'belongs to mod "TESTMOD"'):
+                composer.update_mod(str(content), other, distribution.DEFAULTS)
+
 
 if __name__ == '__main__':
     unittest.main()

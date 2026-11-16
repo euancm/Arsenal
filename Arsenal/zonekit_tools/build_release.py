@@ -16,10 +16,13 @@ ADDON = Path('Arsenal') / 'stalker2_arsenal'
 RESOURCES = (
     'animation_mappings/rigify_uemannequin.json',
     'mappings/uemannequin_rigify.json',
+    'resources/attachment_grids.json',
     'resources/distribution_defaults.json',
     'resources/upgrade_defaults.json',
     'resources/weapon_templates.json',
     'resources/inventory_scene.blend',
+    *(f'resources/inventory_templates/{style}_{family}.png'
+      for style in ('gauss', 'pistol', 'rifle', 'shotgun', 'smg', 'sniper') for family in ('inventory', 'upgrade')),
     'shapes/weapon_bone_shapes.blend',
 )
 
@@ -47,6 +50,8 @@ def build(root, output_folder, tag=None):
             compile(data, str(path), 'exec')
         elif path.suffix == '.json':
             json.loads(data)
+        elif path.suffix == '.png' and not data.startswith(b'\x89PNG\r\n\x1a\n'):
+            raise ValueError(f'{path} is not a PNG image.')
         elif path.suffix == '.blend':
             if not data.startswith((b'BLENDER', b'\x28\xb5\x2f\xfd', b'\x1f\x8b')):
                 raise ValueError(f'{path} is not Blender data. Run git lfs pull before packaging.')

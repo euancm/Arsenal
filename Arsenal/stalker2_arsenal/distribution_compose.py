@@ -421,14 +421,19 @@ def update_mod(content, incoming, defaults, warn=print):
     if os.path.isfile(state_path):
         with open(state_path, encoding='utf-8') as handle:
             state = json.load(handle)
-        if state.get('version') != 1 or state.get('mod') != mod:
-            raise RuntimeError(f'Unsupported distribution state: {state_path}')
+        if state.get('version') != 1 or str(state.get('mod', '')).casefold() != mod.casefold():
+            raise RuntimeError(f'Unsupported distribution state: {state_path} belongs to mod '
+                               f'"{state.get("mod")}", not "{mod}" (version {state.get("version")}).')
+        # Mod mounts are case-insensitive, so a case-only Mod Name change adopts the new spelling.
+        for record in state['weapons'].values():
+            if str(record.get('mod', '')).casefold() == mod.casefold():
+                record['mod'] = mod
         records.update(state['weapons'])
     stale = []
     if os.path.isdir(folder):
         for name in sorted(os.listdir(folder)):
-            match = re.fullmatch(re.escape(mod) + r'_(\w+)Distribution\.cfg', name)
-            if not match or name == os.path.basename(combined_path):
+            match = re.fullmatch(re.escape(mod) + r'_(\w+)Distribution\.cfg', name, re.IGNORECASE)
+            if not match or name.casefold() == os.path.basename(combined_path).casefold():
                 continue
             path = os.path.join(folder, name)
             text = generated_file(path)

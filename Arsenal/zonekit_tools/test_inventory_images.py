@@ -177,6 +177,8 @@ class InventoryTests(unittest.TestCase):
             actual = getattr(scene.arsenal_inventory, f'{family}_camera')
             self.assertEqual(actual.matrix_world, expected.matrix_world)
             for prop in expected.data.bl_rna.properties:
+                if prop.identifier == 'show_background_images':
+                    continue
                 if prop.type in {'BOOLEAN', 'INT', 'FLOAT', 'STRING', 'ENUM'} \
                         and prop.identifier not in bpy.types.ID.bl_rna.properties:
                     a, b = getattr(actual.data, prop.identifier), getattr(expected.data, prop.identifier)
@@ -270,7 +272,7 @@ class InventoryTests(unittest.TestCase):
                         upgrade_index=-1), {'FINISHED'})
                     target, prop = inventory.image_target(self.source, magazine, family, custom)
                     image = getattr(target, prop)
-                    self.assertEqual(tuple(image.size), inventory.SIZES[family])
+                    self.assertEqual(tuple(image.size), inventory.canvas_size(cfg, family, target))
                     self.assertEqual(image.channels, 4)
                     self.assertIsNotNone(image.packed_file)
                     self.assertGreater(image.preview_ensure().image_size[0], 0)
@@ -287,6 +289,227 @@ class InventoryTests(unittest.TestCase):
                 filepath=path, family='inventory', magazine_index=-1, attachment_index=-1,
                 upgrade_index=-1), {'FINISHED'})
             self.assertNotIn(first, bpy.data.images.values())
+
+    def test_rifle_render_and_export_use_native_canvas_not_pistol_size(self):
+        cfg = self.source.arsenal_cfg
+        cfg.setup_template = 'TemplateM16'
+        cfg.inventory_image = bpy.data.images.new('Obsolete rifle image', width=258, height=128, alpha=True)
+        with tempfile.TemporaryDirectory() as folder:
+            info = {'cfg': cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'mount': '/TestMod',
+                    'output_root': folder, 'magazines': [], 'attachments': []}
+            with self.assertRaisesRegex(RuntimeError, r'expected \(648, 258\)'):
+                inventory.export_images(info)
+            scene = inventory.ensure_scene(bpy.context, self.source)
+            camera = scene.arsenal_inventory.inventory_camera
+            before = camera.matrix_world.copy()
+            image = inventory.render_preview(bpy.context, self.source, 'inventory')
+            self.assertEqual(tuple(image.size), (648, 258))
+            self.assertEqual(camera.matrix_world, before)
+            entries = inventory.export_images(info)
+            self.assertEqual(len(entries), 1)
+            exported = bpy.data.images.load(os.path.join(folder, entries[0]['file']))
+            self.assertEqual(tuple(exported.size), (648, 258))
+            selected = bpy.ops.arsenal.inventory_image_file(
+                filepath=os.path.join(folder, entries[0]['file']), family='inventory',
+                magazine_index=-1, attachment_index=-1, upgrade_index=-1)
+            self.assertEqual(selected, {'FINISHED'})
+            self.assertEqual(tuple(cfg.inventory_image.size), (648, 258))
+
+    def test_canvas_sizes_follow_weapon_templates_and_attachment_grids(self):
+        cfg = self.source.arsenal_cfg
+        for template, expected in (('TemplateSMG', (648, 258)), ('TemplateObrez', (648, 258)),
+                                   ('TemplateSVU', (908, 258)), ('TemplateGauss', (908, 258)),
+                                   ('TemplatePistol', (258, 128)), ('TemplatePKP', (778, 258))):
+            cfg.setup_template = template
+            self.assertEqual(inventory.canvas_size(cfg, 'inventory'), expected, template)
+        item = cfg.attachments.add()
+        for kind, template, expected in (('silencer', '', (262, 128)), ('scope', 'EN_GoloScope_1', (128, 128)),
+                                         ('scope', 'EN_X8Scope_1', (388, 128)),
+                                         ('scope', 'ModOnlyScope', (128, 128))):
+            item.kind, item.template_sid = kind, template
+            self.assertEqual(inventory.canvas_size(cfg, 'standalone', item), expected, template)
+        self.assertEqual(inventory.canvas_size(cfg, 'standalone', cfg.magazines[1]), (128, 128))
+
+    def test_template_guides_back_standard_and_upgrade_cameras_only(self):
+        cfg = self.source.arsenal_cfg
+        cfg.setup_template = 'TemplateM16'
+        scene = inventory.ensure_scene(bpy.context, self.source)
+        state = scene.arsenal_inventory
+
+        def guides(camera):
+            return [background.image.get(inventory.TEMPLATE_MARKER) if background.image else None
+                    for background in camera.data.background_images]
+
+        self.assertEqual(guides(state.inventory_camera), ['rifle_inventory.png'])
+        self.assertEqual(guides(state.upgrade_camera), ['rifle_upgrade.png'])
+        self.assertFalse(state.standalone_camera.data.background_images)
+        guide = state.inventory_camera.data.background_images[0]
+        self.assertEqual((guide.alpha, guide.display_depth, guide.frame_method), (0.5, 'BACK', 'FIT'))
+        self.assertTrue(state.inventory_camera.data.show_background_images)
+        self.assertEqual(tuple(guide.image.size), inventory.canvas_size(cfg, 'inventory'))
+        self.assertIsNotNone(guide.image.packed_file)
+        rifle = guide.image.name
+        inventory.ensure_scene(bpy.context, self.source)
+        self.assertEqual(guides(state.inventory_camera), ['rifle_inventory.png'])
+        cfg.setup_template = 'TemplateSVD'
+        inventory.ensure_scene(bpy.context, self.source)
+        self.assertEqual(guides(state.inventory_camera), ['sniper_inventory.png'])
+        self.assertNotIn(rifle, bpy.data.images)
+        custom = bpy.data.images.new('My own guide', width=4, height=4)
+        state.upgrade_camera.data.background_images.clear()
+        state.upgrade_camera.data.background_images.new().image = custom
+        cfg.setup_template = 'TemplatePKP'
+        inventory.ensure_scene(bpy.context, self.source)
+        self.assertEqual(guides(state.inventory_camera), [])
+        self.assertEqual([bg.image for bg in state.upgrade_camera.data.background_images], [custom])
+
+    def test_standalone_render_frames_item_in_the_centre_of_its_grid_canvas(self):
+        item = self.source.arsenal_cfg.attachments.add()
+        item.name, item.kind, item.mesh_object = 'Quiet', 'silencer', self.silencer
+        scene = inventory.ensure_scene(bpy.context, self.source)
+        camera = scene.arsenal_inventory.standalone_camera
+        camera.location += Vector((40, 25, -15))
+        image = inventory.render_preview(bpy.context, self.source, 'standalone', attachment_index=0)
+        width, height = image.size
+        self.assertEqual((width, height), (262, 128))
+        alpha = list(image.pixels)[3::4]
+        columns = [i % width for i, value in enumerate(alpha) if value > 0.5]
+        rows = [i // width for i, value in enumerate(alpha) if value > 0.5]
+        self.assertTrue(columns)
+        self.assertAlmostEqual((min(columns) + max(columns) + 1) / 2, width / 2, delta=2)
+        self.assertAlmostEqual((min(rows) + max(rows) + 1) / 2, height / 2, delta=2)
+        fill = max((max(columns) - min(columns) + 1) / width, (max(rows) - min(rows) + 1) / height)
+        self.assertGreater(fill, 0.8)
+        self.assertLess(fill, 0.92)
+        placed = camera.matrix_world.copy()
+        inventory.render_preview(bpy.context, self.source, 'standalone', attachment_index=0)
+        for a, b in zip(placed, camera.matrix_world):
+            for x, y in zip(a, b):
+                self.assertAlmostEqual(x, y, places=3)
+
+    def test_render_all_attachment_images_renders_both_layers_and_skips_meshless_items(self):
+        cfg = self.source.arsenal_cfg
+        referenced, missing = cfg.attachments.add(), cfg.attachments.add()
+        referenced.name, referenced.mesh_object = 'Scope', self.laser
+        missing.name = 'NoMesh'
+        calls = []
+
+        def fake(context, source, family, attachment_index=-1):
+            calls.append((attachment_index, family))
+            if family == 'upgrade':
+                raise RuntimeError('No geometry is available for this preview.')
+
+        with patch.object(inventory, 'render_preview', fake):
+            rendered, skipped = inventory.render_attachment_images(bpy.context, self.source)
+        self.assertEqual(calls, [(0, 'inventory'), (0, 'upgrade')])
+        self.assertEqual(rendered, ['Scope inventory'])
+        self.assertEqual(len(skipped), 2)
+        self.assertIn('NoMesh: no mesh', skipped[1])
+
+        def cancel(*args, **kwargs):
+            raise RuntimeError('Inventory render was cancelled.')
+
+        with patch.object(inventory, 'render_preview', cancel), self.assertRaisesRegex(RuntimeError, 'cancelled'):
+            inventory.render_attachment_images(bpy.context, self.source)
+
+    def test_referenced_attachment_has_weapon_layers_but_no_standalone_image(self):
+        cfg = self.source.arsenal_cfg
+        item = cfg.attachments.add()
+        item.name, item.kind = 'Scope', 'scope'
+        item.use_existing, item.existing_sid, item.mesh_object = True, 'EN_X4Scope_1', self.laser
+        item.socket = 'ScopeSocket'
+        for family in ('inventory', 'upgrade'):
+            self.assertEqual(inventory.image_target(self.source, -1, family, 0), (item, f'{family}_image'))
+        with self.assertRaisesRegex(RuntimeError, 'owning item'):
+            inventory.image_target(self.source, -1, 'standalone', 0)
+
+        class Layout:
+            families = []
+
+            def row(self, **kwargs):
+                return self
+
+            box = column = row
+
+            def label(self, **kwargs):
+                pass
+
+            def template_icon(self, **kwargs):
+                pass
+
+            def operator(self, name, **kwargs):
+                properties = SimpleNamespace()
+                if kwargs.get('text') == 'Render':
+                    self.families.append(properties)
+                return properties
+
+        layout = Layout()
+        inventory.draw_images(layout, bpy.context, attachment_index=0)
+        self.assertEqual([props.family for props in layout.families], ['inventory', 'upgrade'])
+        item.inventory_image = bpy.data.images.new('Scope layer', width=258, height=128, alpha=True)
+        item.upgrade_image = bpy.data.images.new('Scope upgrade', width=1940, height=800, alpha=True)
+        item.standalone_image = bpy.data.images.new('Ignored standalone', width=262, height=128, alpha=True)
+        with tempfile.TemporaryDirectory() as folder:
+            info = {'cfg': cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'mount': '/TestMod',
+                    'output_root': folder, 'magazines': [],
+                    'attachments': weapon_cfg.collect_attachments(cfg, [])}
+            info['attachments'][0]['sid'] = 'EN_X4Scope_1'
+            entries = inventory.export_images(info)
+        self.assertEqual([(entry['family'], entry['sid']) for entry in entries],
+                         [('inventory', 'EN_X4Scope_1'), ('upgrade', 'EN_X4Scope_1')])
+        self.assertTrue(entries[0]['asset'].endswith('/T_inv_w_Test_AttachScope'))
+
+    def test_both_iron_sight_meshes_render_in_one_attachment_layer(self):
+        item = self.source.arsenal_cfg.attachments.add()
+        item.kind = 'iron_sight'
+        item.mesh_object, item.front_object = self.silencer, self.laser
+        scene = inventory.ensure_scene(bpy.context, self.source)
+
+        def cancelled(**kwargs):
+            shown = {obj['arsenal_inventory_source'] for obj in scene.arsenal_inventory.geometry.objects
+                     if not obj.hide_render}
+            self.assertEqual(shown, {self.body, self.full, self.silencer, self.laser})
+            return {'CANCELLED'}
+
+        stub = SimpleNamespace(data=bpy.data, ops=SimpleNamespace(render=SimpleNamespace(render=cancelled)))
+        with patch.object(inventory, 'bpy', stub):
+            with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+                inventory.render_preview(bpy.context, self.source, 'inventory', attachment_index=0)
+
+    def test_socket_previews_stay_in_rest_pose_for_inventory_without_resetting_animation(self):
+        from stalker2_arsenal import weapon_sockets
+        marker = bpy.data.objects.new('Test socket marker', None)
+        self.source.collection.objects.link(marker)
+        marker.arsenal_socket_id = 'inventory-socket'
+        marker.parent, marker.parent_type, marker.parent_bone = self.rig, 'BONE', 'Weapon'
+        marker.location = (1, 2, 3)
+        item = self.source.arsenal_cfg.attachments.add()
+        item.mesh_object = self.silencer
+        bpy.context.view_layer.update()
+        weapon_sockets.parent_preview(self.silencer, marker, self.rig)
+        bpy.context.view_layer.update()
+        rest = self.silencer.matrix_world.copy()
+        scene = inventory.ensure_scene(bpy.context, self.source)
+        self.rig.pose.bones['Weapon'].location = (3, 5, 7)
+        self.rig.pose.bones['Weapon'].rotation_mode = 'XYZ'
+        self.rig.pose.bones['Weapon'].rotation_euler.z = 0.4
+        bpy.context.view_layer.update()
+        posed = self.silencer.matrix_world.copy()
+        self.assertGreater((posed.translation - rest.translation).length, 1)
+        inventory.sync_geometry(bpy.context, self.source)
+        clone = next(obj for obj in scene.arsenal_inventory.geometry.objects
+                     if obj.get('arsenal_inventory_source') == self.silencer)
+        self.assertLess((clone.matrix_world.translation - rest.translation).length, 0.00001)
+        self.assertEqual(self.rig.pose.bones['Weapon'].location, Vector((3, 5, 7)))
+        # Original-object matrices cache the last evaluated scene; inspect the source depsgraph.
+        self.source.view_layers[0].update()
+        self.assertEqual(self.silencer.matrix_world, posed)
+        marker.location.x += 2
+        bpy.context.view_layer.update()
+        inventory.sync_geometry(bpy.context, self.source)
+        clone = next(obj for obj in scene.arsenal_inventory.geometry.objects
+                     if obj.get('arsenal_inventory_source') == self.silencer)
+        self.assertLess((clone.matrix_world.translation - rest.translation - Vector((2, 0, 0))).length, 0.00001)
 
     def test_invalid_file_selection_preserves_previous_image_and_reports_error(self):
         original = bpy.data.images.new('Keep this preview', width=258, height=128, alpha=True)
@@ -464,8 +687,9 @@ class InventoryTests(unittest.TestCase):
                            if not obj.hide_render}
                 self.assertEqual(visible, {self.silencer} if family == 'standalone'
                                  else {self.body, self.full, self.silencer})
-                self.assertEqual(scene.camera, state.upgrade_camera if family == 'upgrade'
-                                 else state.inventory_camera)
+                self.assertEqual(scene.camera, {'upgrade': state.upgrade_camera,
+                                                'standalone': state.standalone_camera}.get(
+                    family, state.inventory_camera))
                 return {'CANCELLED'}
             state = scene.arsenal_inventory
             stub = SimpleNamespace(data=bpy.data, ops=SimpleNamespace(render=SimpleNamespace(render=cancelled)))
@@ -533,7 +757,7 @@ class InventoryTests(unittest.TestCase):
         cfg.inventory_image = bpy.data.images.new('Export body', width=258, height=128, alpha=True)
         magazine = cfg.magazines[1]
         magazine.inventory_image = bpy.data.images.new('Export magazine', width=258, height=128, alpha=True)
-        magazine.standalone_image = magazine.inventory_image
+        magazine.standalone_image = bpy.data.images.new('Export standalone', width=128, height=128, alpha=True)
         info = {'cfg': cfg, 'sid': 'GunTest', 'weapon_id': 'Test', 'mount': '/TestMod',
                 'player_sid': 'GunTest_Player', 'parts': [],
                 'magazines': weapon_cfg.collect_magazines(cfg, [])}
@@ -545,11 +769,11 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(len(entries), 3)
             self.assertEqual(inventory.image_asset(info, 'body', 'upgrade'),
                              inventory.image_asset(info, 'body', 'inventory') + '_upgrade')
-            for entry in entries:
+            for entry, size in zip(entries, ((258, 128), (258, 128), (128, 128))):
                 path = os.path.join(folder, entry['file'])
                 self.assertTrue(os.path.isfile(path))
                 loaded = bpy.data.images.load(path)
-                self.assertEqual(tuple(loaded.size), (258, 128))
+                self.assertEqual(tuple(loaded.size), size)
                 self.assertEqual(loaded.channels, 4)
                 self.assertTrue(entry['asset'].startswith('/TestMod/UI/Arsenal/Test/'))
             reference = weapon_cfg.image_reference(info, magazine, 'inventory', 'MagExtended')
@@ -619,7 +843,7 @@ class InventoryTests(unittest.TestCase):
             world_sockets = {'version': 1, 'units': 'cm', 'mesh': '/TestMod/SM_test',
                              'entries': [{'name': 'jnt_magazine', 'location': [0, 0, -3],
                                           'rotation': [0, 0, 0], 'scale': [1, 1, 1]}]}
-            with patch.object(export_unreal.static_mesh, 'world_magazine_sockets',
+            with patch.object(export_unreal.static_mesh, 'world_mesh_sockets',
                               return_value=world_sockets), \
                     patch.object(export_unreal.animation_export, '_build_static_plan', return_value=(
                     self.rig, None, {}, [('test', 'SM_Test', static)])), \
@@ -732,6 +956,7 @@ class InventoryTests(unittest.TestCase):
                 patch.object(import_weapon, 'apply_bone_shapes'), \
                 patch.object(import_weapon, 'find_attachment_files', return_value=[]), \
                 patch.object(import_weapon, '_import_attachments', return_value=[self.full, self.empty]), \
+                patch.object(weapon_cfg, 'fill_attachment_list'), \
                 patch.object(import_weapon, 'apply_materials'), \
                 patch.object(inventory, 'ensure_scene', wraps=inventory.ensure_scene) as ensure:
             # The actual skeleton importer sets this marker; expose it after the duplicate-import guard.
@@ -768,11 +993,12 @@ class InventoryTests(unittest.TestCase):
         layer = inventory.render_preview(bpy.context, self.source, 'upgrade', 1)
         self.assertEqual(tuple(layer.size), (1940, 800))
         standalone = inventory.render_preview(bpy.context, self.source, 'standalone', 1)
-        self.assertEqual(tuple(standalone.size), inventory.SIZES['inventory'])
+        self.assertEqual(tuple(standalone.size), inventory.SIZES['standalone'])
         self.assertIsNotNone(standalone.packed_file)
         for family, (matrix, near, far) in cameras.items():
             camera = getattr(scene.arsenal_inventory, f'{family}_camera')
-            self.assertEqual(camera.matrix_world, matrix)
+            if family != 'standalone':
+                self.assertEqual(camera.matrix_world, matrix)
             self.assertEqual((camera.data.clip_start, camera.data.clip_end), (near, far))
         attachment = self.source.arsenal_cfg.attachments.add()
         attachment.name, attachment.mesh_object, attachment.kind = 'Quiet', self.silencer, 'silencer'

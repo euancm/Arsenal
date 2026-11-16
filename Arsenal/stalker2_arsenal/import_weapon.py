@@ -22,13 +22,17 @@ SHAPE_VOCABULARY = {
     'magazine', 'release', 'slide', 'barrel', 'trigger', 'shell', 'bullet', 'base', 'safety', 'hammer',
     'lock', 'sight', 'stock', 'grip', 'bolt', 'rail', 'handle', 'lever', 'selector', 'charging', 'muzzle',
 }
-# Weapon class words in shape names are descriptive only; they do not have to appear in the bone name.
+# Weapon class words select the donor family, not words in the bone name.
 SHAPE_CLASS_WORDS = {'pistol', 'rifle', 'smg', 'shotgun', 'sniper'}
 SHAPE_PREFIX = 'customboneshape_'
 # Extra spellings of the same part, applied to bone names only (see mapping_editor for the shared ones).
 SHAPE_BONE_SYNONYMS = {'tab': 'release', 'catch': 'release', 'button': 'release', 'hummer': 'hammer',
                        'cocking': 'charging'}
 _shape_names = None
+# Spare rounds that skeletal attachments store parked beside the launcher; the attachment's own
+# animation brings one into the tube. Verified against native reference poses: only SK_gla parks
+# rounds (10 cm sideways). Other launchers keep the round in the tube and belt boxes show bullets.
+PARKED_ROUND_BONES = {'sk_gla': {'jnt_m406_charge', 'jnt_m406_shell', 'jnt_vog25_charge'}}
 
 
 def rig_bone_name(joint):
@@ -82,7 +86,7 @@ def bone_shape_tokens(bone_name):
     return ordered
 
 
-def shape_for_bone(bone_name, shape_names=None):
+def shape_for_bone(bone_name, shape_names=None, *, weapon_class=None):
     """Pick the library shape whose name words are all found in the bone name.
 
     The shape needing the most words wins, so "magazine_tab" (magazine + release) gets the magazine
@@ -91,11 +95,17 @@ def shape_for_bone(bone_name, shape_names=None):
     """
     ordered = bone_shape_tokens(bone_name)
     tokens = set(ordered)
-    best, best_score = None, (0, -1)
+    best, best_score = None, (0, 0, -1)
     for shape in (available_shapes() if shape_names is None else shape_names):
-        required = shape_tokens(shape) - SHAPE_CLASS_WORDS
+        words = shape_tokens(shape)
+        classes = words & SHAPE_CLASS_WORDS
+        if weapon_class is not None and classes and weapon_class not in classes:
+            continue
+        required = words - SHAPE_CLASS_WORDS
+        if required == {'base'} and bone_name != ROOT_BONE:
+            continue
         if required and required <= tokens:
-            score = (len(required), max(ordered.index(token) for token in required))
+            score = (len(required), bool(classes), max(ordered.index(token) for token in required))
             if score > best_score:
                 best, best_score = shape, score
     return best
@@ -319,7 +329,12 @@ def _mesh_bounds(shape):
 
 def apply_bone_shapes(rig, bounds):
     """Fit a library shape to each bone's geometry (translation, rotation and scale)."""
-    wanted = {bone.name: shape_for_bone(bone.name) for bone in rig.data.bones}
+    from .weapon_presets import PRESETS
+    category = next((preset['category'] for preset in PRESETS.values()
+                     if preset['mesh'].casefold() == rig.get('arsenal_donor_mesh_name', '').casefold()), '')
+    weapon_class = {'pistol_mashine_gun': 'smg', 'sturm_riffle': 'rifle',
+                    'sniper_riffle': 'sniper', 'DMR': 'sniper'}.get(category, category)
+    wanted = {bone.name: shape_for_bone(bone.name, weapon_class=weapon_class) for bone in rig.data.bones}
     shapes = _load_shapes(sorted({name for name in wanted.values() if name}))
     collection = rig.data.collections.get(ROOT_BONE) or rig.data.collections.new(ROOT_BONE)
     for pose_bone in rig.pose.bones:
@@ -396,73 +411,133 @@ def donor_mesh_name(settings):
 
 
 def find_attachment_files(root, weapon_name):
-    """Magazine meshes (default and increased/big/twin) exported beside the weapon, plus silencer and laser meshes."""
-    magazine = re.compile(r'sm_.*mag.*\.fbx', re.IGNORECASE)
-    accessory = re.compile(r'sm_(?:sc|ls)\d+_.*(?:silen|laser).*\.fbx', re.IGNORECASE)
-    return sorted(_walk_find(
-        root, lambda d, f: os.path.basename(d).casefold() != 'animmesh'
-        and (magazine.fullmatch(f) or accessory.fullmatch(f))))
+    """Only the current donor's configured magazines and compatible attachments."""
+    from .weapon_presets import PRESETS
+    preset = next((preset for preset in PRESETS.values()
+                   if preset['mesh'].casefold() == weapon_name.casefold()), None)
+    if preset is None:
+        raise ValueError(f'No attachment catalogue for donor {weapon_name}; choose a supported weapon template.')
+    paths = [os.path.join(root, *entry['mesh'].split('/')[2:]) + '.fbx'
+             for entry in preset['attachment_mounts']]
+    missing = [os.path.basename(path) for path in paths if not os.path.isfile(path)]
+    if missing:
+        raise FileNotFoundError(f'Missing configured attachments for {weapon_name}: {", ".join(missing)}. '
+                                'Regenerate and run the ZoneKit setup script for this template.')
+    return sorted(paths)
 
 
 def _attachment_bone(rig, filename):
-    """The bone an attachment is weighted to: jnt_magazine for magazines, otherwise the weapon root."""
+    """Fallback bone for legacy exports without a named attachment mount."""
     if 'mag' in filename.casefold():
-        for name in ('jnt_magazine', rig_bone_name('jnt_magazine')):
+        for name in ('jnt_magazine', 'jnt_clip_base'):
             bone = rig.data.bones.get(name)
             if bone:
                 return bone
     return rig.data.bones.get(ROOT_BONE)
 
 
-def _socket_offset(rig, root, filename):
-    """Weapon-space position of the attachment's socket from weapon_sockets.json (written by the ZoneKit script).
+def _attachment_placement(rig, root, filename):
+    """Resolve the CFG mount and its full donor reference transform, not the FBX bone display axes."""
+    from . import weapon_sockets
+    from .weapon_presets import PRESETS
 
-    A socket is a location relative to a bone. The Y flip and ignoring the bone's rotation are assumptions to
-    check against a real weapon (the pistol silencer sits at about 15.2, 0, 4.8)."""
+    lowered = os.path.splitext(filename)[0].casefold()
+    preset = next((preset for preset in PRESETS.values()
+                   if preset['mesh'].casefold() == rig.get('arsenal_donor_mesh_name', '').casefold()), None)
+    if preset is not None:
+        mount = next((entry for entry in preset['attachment_mounts']
+                      if entry['mesh'].rsplit('/', 1)[-1].casefold() == lowered), None)
+        if mount is None:
+            raise RuntimeError(f'{filename} is not an attachment of the imported donor.')
+        socket_name = mount['socket']
+        bone = rig.data.bones.get(rig_bone_name(socket_name))
+        if bone is not None:
+            return bone, Matrix.Translation(rig.matrix_world @ bone.head_local)
+    else:
+        socket_name = ('LaserSocket' if 'laser' in lowered else
+                       'SilencerMuzzleSocket' if 'silen' in lowered else '')
+
+    bone = _attachment_bone(rig, filename)
     path = os.path.join(root, SOCKET_FILE)
+    if not socket_name:
+        if bone is None:
+            raise RuntimeError(f'Cannot identify an attachment bone for {filename}.')
+        return bone, Matrix.Translation(rig.matrix_world @ bone.head_local)
     if not os.path.isfile(path):
-        return None
-    lowered = filename.casefold()
-    wanted = 'laser' if 'laser' in lowered else 'silen' if 'silen' in lowered else None
-    if wanted is None:
-        return None
-    try:
-        with open(path, encoding='utf-8') as handle:
-            sockets = json.load(handle)
-        if isinstance(sockets, dict):
-            from .weapon_sockets import catalogue_mesh
-            mesh = catalogue_mesh(path, donor_name=rig.get('arsenal_donor_mesh_name', ''))
-            sockets = [entry for entry in mesh['sockets'] if entry['effective']]
-    except (OSError, ValueError):
-        return None
-    for entry in sockets:
-        if wanted in entry.get('name', '').casefold():
-            x, y, z = entry['location']
-            bone = rig.data.bones.get(entry.get('bone', ''))
-            head = rig.matrix_world @ bone.head_local if bone else Vector((0.0, 0.0, 0.0))
-            return head + Vector((x, -y, z))
-    return None
+        raise FileNotFoundError(f'Missing {SOCKET_FILE} for {socket_name}. Regenerate and run the ZoneKit setup script.')
+    with open(path, encoding='utf-8') as handle:
+        data = json.load(handle)
+    if isinstance(data, dict):
+        mesh = weapon_sockets.catalogue_mesh(path, donor_name=rig.get('arsenal_donor_mesh_name', ''))
+        records = [entry for entry in mesh['sockets'] if entry['effective']]
+    else:
+        records = data
+    matches = [entry for entry in records if entry['name'].casefold() == socket_name.casefold()]
+    if len(matches) != 1:
+        raise RuntimeError(f'Cannot identify socket {socket_name} for {filename}. '
+                           'Regenerate and run the ZoneKit setup script for this donor.')
+    record = matches[0]
+    bone = rig.data.bones.get(weapon_sockets.bone_name(record['bone'], rig))
+    if bone is None:
+        raise RuntimeError(f'Socket {socket_name} has no imported bone {record["bone"]}.')
+    if isinstance(data, dict):
+        transform = rig.matrix_world @ weapon_sockets.reference_matrix(record) @ weapon_sockets.socket_matrix(record)
+    else:
+        x, y, z = record['location']
+        transform = Matrix.Translation(rig.matrix_world @ bone.head_local + Vector((x, -y, z)))
+    return bone, transform
+
+
+def _socket_offset(rig, root, filename):
+    return _attachment_placement(rig, root, filename)[1].translation
+
+
+def _remove_parked_rounds(obj, filename):
+    """Delete vertices mainly weighted to a parked spare-round bone, before weights are flattened."""
+    parked = PARKED_ROUND_BONES.get(os.path.splitext(filename)[0].casefold())
+    if not parked:
+        return 0
+    groups = {group.index for group in obj.vertex_groups if group.name.casefold() in parked}
+    doomed = [vertex.index for vertex in obj.data.vertices
+              if vertex.groups and max(vertex.groups, key=lambda entry: entry.weight).group in groups]
+    if doomed:
+        import bmesh
+        mesh = bmesh.new()
+        mesh.from_mesh(obj.data)
+        mesh.verts.ensure_lookup_table()
+        bmesh.ops.delete(mesh, geom=[mesh.verts[index] for index in doomed], context='VERTS')
+        mesh.to_mesh(obj.data)
+        mesh.free()
+        obj.data.update()
+    return len(doomed)
 
 
 def _import_attachments(context, rig, paths, root=''):
     """Import each attachment mesh weighted to one bone with an Armature modifier, like the weapon mesh."""
+    from . import weapon_presets
+    preset = next((value for value in weapon_presets.PRESETS.values()
+                   if value['mesh'] == rig.get('arsenal_donor_mesh_name')), None)
     imported = []
     for path in paths:
+        filename = os.path.basename(path)
+        bone, offset = _attachment_placement(rig, root, filename)
         objects = _import(path)
         # Collision hulls (UCX_) and lower LODs come along in the FBX but are not part of the visible mesh.
         meshes = [obj for obj in objects if obj.type == 'MESH'
                   and not obj.name.upper().startswith(('UCX_', 'UBX_', 'USP_', 'UCP_'))
                   and not importer._is_lower_lod(obj.name)]
-        importer._remove_imported([obj for obj in objects if obj not in meshes], [])
-        filename = os.path.basename(path)
-        bone = _attachment_bone(rig, filename)
-        socket = _socket_offset(rig, root, filename)
+        context.view_layer.update()
+        worlds = {obj: obj.matrix_world.copy() for obj in meshes}
         for obj in meshes:
-            if socket is not None:
-                offset = Matrix.Translation(socket)
-            else:
-                offset = Matrix.Translation(rig.matrix_world @ bone.head_local) if bone else Matrix.Identity(4)
-            obj.data.transform(offset @ obj.matrix_world)
+            _remove_parked_rounds(obj, filename)
+            obj.parent = None
+            obj.vertex_groups.clear()
+            for modifier in list(obj.modifiers):
+                if modifier.type == 'ARMATURE':
+                    obj.modifiers.remove(modifier)
+        importer._remove_imported([obj for obj in objects if obj not in meshes], [])
+        for obj in meshes:
+            obj.data.transform(offset @ worlds[obj])
             obj.parent = None
             obj.matrix_world = Matrix.Identity(4)
             obj.name = obj.data.name = os.path.splitext(filename)[0]
@@ -473,6 +548,15 @@ def _import_attachments(context, rig, paths, root=''):
             obj.matrix_parent_inverse = rig.matrix_world.inverted()
             modifier = obj.modifiers.new('Armature', 'ARMATURE')
             modifier.object = rig
+            mount = next((item for item in preset['attachment_mounts']
+                          if item['mesh'].rsplit('/', 1)[-1].casefold()
+                          == os.path.splitext(filename)[0].casefold()), None) if preset else None
+            marker = next((entry.marker for entry in context.scene.arsenal_sockets.entries
+                           if mount and entry.socket_name == mount['socket']), None)
+            if marker is not None:
+                context.view_layer.update()
+                from .weapon_sockets import parent_preview
+                parent_preview(obj, marker, rig)
             imported.append(obj)
     return imported
 
@@ -482,8 +566,25 @@ def _is_rain_texture(parameter, relative):
     return 'rain' in text
 
 
-def apply_materials(root, objects):
-    """Give the weapon's materials (named after the Unreal instances) their exported textures."""
+def _with_colour_fallback(root, textures):
+    """Older setup exports can miss an inherited albedo; use the `_D` texture beside the `_N` one."""
+    if any(word in f'{parameter} {relative}'.casefold() and 'rma' not in f'{parameter} {relative}'.casefold()
+           for parameter, relative in textures.items()
+           for word in ('basecolor', 'base_color', 'albedo', 'diffuse', 'color')):
+        return textures
+    for relative in textures.values():
+        stem, extension = os.path.splitext(relative)
+        if re.search(r'_N$', stem, re.IGNORECASE):
+            candidate = stem[:-2] + '_D' + extension
+            if os.path.isfile(os.path.join(root, *candidate.split('/'))):
+                return dict(textures, Albedo=candidate)
+    return textures
+
+
+def apply_materials(root, objects, use_alpha=False):
+    """Give the weapon's materials (named after the Unreal instances) their exported textures.
+
+    use_alpha links the colour texture's alpha (the body's thread cards); weapon colour alphas can hold other data."""
     path = os.path.join(root, 'materials.json')
     if not os.path.isfile(path):
         return 0
@@ -499,6 +600,7 @@ def apply_materials(root, objects):
             textures = table.get(re.sub(r'\.\d{3}$', '', material.name)) if material else None
             if not textures or material.get('arsenal_textured'):
                 continue
+            textures = _with_colour_fallback(root, textures)
             material.use_nodes = True
             nodes, links = material.node_tree.nodes, material.node_tree.links
             bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
@@ -545,6 +647,8 @@ def apply_materials(root, objects):
                     links.new(split.outputs['Green'], bsdf.inputs['Metallic'])
                 else:
                     links.new(node.outputs['Color'], bsdf.inputs['Base Color'])
+                    if use_alpha:
+                        links.new(node.outputs['Alpha'], bsdf.inputs['Alpha'])
             # Drop the importer's Normal Map node when no normal texture used it.
             for node in [n for n in nodes if n.type == 'NORMAL_MAP']:
                 if not node.outputs['Normal'].is_linked:
@@ -560,6 +664,7 @@ def import_rigged_weapon(context, root, weapon_name):
         raise RuntimeError('A weapon rig has already been imported; delete it first to import again')
     skeleton_path, parts = find_donor_files(root, weapon_name)
     name = weapon_name.strip()
+    attachment_paths = find_attachment_files(root, name)
 
     if context.object and context.object.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -568,10 +673,11 @@ def import_rigged_weapon(context, root, weapon_name):
     apply_bone_shapes(rig, bounds)
     from . import weapon_sockets
     weapon_sockets.import_markers(context.scene, rig, root)
-    attachments = _import_attachments(context, rig, find_attachment_files(root, name), root)
+    attachments = _import_attachments(context, rig, attachment_paths, root)
     apply_materials(root, ([main] if main else []) + attachments)
     from . import weapon_cfg
     weapon_cfg.fill_magazine_list(context.scene.arsenal_cfg, [(obj, None) for obj in attachments])
+    weapon_cfg.fill_attachment_list(context.scene.arsenal_cfg, rig, attachments)
 
     _select_only(context, [rig], rig)
     context.scene.arsenal_ui.weapon_rig = rig

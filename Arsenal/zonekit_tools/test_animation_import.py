@@ -98,6 +98,13 @@ class UIImportTests(unittest.TestCase):
         importer.import_tasks.assert_called_once_with(['task'])
         importer.library.save_loaded_asset.assert_called_once_with(texture)
 
+    def test_import_ui_accepts_mount_spelling_from_unreal(self):
+        importer, texture = self.importer()
+        importer.import_tasks.return_value = [
+            '/TESTMOD/UI/Arsenal/Test/T_Test_body_inventory.T_Test_body_inventory']
+        self.run_import(importer)
+        importer.library.save_loaded_asset.assert_called_once_with(texture)
+
     def test_import_ui_reports_missing_texture_and_failed_save(self):
         importer, _texture = self.importer()
         importer.library.load_asset.return_value = None
@@ -126,6 +133,169 @@ class UIImportTests(unittest.TestCase):
         manifest = dict(textures=[], materials=[], static_meshes=[],
                         animations={'player': [], 'weapon': []}, game_root='/TestMod')
         self.assertEqual(runtime.build_plan(manifest, '.')['ui_images'], [])
+
+
+class WeaponTextureImportTests(unittest.TestCase):
+    FOLDER = '/TestMod/_Stalker_2/weapons/ar/p_Test/Textures'
+
+    def importer(self, imported):
+        importer = runtime.Importer.__new__(runtime.Importer)
+        importer.manifest = {'replace_existing_assets': True, 'virtual_textures': False}
+        importer.overwrite = False
+        importer.counts = {}
+        importer.plan = {'textures': [('Body_D.png', self.FOLDER, 'Body_D', 'D')]}
+        importer.task = Mock(return_value='task')
+        importer.import_tasks = Mock(return_value=imported)
+        importer.library = SimpleNamespace(does_asset_exist=Mock(return_value=True),
+                                           load_asset=Mock(return_value=Properties()),
+                                           save_loaded_asset=Mock(return_value=True))
+        return importer
+
+    def run_import(self, importer):
+        enums = SimpleNamespace(TextureCompressionSettings=SimpleNamespace(
+            TC_DEFAULT='DEFAULT', TC_NORMALMAP='NORMAL', TC_MASKS='MASKS'))
+        with patch.object(runtime, 'unreal', enums):
+            importer.import_textures()
+
+    def test_export_all_reimport_replaces_existing_textures(self):
+        importer = self.importer([f'{self.FOLDER}/Body_D.Body_D'])
+        self.run_import(importer)
+        importer.import_tasks.assert_called_once_with(['task'])
+        importer.task.assert_called_once_with('Body_D.png', self.FOLDER, 'Body_D')
+        importer.library.save_loaded_asset.assert_called_once()
+
+    def test_failed_texture_reimport_is_not_reported_as_success(self):
+        importer = self.importer([])
+        with self.assertRaisesRegex(RuntimeError, 'not refreshed'):
+            self.run_import(importer)
+        importer.library.save_loaded_asset.assert_not_called()
+
+    def test_existing_materials_are_refreshed_with_their_textures(self):
+        importer = self.importer([])
+        importer.manifest.update(material_folder='/TestMod/Materials', parent_material='/Game/Parent')
+        importer.plan['materials'] = [('Body', {'D': f'{self.FOLDER}/Body_D'})]
+        importer.managed = {}
+        parent, material, texture = object(), object(), object()
+        importer.library.load_asset = Mock(side_effect=lambda path: {
+            '/Game/Parent': parent, '/TestMod/Materials/Body': material,
+            f'{self.FOLDER}/Body_D': texture}[path])
+        editing = Mock()
+        with patch.object(runtime, 'unreal', SimpleNamespace(MaterialEditingLibrary=editing)):
+            importer.import_materials()
+        editing.set_material_instance_parent.assert_called_once_with(material, parent)
+        editing.set_material_instance_texture_parameter_value.assert_called_once_with(
+            material, 'Diffuse_VT', texture)
+        importer.library.save_loaded_asset.assert_called_once_with(material)
+
+
+class ReticleImportTests(unittest.TestCase):
+    TEXTURES = '/TestMod/_Stalker_2/weapons/ar/p_Test/Textures'
+    MATERIALS = '/TestMod/_Stalker_2/weapons/ar/p_Test/Materials'
+
+    def importer(self, root='/TestMod'):
+        importer = runtime.Importer.__new__(runtime.Importer)
+        importer.manifest = {'game_root': root, 'material_folder': self.MATERIALS}
+        importer.counts, importer.managed, importer.slot_overrides = {}, {}, {}
+        entry = {'texture': 'T_Test_Dot_Reticle', 'material': 'MI_Test_Dot_Reticle',
+                 'slot': 'MI_rds02_en_goloscope_1_mark', 'meshes': ['SM_wpn_Test_SM_dot', 'SM_Test_dot']}
+        importer.plan = {'reticles': [('dot.png', self.TEXTURES, 'T_Test_Dot_Reticle', entry)]}
+        importer.task = Mock(return_value='task')
+        importer.import_tasks = Mock(return_value=[f'{self.TEXTURES}/T_Test_Dot_Reticle.T_Test_Dot_Reticle'])
+        self.texture = Properties()
+        self.instance = Properties(path=f'{self.MATERIALS}/MI_Test_Dot_Reticle')
+        self.parent = object()
+        importer.library = SimpleNamespace(
+            does_asset_exist=Mock(return_value=False),
+            load_asset=Mock(side_effect=lambda path: {
+                f'{self.TEXTURES}/T_Test_Dot_Reticle': self.texture}.get(path)),
+            save_loaded_asset=Mock(return_value=True))
+        importer.tools = SimpleNamespace(create_asset=Mock(return_value=self.instance))
+        importer.find_game_material = Mock(side_effect=lambda key: self.parent if key == runtime.norm(
+            'MI_rds02_en_goloscope_1_mark') else None)
+        return importer
+
+    def run_import(self, importer):
+        self.editing = Mock()
+        self.editing.set_material_instance_texture_parameter_value.return_value = False
+        original = Properties(virtual_texture_streaming=getattr(self, 'virtual_mask', True))
+        self.editing.get_material_instance_texture_parameter_value.side_effect = (
+            lambda instance, name: original if instance is self.parent else self.texture)
+        fake = SimpleNamespace(
+            MaterialEditingLibrary=self.editing, MaterialInstanceConstant='MIC',
+            MaterialInstanceConstantFactoryNew=Mock(), LinearColor=lambda *channels: channels,
+            TextureCompressionSettings=SimpleNamespace(TC_DEFAULT='DEFAULT'))
+        with patch.object(runtime, 'unreal', fake):
+            importer.import_reticles()
+
+    def test_colour_only_reticle_keeps_game_texture_and_overrides_parameters(self):
+        importer = self.importer()
+        _path, _folder, _name, entry = importer.plan['reticles'][0]
+        entry.update(file=None, texture=None, parameters={
+            'scalars': {'SightBrightnes': 8}, 'vectors': {'SightColor(RGB)Int(A)': [0, 1, 0, 1]}})
+        importer.plan['reticles'] = runtime.build_plan(
+            {'game_root': '/TestMod', 'textures': [], 'materials': [], 'static_meshes': [],
+             'animations': {'player': [], 'weapon': []}, 'reticles': [entry]}, 'base')['reticles']
+        self.run_import(importer)
+        importer.import_tasks.assert_not_called()
+        self.editing.set_material_instance_texture_parameter_value.assert_not_called()
+        self.editing.clear_all_material_instance_parameters.assert_called_once_with(self.instance)
+        self.editing.set_material_instance_scalar_parameter_value.assert_called_once_with(
+            self.instance, 'SightBrightnes', 8.0)
+        self.editing.set_material_instance_vector_parameter_value.assert_called_once_with(
+            self.instance, 'SightColor(RGB)Int(A)', (0.0, 1.0, 0.0, 1.0))
+        self.assertIs(importer.slot_overrides[runtime.norm('SM_Test_dot')][runtime.norm(entry['slot'])],
+                      self.instance)
+
+    def test_reticle_material_is_a_mod_owned_child_of_the_game_mark_material(self):
+        importer = self.importer()
+        self.run_import(importer)
+        self.assertEqual(self.texture.values, {
+            'srgb': True, 'compression_settings': 'DEFAULT', 'virtual_texture_streaming': True})
+        importer.tools.create_asset.assert_called_once()
+        self.assertEqual(importer.tools.create_asset.call_args[0][:2], ('MI_Test_Dot_Reticle', self.MATERIALS))
+        self.editing.set_material_instance_parent.assert_called_once_with(self.instance, self.parent)
+        self.editing.set_material_instance_texture_parameter_value.assert_called_once_with(
+            self.instance, 'SightMask', self.texture)
+
+    def test_reticle_texture_matches_nonvirtual_donor_sampler_too(self):
+        self.virtual_mask = False
+        importer = self.importer()
+        self.run_import(importer)
+        self.assertIs(self.texture.values['virtual_texture_streaming'], False)
+
+    def test_only_the_scope_meshes_mark_slot_is_overridden(self):
+        importer = self.importer()
+        self.run_import(importer)
+        game_mark, body = object(), object()
+        importer.find_game_material = Mock(side_effect=lambda key: {
+            runtime.norm('MI_rds02_en_goloscope_1_mark'): game_mark, runtime.norm('Body'): body}[key])
+
+        def mesh(name):
+            slots = [Properties(material_slot_name=slot) for slot in ('Body', 'MI_rds02_en_goloscope_1_mark')]
+            return SimpleNamespace(get_name=lambda: name, set_material=Mock(),
+                                   get_editor_property=lambda _name: slots)
+
+        scope, other = mesh('SM_wpn_Test_SM_dot'), mesh('SM_wpn_Test_SM_golo')
+        with patch.object(runtime, 'warn'):
+            importer.assign_materials(scope)
+            importer.assign_materials(other)
+        self.assertEqual([call.args for call in scope.set_material.call_args_list],
+                         [(0, body), (1, self.instance)])
+        self.assertEqual([call.args for call in other.set_material.call_args_list],
+                         [(0, body), (1, game_mark)])
+
+    def test_reticles_are_never_written_to_shared_game_content(self):
+        importer = self.importer('/Game')
+        with self.assertRaisesRegex(RuntimeError, 'mod-owned'):
+            self.run_import(importer)
+        importer.import_tasks.assert_not_called()
+
+    def test_failed_reticle_texture_import_stops_before_material_changes(self):
+        importer = self.importer()
+        importer.import_tasks.return_value = []
+        with self.assertRaisesRegex(RuntimeError, 'texture import failed'):
+            self.run_import(importer)
+        self.editing.set_material_instance_parent.assert_not_called()
 
 
 class GameDataImportTests(unittest.TestCase):
@@ -245,6 +415,23 @@ class GameDataImportTests(unittest.TestCase):
             self.assertEqual((target / 'GameLite' / 'GameData' / 'Patch.cfg').read_text(), 'Custom patch')
             self.assertEqual(importer.counts['CFG files copied'], 2)
             self.assertIn('OldName', warning.call_args.args[0])
+
+    def test_mod_cfg_folder_with_different_case_is_copied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            export, target = root / 'export', root / 'mod'
+            path = export / 'GameLite' / 'ModGameData' / 'TestMod' / 'WeaponData' / 'Weapon.cfg'
+            path.parent.mkdir(parents=True)
+            path.write_text('Weapon', encoding='utf-8')
+            importer = runtime.Importer.__new__(runtime.Importer)
+            importer.base_dir = str(export)
+            importer.manifest = {'game_root': '/TESTMOD'}
+            importer.mod_content_folder = Mock(return_value=str(target))
+            importer.counts = {}
+            with patch.object(runtime, 'warn') as warning, patch.object(runtime, 'log'):
+                importer.copy_game_data()
+            warning.assert_not_called()
+            self.assertEqual(importer.counts['CFG files copied'], 1)
 
 
 class LocalizationArray(list):
@@ -626,8 +813,25 @@ class LocalizationImportTests(unittest.TestCase):
                     RuntimeError, 'mod-owned'):
                 runtime.Importer.text_tool_asset(importer)
 
+    def test_socket_paths_allow_hyphenated_mod_assets(self):
+        path = '/TRS301MOD/_Stalker_2/weapons/sturm_riffle/p_TRs-301/SM_TRs-301'
+        self.assertEqual(runtime.socket_mod_path(path, '/TRS301MOD'), path)
+        for bad in ('/Game/p_TRs-301/SM_TRs-301', '/TRS301MOD/a b/SM', '/TRS301MOD//SM'):
+            with self.assertRaisesRegex(RuntimeError, 'mod-owned'):
+                runtime.socket_mod_path(bad, '/TRS301MOD')
+
 
 class AnimationImportTests(unittest.TestCase):
+    def test_collection_curves_and_nested_collections_are_not_missing_animations(self):
+        importer = runtime.Importer.__new__(runtime.Importer)
+        importer.manifest = {'game_root': '/TestMod', 'weapon': 'trs301'}
+        report = {'lines': [], 'unmatched': []}
+        text = ('(A=/Game/Weapons/m16/Curves/Curve_m16_Pushback_hip_rotation.Curve_m16_Pushback_hip_rotation,'
+                'B=/Game/Weapons/m16/AnimCollection_fp_m16_BuckGrenLauncher.AnimCollection_fp_m16_BuckGrenLauncher,'
+                'C=/Game/Anims/m16/AS_fp_m16_reload.AS_fp_m16_reload)')
+        self.assertEqual(importer.repoint_text(text, {'montage': {}, 'sequence': {}}, report, 'test'), text)
+        self.assertEqual(report['unmatched'], ['/Game/Anims/m16/AS_fp_m16_reload'])
+
     def make_importer(self):
         importer = runtime.Importer.__new__(runtime.Importer)
         importer.wanted = Mock(return_value=True)
@@ -1006,6 +1210,8 @@ class Struct:
         def render(value):
             if isinstance(value, Struct):
                 return value.export_text()
+            if hasattr(value, 'get_path_name'):
+                return value.get_path_name()
             if isinstance(value, dict):
                 return '{' + ','.join(f'{key}:{render(item)}' for key, item in sorted(value.items())) + '}'
             return repr(value)
@@ -1124,6 +1330,13 @@ class CollectionSidTests(unittest.TestCase):
         self.assertEqual(plan, {'GunUDP_MagDefault': 'GunGun_MagDefault',
                                 'GunUDP_MagIncreased': 'GunGun_MagExtended',
                                 'EN_Silen_1': 'EN_Silen_2'})
+
+    def test_custom_iron_sights_remap_the_exact_donor_animation_key(self):
+        self.assertEqual(runtime.planned_collection_sids(
+            ['Ironsights_03', 'EN_GLaunch_1'], [], [
+                {'sid': 'GunTRS_AttachSights', 'kind': 'iron_sight', 'source_sid': 'Ironsights_03'},
+                {'sid': 'EN_GLaunch_1', 'kind': 'grenade_launcher', 'source_sid': 'EN_GLaunch_1'}]),
+            {'Ironsights_03': 'GunTRS_AttachSights'})
 
     def test_existing_shared_magazine_sid_replaces_donor_in_all_collection_maps(self):
         source = {
@@ -1435,6 +1648,173 @@ class AttachmentNotifyTests(unittest.TestCase):
             importer.update_montages()
         self.assertEqual(notifies[0].get_editor_property('binded_attach_sid'), 'EN_Silen_2')
         self.assertEqual(importer.counts['montages/collections updated'], 1)
+
+
+class FakeAssetLibrary:
+    """Path-keyed montage store with EditorAssetLibrary's duplicate/delete/save calls."""
+    def __init__(self, *montages):
+        self.assets = {m.get_path_name().split('.')[0]: m for m in montages}
+        self.saved = []
+        self.failing = set()
+
+    def does_asset_exist(self, path):
+        return path in self.assets
+
+    def load_asset(self, path):
+        return self.assets.get(path)
+
+    def duplicate_asset(self, source, target):
+        name = target.rsplit('/', 1)[-1]
+        copy_ = copy.deepcopy(self.assets[source])
+        copy_.values['path'] = f'{target}.{name}'
+        for event in copy_.values['events']:
+            notify = event.values['notify']
+            notify.values['path'] = f'{target}.{name}:' + notify.values['path'].rsplit(':', 1)[-1]
+        self.assets[target] = copy_
+        return copy_
+
+    def delete_asset(self, path):
+        return self.assets.pop(path, None) is not None
+
+    def save_loaded_asset(self, asset):
+        self.saved.append(asset.get_name())
+        return asset.get_name() not in self.failing
+
+
+class CollectionAliasTests(unittest.TestCase):
+    """A custom optic copied from a donor that stays configured needs its own AttachingBySID entry."""
+    FOLDER = '/Mod/Animations/Player/gun/Attaches/'
+    ATTACHMENTS = [{'sid': 'EN_GoloScope_1', 'source_sid': 'EN_GoloScope_1'},
+                   {'sid': 'GunGun_AttachDot', 'kind': 'scope', 'source_sid': 'EN_GoloScope_1'}]
+
+    def setUp(self):
+        patcher = patch.object(runtime, 'unreal', SimpleNamespace(AnimationLibrary=SimpleNamespace(
+            get_animation_notify_events=lambda asset: asset.values['events'])))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @classmethod
+    def montage(cls, name, sids=()):
+        path = cls.FOLDER + name
+        return Properties(path=f'{path}.{name}', events=[
+            Properties(notify=AttachmentNotify(path=f'{path}.{name}:Notify_{index}', binded_attach_sid=Name(sid)))
+            for index, sid in enumerate(sids)])
+
+    def make(self, attachments=ATTACHMENTS):
+        player = self.montage('MG_fp_gun_sight_attach', ('EN_GoloScope_1', 'EN_GoloScope_1'))
+        weapon = self.montage('MG_gun_fp_sight_attach')
+        detach = self.montage('MG_fp_gun_sight_detach')
+        empty = Struct(character=None, character_left_hand=None, weapon=None)
+        entry = Struct(attach_animation=Struct(character=player, character_left_hand=None, weapon=weapon),
+                       detach_animation=Struct(character=detach, character_left_hand=None, weapon=None),
+                       detach_twin_magazine_shifted=empty)
+        collection = Collection(internal_animations=Struct(
+            reloading={}, one_hand_reloading={}, attaching_by_sid={Name('EN_GoloScope_1'): entry}))
+        importer = runtime.Importer.__new__(runtime.Importer)
+        importer.manifest = {'game_root': '/Mod', 'attachments': list(attachments)}
+        importer.library = FakeAssetLibrary(player, weapon, detach)
+        return importer, collection, player
+
+    @staticmethod
+    def attaching(collection):
+        return collection.get_editor_property('internal_animations').get_editor_property('attaching_by_sid')
+
+    @staticmethod
+    def sids(montage):
+        return [e.values['notify'].get_editor_property('binded_attach_sid') for e in montage.values['events']]
+
+    def test_custom_scope_without_its_own_eye_socket_warns(self):
+        class Mesh:
+            def __init__(self, sockets):
+                self.sockets = sockets
+
+            def find_socket(self, name):
+                return object() if name in self.sockets else None
+
+            def get_name(self):
+                return 'SK_gun'
+        meshes = {'/Mod/SK_gun': Mesh({'EN_GoloScope_1'}),
+                  '/Mod/SK_ok': Mesh({'EN_GoloScope_1', 'GunGun_AttachDot'})}
+        importer = runtime.Importer.__new__(runtime.Importer)
+        importer.library = SimpleNamespace(load_asset=meshes.get)
+        with patch.object(runtime, 'unreal', SimpleNamespace(SkeletalMesh=Mesh)):
+            for path, expected in (('/Mod/SK_gun', 1), ('/Mod/SK_ok', 0)):
+                importer.manifest = {'attachments': self.ATTACHMENTS, 'weapon_sockets': {'mesh': path}}
+                with patch.object(runtime, 'warn') as warn:
+                    importer.check_custom_scope_sockets()
+                self.assertEqual(warn.call_count, expected, path)
+                if expected:
+                    self.assertIn('mesh socket GunGun_AttachDot', warn.call_args[0][0])
+
+    def test_plan_aliases_only_custom_items_whose_donor_entry_stays(self):
+        self.assertEqual(runtime.planned_attachment_aliases(['EN_GoloScope_1'], self.ATTACHMENTS, {}),
+                         {'GunGun_AttachDot': 'EN_GoloScope_1'})
+        self.assertEqual(runtime.planned_attachment_aliases(
+            ['EN_GoloScope_1', 'GunGun_AttachDot'], self.ATTACHMENTS, {}), {})
+        shared = [{'sid': sid, 'kind': 'scope', 'source_sid': 'EN_GoloScope_1'} for sid in ('DotA', 'DotB')]
+        replacements = runtime.planned_collection_sids(['EN_GoloScope_1'], [], shared)
+        self.assertEqual(replacements, {})
+        self.assertEqual(runtime.planned_attachment_aliases(['EN_GoloScope_1'], shared, replacements),
+                         {'DotA': 'EN_GoloScope_1', 'DotB': 'EN_GoloScope_1'})
+        self.assertEqual(runtime.planned_attachment_aliases(
+            ['EN_GoloScope_1'], self.ATTACHMENTS[1:], {'EN_GoloScope_1': 'GunGun_AttachDot'}), {})
+
+    def test_custom_sid_gets_copied_entry_with_its_own_attach_montage(self):
+        importer, collection, player = self.make()
+        before = self.attaching(collection)['EN_GoloScope_1'].export_text()
+        report = {'lines': []}
+        with patch.object(runtime, 'warn') as warn:
+            self.assertTrue(importer.sync_collection_sids(collection, report))
+        warn.assert_not_called()
+        entries = self.attaching(collection)
+        self.assertEqual(entries['EN_GoloScope_1'].export_text(), before)
+        self.assertIsInstance(next(key for key in entries if key == 'GunGun_AttachDot'), Name)
+        attach = entries['GunGun_AttachDot'].get_editor_property('attach_animation')
+        copied = attach.get_editor_property('character')
+        self.assertEqual(copied.get_path_name().split('.')[0],
+                         self.FOLDER + 'MG_fp_gun_sight_attach_GunGun_AttachDot')
+        self.assertEqual(self.sids(copied), ['GunGun_AttachDot'] * 2)
+        self.assertEqual(self.sids(player), ['EN_GoloScope_1'] * 2)
+        self.assertEqual(attach.get_editor_property('weapon').get_path_name(),
+                         self.FOLDER + 'MG_gun_fp_sight_attach.MG_gun_fp_sight_attach')
+        detach = entries['GunGun_AttachDot'].get_editor_property('detach_animation')
+        self.assertEqual(detach.get_editor_property('character').get_path_name(),
+                         self.FOLDER + 'MG_fp_gun_sight_detach.MG_fp_gun_sight_detach')
+        self.assertIn('collection attaching_by_sid: GunGun_AttachDot copied from EN_GoloScope_1', report['lines'])
+        self.assertFalse(importer.sync_collection_sids(collection, {'lines': []}))
+
+    def test_failed_collection_save_deletes_the_copied_montage(self):
+        importer, collection, _player = self.make()
+        before = collection.get_editor_property('internal_animations').export_text()
+        importer.library.failing = {'AnimCollection_fp_gun'}
+        with patch.object(runtime, 'warn'):
+            self.assertFalse(importer.sync_collection_sids(collection, {'lines': []}))
+        self.assertEqual(collection.get_editor_property('internal_animations').export_text(), before)
+        self.assertFalse(importer.library.does_asset_exist(self.FOLDER + 'MG_fp_gun_sight_attach_GunGun_AttachDot'))
+
+    def test_failed_montage_copy_save_deletes_the_copy_and_skips_the_alias(self):
+        importer, collection, _player = self.make()
+        before = collection.get_editor_property('internal_animations').export_text()
+        importer.library.failing = {'MG_fp_gun_sight_attach_GunGun_AttachDot.MG_fp_gun_sight_attach_GunGun_AttachDot'}
+        with patch.object(runtime, 'warn') as warn:
+            self.assertFalse(importer.sync_collection_sids(collection, {'lines': []}))
+        self.assertIn('could not save', warn.call_args.args[0])
+        self.assertEqual(collection.get_editor_property('internal_animations').export_text(), before)
+        self.assertFalse(importer.library.does_asset_exist(self.FOLDER + 'MG_fp_gun_sight_attach_GunGun_AttachDot'))
+
+    def test_uncopyable_alias_warns_but_keeps_other_replacements(self):
+        importer, collection, _player = self.make()
+        importer.manifest['magazines'] = [{'sid': 'GunGun_MagDefault', 'name': 'Default', 'preinstalled': True}]
+        internal = collection.get_editor_property('internal_animations')
+        internal.set_editor_property('reloading', {Name('GunUDP_MagDefault'): reload_entry('MG_reload')})
+        collection.set_editor_property('internal_animations', internal)
+        importer.manifest['game_root'] = '/Other'
+        with patch.object(runtime, 'warn') as warn:
+            self.assertTrue(importer.sync_collection_sids(collection, {'lines': []}))
+        self.assertIn('not a mod-owned montage', warn.call_args.args[0])
+        internal = collection.get_editor_property('internal_animations')
+        self.assertIn('GunGun_MagDefault', internal.get_editor_property('reloading'))
+        self.assertNotIn('GunGun_AttachDot', self.attaching(collection))
 
 
 if __name__ == '__main__':

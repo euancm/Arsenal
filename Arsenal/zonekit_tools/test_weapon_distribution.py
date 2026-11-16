@@ -106,6 +106,17 @@ class DistributionTests(unittest.TestCase):
             path.write_text(text)
             self.assertNotIn('GunTest_HG', path.read_text())
 
+    def test_existing_and_preinstalled_attachments_do_not_get_custom_trader_stock(self):
+        info = self.info(traders=[trader()])
+        info['attachments'] = [
+            {'sid': 'EN_GLaunch_1', 'existing_sid': 'EN_GLaunch_1'},
+            {'sid': 'GunTest_Sights', 'preinstalled': True},
+            {'sid': 'GunTest_Quiet', 'preinstalled': False}]
+        record = distribution.payload(info)
+        stocked = [item['ItemPrototypeSID'] for group in record['trader_attachments']
+                   for item in group['items']]
+        self.assertEqual(stocked, ['GunTest_Quiet'])
+
     def test_base_patches_and_private_generators_share_base_namespace(self):
         info = self.info(factions=[faction()], traders=[trader('IkarTrader_TradeItemGenerator')])
         files = distribution.files(info)

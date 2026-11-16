@@ -419,6 +419,162 @@ class FireModeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'weighted'):
             weapon_cfg.collect_attachments(self.cfg, [])
 
+    def test_custom_attachment_fits_only_this_weapon_despite_inherited_list(self):
+        mesh = bpy.data.objects.new('Dot', bpy.data.meshes.new('Dot'))
+        self.addCleanup(bpy.data.meshes.remove, mesh.data)
+        self.addCleanup(bpy.data.objects.remove, mesh)
+        item = self.cfg.attachments.add()
+        item.name, item.kind, item.mesh_object = 'Dot', 'scope', mesh
+        item.template_sid, item.socket = 'EN_GoloScope_1', 'GoloScopeSocket'
+        items = weapon_cfg.collect_attachments(self.cfg, [(mesh, {'Weapon': 1})])
+        items[0]['sid'] = 'GunTest_AttachDot'
+        text = weapon_cfg.attach_prototypes(dict(self.info, attachments=items))
+        block = text.split('FittingWeaponsSIDs : struct.begin {bskipref}\n', 1)[1].split('struct.end', 1)[0]
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        # The donor golo sight lists 12 weapons; every inherited index must be overwritten.
+        self.assertEqual(lines[0], '[0] = GunTest')
+        self.assertEqual(lines[1:], [f'[{index}] = empty'
+                                     for index in range(1, weapon_cfg.FITTING_WEAPONS_OVERWRITE)])
+        self.assertGreater(weapon_cfg.FITTING_WEAPONS_OVERWRITE, 12)
+
+    def test_custom_reticle_is_packed_into_the_golo_atlas_cell_and_validated_first(self):
+        from stalker2_arsenal import scope_reticles
+        mesh = bpy.data.objects.new('SM_dot', bpy.data.meshes.new('SM_dot'))
+        self.addCleanup(bpy.data.meshes.remove, mesh.data)
+        self.addCleanup(bpy.data.objects.remove, mesh)
+        image = bpy.data.images.new('reticle', 64, 64, alpha=True)
+        self.addCleanup(bpy.data.images.remove, image)
+        pixels = [1.0, 1.0, 1.0, 0.0] * (64 * 64)
+        for y in range(28, 36):
+            for x in range(28, 36):
+                pixels[(y * 64 + x) * 4:(y * 64 + x) * 4 + 4] = (1.0, 0.0, 0.0, 1.0)
+        image.pixels = pixels
+        item = self.cfg.attachments.add()
+        item.name, item.kind, item.mesh_object = 'Dot', 'scope', mesh
+        item.template_sid, item.socket, item.reticle_image = 'EN_GoloScope_1', 'GoloScopeSocket', image
+        items = weapon_cfg.collect_attachments(self.cfg, [(mesh, {'Weapon': 1})])
+        info = dict(self.info, attachments=items, mesh_name='Test', template='', output_root='')
+        with self.assertRaisesRegex(RuntimeError, 'reticle material'):
+            scope_reticles.check_reticles(info)
+        material = bpy.data.materials.new('MI_rds02_en_goloscope_1_mark')
+        self.addCleanup(bpy.data.materials.remove, material)
+        mesh.data.materials.append(material)
+        scope_reticles.check_reticles(info)
+
+        atlas = scope_reticles.build_atlas(image)
+        cell = scope_reticles.CELL_SIZE
+        # Blender rows run bottom-up, so the game's top-left cell is the last 256 rows.
+        top_left = atlas[-cell:, :cell]
+        self.assertAlmostEqual(float(top_left[128, 128, 0]), 1.0, places=3)
+        self.assertEqual(top_left[0, 0, 0], 0.0)
+        self.assertGreater(top_left[128, 150, 1], 0.0)
+        self.assertEqual(atlas[:-cell].max(), 1.0)  # alpha only
+        self.assertEqual(atlas[:-cell, :, :3].max(), 0.0)
+        self.assertEqual(atlas[-cell:, cell:, :3].max(), 0.0)
+
+        with tempfile.TemporaryDirectory() as folder:
+            info['output_root'] = folder
+            entries = scope_reticles.export_reticles(info, os.path.join(folder, 'p_Test'), os.path.relpath)
+            self.assertEqual(entries, [{
+                'file': os.path.join('p_Test', 'Textures', 'T_Test_Dot_Reticle.png'),
+                'texture': 'T_Test_Dot_Reticle', 'material': 'MI_Test_Dot_Reticle',
+                'slot': 'MI_rds02_en_goloscope_1_mark', 'parameters': {'scalars': {}, 'vectors': {}},
+                'meshes': ['SM_wpn_Test_SM_dot', 'SM_Test_dot']}])
+            saved = bpy.data.images.load(os.path.join(folder, entries[0]['file']))
+            self.addCleanup(bpy.data.images.remove, saved)
+            self.assertEqual(tuple(saved.size), (512, 512))
+
+            item.reticle_image, item.reticle_custom_colours = None, True
+            item.reticle_colour, item.reticle_brightness = (0.0, 1.0, 0.0), 7.0
+            entries = scope_reticles.export_reticles(info, os.path.join(folder, 'p_Test'), os.path.relpath)
+            self.assertEqual((entries[0]['file'], entries[0]['texture']), (None, None))
+            parameters = entries[0]['parameters']
+            self.assertEqual(parameters['scalars'], {'SightBrightnes': 7.0, 'NVGSightBrightnes': 3.0})
+            self.assertEqual([round(v, 3) for v in parameters['vectors']['SightColor(RGB)Int(A)']],
+                             [0.0, 1.0, 0.0, 1.0])
+            self.assertEqual([round(v, 3) for v in parameters['vectors']['SighAddColor(RGB)Int(A)']],
+                             [0.333, 0.305, 0.305, 0.436])
+
+    def test_existing_launcher_exports_compatibility_without_redefining_assets(self):
+        item = self.cfg.attachments.add()
+        item.name, item.kind = 'M203', 'grenade_launcher'
+        item.use_existing, item.existing_sid = True, 'EN_GLaunch_1'
+        item.socket = 'SocketOffset'
+        item.text_name = 'Must not overwrite launcher text'
+        items = weapon_cfg.collect_attachments(self.cfg, [])
+        items[0]['sid'] = item.existing_sid
+        info = dict(self.info, attachments=items, mod='TestMod', weapon_id='Test',
+                    world_mesh="StaticMesh'/Test/World.World'", skeletal_mesh="SkeletalMesh'/Test/SK.SK'",
+                    player_sid='GunTest_Player', mount='/TestMod', animation_dir='/Test/Animations',
+                    output_root='EXPORT', anim_name='Test')
+        self.assertNotIn('EN_GLaunch_1', weapon_cfg.attach_prototypes(info))
+        self.assertNotIn('EN_GLaunch_1', weapon_cfg.mesh_prototypes(info))
+        self.assertNotIn('EN_GLaunch_1', weapon_cfg.localization_json(info) or '')
+        setup = weapon_cfg.general_setup(info)
+        self.assertIn('AttachPrototypeSID = EN_GLaunch_1', setup)
+        self.assertIn('Socket = SocketOffset', setup)
+        self.assertNotIn('MeshPrototypeSID = EN_GLaunch_1', setup)
+        files = weapon_cfg.cfg_files(info)
+        patch = files[os.path.join('GameLite', 'GameData', 'ItemPrototypes',
+                                  'TestMod_TestAttachmentCompatibility.cfg')]
+        self.assertIn('EN_GLaunch_1 : struct.begin {bpatch}', patch)
+        self.assertIn('FittingWeaponsSIDs : struct.begin {bpatch}', patch)
+        self.assertIn('[*] = GunTest', patch)
+        self.assertNotIn('[0]', patch)
+        self.assertNotIn('AttachM203', setup)
+        image = bpy.data.images.new('M203 inventory layer', width=8, height=8, alpha=True)
+        self.addCleanup(bpy.data.images.remove, image)
+        item.inventory_image = image
+        reference = weapon_cfg.image_reference(info, item, 'inventory', 'AttachM203')
+        self.assertIn('/TestMod/UI/Arsenal/Test/T_inv_w_Test_AttachM203', reference)
+        self.assertIn(f'WeaponSpecificIcon = {reference}', weapon_cfg.general_setup(info))
+        item.inventory_image = None
+        item.existing_sid = 'not a SID'
+        with self.assertRaisesRegex(RuntimeError, 'valid existing'):
+            weapon_cfg.collect_attachments(self.cfg, [])
+
+    def test_static_parts_replace_donor_array_instead_of_leaving_extra_entries(self):
+        self.assertIn('WeaponStaticMeshParts : struct.begin {bskipref}',
+                      weapon_cfg.general_setup(self.info))
+
+    def test_imported_sights_populate_custom_meshes_and_reference_launcher(self):
+        rig = bpy.data.objects.new('Donor', None)
+        rig['arsenal_donor_mesh_name'] = 'm160'
+        self.addCleanup(bpy.data.objects.remove, rig)
+        preset = weapon_cfg.PRESETS['TemplateM16']
+        objects = []
+        for mount in preset['attachment_mounts']:
+            name = mount['mesh'].rsplit('/', 1)[-1]
+            obj = bpy.data.objects.new(name, bpy.data.meshes.new(name))
+            bpy.context.scene.collection.objects.link(obj)
+            self.addCleanup(bpy.data.meshes.remove, obj.data)
+            self.addCleanup(bpy.data.objects.remove, obj)
+            objects.append(obj)
+        weapon_cfg.fill_attachment_list(self.cfg, rig, objects)
+        sight = next(item for item in self.cfg.attachments if item.kind == 'iron_sight')
+        self.assertFalse(sight.use_existing)
+        self.assertTrue(sight.preinstalled)
+        self.assertNotEqual(sight.front_object, sight.mesh_object)
+        self.assertEqual(sight.socket, 'IronSightRear')
+        self.assertEqual(sight.front_socket, 'IronSightFront')
+        self.assertEqual({sight.socket, sight.front_socket}, {'IronSightRear', 'IronSightFront'})
+        launcher = next(item for item in self.cfg.attachments if item.existing_sid == 'EN_GLaunch_1')
+        self.assertTrue(launcher.use_existing)
+        self.assertTrue(launcher.mesh_object.hide_get())
+        weighted = [(obj, {'Weapon': 1}) for obj in objects]
+        entries = weapon_cfg.collect_attachments(self.cfg, weighted)
+        iron = next(item for item in entries if item['kind'] == 'iron_sight')
+        iron.update(sid='GunTest_AttachSights', mesh_path="StaticMesh'/Test/Rear.Rear'",
+                    front_path="StaticMesh'/Test/Front.Front'")
+        info = dict(self.info, attachments=[iron], world_mesh="StaticMesh'/Test/World.World'",
+                    skeletal_mesh="SkeletalMesh'/Test/SK.SK'")
+        text = weapon_cfg.attach_prototypes(info)
+        self.assertIn('IronSight : struct.begin', text)
+        self.assertIn('MeshPrototypeSID = GunTest_AttachSightsFront', text)
+        self.assertIn('Socket = IronSightFront', text)
+        self.assertIn('SID = GunTest_AttachSightsFront', weapon_cfg.mesh_prototypes(info))
+        self.assertIn('AttachSID = GunTest_AttachSights', weapon_cfg.general_setup(info))
+
     def test_all_mode_combinations_and_defaults(self):
         modes = ('SemiAutomatic', 'Queue', 'Automatic')
         for size in range(1, 4):

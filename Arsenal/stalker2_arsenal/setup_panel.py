@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 
 import bpy
 
@@ -106,12 +107,18 @@ def build_config(context):
         'anim_tokens': [animation],
         'mesh_tokens': [mesh],
         'part_tokens': list(TEMPLATE_DEFAULTS[scene.arsenal_cfg.setup_template]['part_tokens']),
-        'attachment_meshes': list(TEMPLATE_DEFAULTS[scene.arsenal_cfg.setup_template]['attachments']),
+        'attachment_meshes': [entry['mesh'] for entry in
+                              TEMPLATE_DEFAULTS[scene.arsenal_cfg.setup_template]['attachment_mounts']],
         'dry_run': False,
         'export_additive': False,
         'export': True,
         'checkout': True,
     }
+
+
+def addon_version():
+    addon = sys.modules.get(__package__)
+    return '.'.join(str(part) for part in getattr(addon, 'bl_info', {}).get('version', ())) or 'unknown'
 
 
 def write_setup_script(context):
@@ -125,6 +132,7 @@ def write_setup_script(context):
     with open(os.path.join(os.path.dirname(__file__), SETUP_TEMPLATE_NAME), encoding='utf-8') as handle:
         script = handle.read()
     script = script.replace('CONFIG = None', f'CONFIG = {config!r}', 1)
+    script = script.replace('ARSENAL_VERSION = None', f'ARSENAL_VERSION = {addon_version()!r}', 1)
     with open(os.path.join(os.path.dirname(__file__), 'uasset_patch.py'), encoding='utf-8') as handle:
         script = script.replace('PATCHER_SOURCE = None', f'PATCHER_SOURCE = {handle.read()!r}', 1)
     path = os.path.join(working, f'zonekit_setup_{config["weapon"]}.py')

@@ -55,6 +55,7 @@ class CameraPlacementTests(unittest.TestCase):
     def test_imported_camera_follows_bone_head(self):
         armature = self.armature('jnt_camera')
         camera = importer._create_camera(armature)
+        self.assertTrue(camera.data.show_composition_center)
         self.assertEqual(bpy.context.scene.camera, camera)
         self.assert_follows_head(
             camera, armature, 'jnt_camera', Matrix.Rotation(math.pi / 2, 4, 'X'))

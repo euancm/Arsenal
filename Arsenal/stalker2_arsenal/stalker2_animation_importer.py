@@ -13,7 +13,9 @@ import os
 import re
 import textwrap
 import bpy
-from .notifications import completion, report
+from mathutils import Matrix
+from . import bone_functions
+from .notifications import Progress, completion, report
 
 
 DEFAULT_WEAPON_NAME = "UDP"
@@ -37,16 +39,45 @@ def _player_prefixes(weapon_name):
 STAND_IN_SUFFIX = "idle"
 
 
+def _pair_key(suffix):
+    key = suffix.casefold()
+    return "aim_to_idle" if key == "idle_aim_to_idle" else key
+
+
 def stand_in_half(pair):
     """'player' or 'weapon' when that half of a scanned pair is an idle stand-in, otherwise None."""
     suffix, player_path, weapon_path = pair
-    ending = "_" + suffix.casefold()
+    endings = ("_" + suffix.casefold(),)
+    if _pair_key(suffix) == "aim_to_idle":
+        endings = ("_aim_to_idle", "_idle_aim_to_idle")
     for kind, path in (("player", player_path), ("weapon", weapon_path)):
-        if not os.path.splitext(os.path.basename(path))[0].casefold().endswith(ending):
+        stem = os.path.splitext(os.path.basename(path))[0].casefold()
+        # A half named differently is a variant partner (see _variant_key) unless it is the idle stand-in.
+        if not stem.endswith(endings) and stem.endswith("_" + STAND_IN_SUFFIX):
             return kind
     return None
 
+
+def is_variant_pair(pair):
+    """True when the character and weapon clips were paired despite differently numbered names."""
+    suffix, player_path, weapon_path = pair
+    if stand_in_half(pair):
+        return False
+    return any(not os.path.splitext(os.path.basename(path))[0].casefold().endswith("_" + suffix.casefold())
+               for path in (player_path, weapon_path))
+
+
+def pair_record(pair):
+    """Source file names an action was baked from, kept on it so export can tell stale stand-in bakes."""
+    return "|".join(os.path.basename(path) for path in pair[1:])
+
+
+def _variant_key(key):
+    # sight_holographic_attach_BuckGrenLaunch2 (character) pairs with ..._BuckGrenLaunch (weapon).
+    return re.sub(r"[_-]?\d+$", "", key)
+
 ACTION_MARKER = "stalker2_animation_importer"
+PAIR_RECORD = "stalker2_source_pair"
 BASE_MARKER = "stalker2_base_skeleton"
 BONE_PATH_PATTERN = re.compile(r'pose\.bones\["((?:[^"\\]|\\.)+)"\]')
 
@@ -62,7 +93,7 @@ def _collect_animations(folder, prefix):
                 continue
             suffix = stem[len(prefix):]
             if suffix:
-                found.setdefault(suffix.casefold(), []).append((suffix, os.path.join(directory, filename)))
+                found.setdefault(_pair_key(suffix), []).append((suffix, os.path.join(directory, filename)))
     return found
 
 
@@ -111,13 +142,26 @@ def _scan_library(root, weapon_name):
         return found[0][1] if found and STAND_IN_SUFFIX not in ambiguous else None
 
     # The *_add idles are not clips of their own: the ZoneKit import rebuilds them from the idle.
+    player_left = sorted(player.keys() - weapon.keys() - ambiguous)
+    weapon_left = sorted(weapon.keys() - player.keys() - ambiguous)
+    variants = {}
+    for side, keys in (("player", player_left), ("weapon", weapon_left)):
+        for key in keys:
+            if not key.endswith("_add"):
+                variants.setdefault(_variant_key(key), {}).setdefault(side, []).append(key)
+    for group in variants.values():
+        if len(group.get("player", ())) == 1 and len(group.get("weapon", ())) == 1:
+            player_key, weapon_key = group["player"][0], group["weapon"][0]
+            pairs.append((player[player_key][0][0], player[player_key][0][1], weapon[weapon_key][0][1]))
+            player_left.remove(player_key)
+            weapon_left.remove(weapon_key)
     player_only, weapon_only = [], []
-    for key in sorted(player.keys() - weapon.keys() - ambiguous):
+    for key in player_left:
         if key.endswith("_add") or not stand_in(weapon):
             player_only.append(key)
         else:
             pairs.append((player[key][0][0], player[key][0][1], stand_in(weapon)))
-    for key in sorted(weapon.keys() - player.keys() - ambiguous):
+    for key in weapon_left:
         if key.endswith("_add") or not stand_in(player):
             weapon_only.append(key)
         else:
@@ -189,6 +233,7 @@ def _create_camera(armature):
 
     camera_data = bpy.data.cameras.new("STALKER 2 First Person Camera")
     camera_data.lens = 18.0
+    camera_data.show_composition_center = True
     camera_data.sensor_fit = "HORIZONTAL"
     camera_data.sensor_width = 36.0
     camera_data.clip_start = 0.01
@@ -213,7 +258,137 @@ def _is_lower_lod(name):
     return bool(found) and int(found.group(1)) > 0
 
 
-def _create_base_skeleton(context, root, weapon_name):
+# The player's first-person body, exported by ZoneKit setup next to the animations (see unreal_setup.CHARACTER_MESH).
+# glTF because ZoneKit crashes exporting this mesh to FBX.
+PLAYER_BODY = ("_STALKER2", "SkeletalMeshes", "player", "sel", "sel_07", "SK_pla_sel_07.glb")
+
+
+def _player_body(animation_path):
+    """(export root, body glTF) from the same export as an animation file, or None for older exports."""
+    parts = os.path.normpath(animation_path).split(os.sep)
+    lowered = [part.casefold() for part in parts]
+    if PLAYER_BODY[0].casefold() not in lowered:
+        return None
+    root = os.sep.join(parts[:lowered.index(PLAYER_BODY[0].casefold())]) or os.sep
+    path = os.path.join(root, *PLAYER_BODY)
+    return (root, path) if os.path.isfile(path) else None
+
+
+def _axis_permutation(rotation):
+    """The 90-degree axis rotation nearest a 3x3 matrix (identity unless it is clearly one)."""
+    columns = []
+    for column in range(3):
+        values = [rotation[row][column] for row in range(3)]
+        row = max(range(3), key=lambda index: abs(values[index]))
+        vector = [0.0, 0.0, 0.0]
+        vector[row] = 1.0 if values[row] > 0 else -1.0
+        columns.append(vector)
+    axes = Matrix(columns).transposed()
+    if sorted(max(range(3), key=lambda r: abs(c[r])) for c in columns) != [0, 1, 2] or axes.determinant() < 0:
+        return Matrix.Identity(4)
+    return axes.to_4x4()
+
+
+def _gltf_import(filepath):
+    """Import a glTF skinned mesh at the FBX imports' scale (centimetres); returns the new objects and actions."""
+    existing_objects = {obj.as_pointer() for obj in bpy.data.objects}
+    existing_actions = {action.as_pointer() for action in bpy.data.actions}
+
+    def new_data():
+        objects = [obj for obj in bpy.data.objects if obj.as_pointer() not in existing_objects]
+        return objects, [action for action in bpy.data.actions if action.as_pointer() not in existing_actions]
+
+    units = bpy.context.scene.unit_settings
+    saved_scale = units.scale_length
+    # The glTF importer divides by the scene unit scale; Arsenal scenes use 0.01.
+    units.scale_length = 1.0
+    try:
+        bpy.ops.import_scene.gltf(filepath=filepath, guess_original_bind_pose=True)
+        objects, _actions = new_data()
+        roots = [obj for obj in objects if obj.parent is None and obj.type in {"ARMATURE", "MESH"}]
+        for root in roots:
+            root.scale = root.scale * 100.0
+        scaled = [obj for obj in objects if obj.type in {"ARMATURE", "MESH"}]
+        with bpy.context.temp_override(
+            active_object=scaled[0] if scaled else None, selected_objects=scaled, selected_editable_objects=scaled,
+        ):
+            bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    except Exception:
+        _remove_imported(*new_data())
+        raise
+    finally:
+        units.scale_length = saved_scale
+    return new_data()
+
+
+def _check_body_scale(source_rig, master, bones=("jnt_hips", "jnt_head")):
+    """Refuse a body imported at the wrong scale; a rig generated from it would be huge."""
+    if not all(name in source_rig.data.bones and name in master.data.bones for name in bones):
+        return
+    def span(rig):
+        first, second = (rig.matrix_world @ rig.data.bones[name].head_local for name in bones)
+        return (second - first).length
+    expected, found = span(master), span(source_rig)
+    if expected > 1e-6 and not 0.9 < found / expected < 1.1:
+        raise RuntimeError(
+            f"The player body imported at {found / expected:.3g}x the skeleton's size; it was not added. "
+            "Report this with your Blender version and scene unit scale."
+        )
+
+
+def _conform_mesh_to_rest(context, mesh, source_rig, master):
+    """Bake a mesh's bind pose into the master's rest pose; the body and the animation preview can differ."""
+    to_source = source_rig.matrix_world.inverted() @ master.matrix_world
+    shared = [(bone, master.data.bones[bone.name]) for bone in source_rig.data.bones if bone.name in master.data.bones]
+    # glTF import turns every bone's axes the same way; the most common quarter-turn offset is that
+    # convention, while a single bone bound a quarter turn away is a real bind difference to bake in.
+    offsets = [
+        _axis_permutation(rest.matrix_local.to_3x3().inverted() @ to_source.inverted().to_3x3() @ bone.matrix_local.to_3x3())
+        for bone, rest in shared
+    ]
+    keys = [tuple(tuple(round(value) for value in row) for row in offset) for offset in offsets]
+    axes = offsets[keys.index(max(set(keys), key=keys.count))] if offsets else Matrix.Identity(4)
+    for bone, rest in shared:
+        source_rig.pose.bones[bone.name].matrix = to_source @ rest.matrix_local @ axes
+        context.view_layer.update()
+    with context.temp_override(object=mesh, active_object=mesh, selected_objects=[mesh]):
+        for modifier in [m for m in mesh.modifiers if m.type == "ARMATURE"]:
+            bpy.ops.object.modifier_apply(modifier=modifier.name)
+
+
+def _import_player_body(context, root, path, master):
+    """Import the textured player body and bind it to the master armature; returns its meshes and import data."""
+    objects, actions = (_gltf_import if path.lower().endswith(".glb") else _fbx_import)(path)
+    try:
+        meshes = [
+            obj for obj in objects
+            if obj.type == "MESH" and not _is_lower_lod(obj.name) and obj.find_armature() is not None
+        ]
+        rigs = {obj.find_armature() for obj in meshes}
+        if not meshes or len(rigs) != 1:
+            raise RuntimeError(f"{os.path.basename(path)} has no single skinned body mesh")
+        source_rig = rigs.pop()
+        _check_body_scale(source_rig, master)
+        # The glTF armature takes the asset name; the body mesh keeps it once that armature is removed.
+        source_rig.name = f"{source_rig.name} (import)"
+        if len(meshes) == 1:
+            meshes[0].name = os.path.splitext(os.path.basename(path))[0]
+        for mesh in meshes:
+            _conform_mesh_to_rest(context, mesh, source_rig, master)
+            world = mesh.matrix_world.copy()
+            mesh.parent = master
+            mesh.matrix_world = world
+            modifier = mesh.modifiers.new("Armature", "ARMATURE")
+            modifier.object = master
+        from . import import_weapon
+        import_weapon.apply_materials(root, meshes, use_alpha=True)
+    except Exception:
+        _remove_imported(objects, actions)
+        raise
+    return meshes, [obj for obj in objects if obj not in meshes], actions
+
+
+def _create_base_skeleton(context, root, weapon_name, warnings=None):
     existing_armatures = [
         obj for obj in context.scene.objects
         if obj.type == "ARMATURE" and not obj.get("arsenal_weapon_rig", False)
@@ -263,6 +438,22 @@ def _create_base_skeleton(context, root, weapon_name):
         armature[BASE_MARKER] = True
         from . import import_weapon
         import_weapon.add_missing_weapon_bones(context, armature)
+
+        body = _player_body(player_path)
+        if body is not None:
+            try:
+                body_meshes, body_extras, body_actions = _import_player_body(context, *body, armature)
+            except Exception as error:
+                # The textured body is optional; keep the animation preview mesh instead.
+                message = f"Player body not imported, using the preview mesh: {error}"
+                print(f"[Arsenal] {message}")
+                if warnings is not None:
+                    warnings.append(message)
+            else:
+                imported_objects.extend(body_meshes + body_extras)
+                imported_actions.extend(body_actions)
+                # The textured body replaces the bare animation preview mesh.
+                character_meshes = body_meshes
 
         _remove_imported(
             [obj for obj in imported_objects if obj != armature and obj not in character_meshes],
@@ -319,7 +510,8 @@ def _animated_bones(action, source_armature, master):
     return names & shared if names else shared
 
 
-def _import_fbx(filepath):
+def _fbx_import(filepath):
+    """Import an FBX at the add-on's scale; returns the new objects and actions."""
     existing_objects = {obj.as_pointer() for obj in bpy.data.objects}
     existing_actions = {action.as_pointer() for action in bpy.data.actions}
     units = bpy.context.scene.unit_settings
@@ -340,6 +532,11 @@ def _import_fbx(filepath):
         units.scale_length = saved_scale
     objects = [obj for obj in bpy.data.objects if obj.as_pointer() not in existing_objects]
     actions = [action for action in bpy.data.actions if action.as_pointer() not in existing_actions]
+    return objects, actions
+
+
+def _import_fbx(filepath):
+    objects, actions = _fbx_import(filepath)
     armatures = [
         obj for obj in objects
         if obj.type == "ARMATURE" and obj.animation_data and obj.animation_data.action
@@ -392,12 +589,13 @@ def _remove_imported(objects, actions):
         elif isinstance(data, bpy.types.Curve):
             bpy.data.curves.remove(data)
 
+    # These actions came from this FBX import and are never kept. Some Blender setups leave a stray
+    # Scene user on them, and a surviving raw clip keys object transforms, which displaces whatever
+    # armature it is later assigned to (Retarget used to bake them).
     for action in actions:
         try:
             if bpy.data.actions.get(action.name) is action:
-                action.use_fake_user = False
-                if action.users == 0:
-                    bpy.data.actions.remove(action)
+                bpy.data.actions.remove(action)
         except ReferenceError:
             continue
 
@@ -510,7 +708,8 @@ def _reveal(context, obj):
 def _import_pair(context, master, pair):
     unreveal = _reveal(context, master)
     try:
-        return _import_pair_visible(context, master, pair)
+        with bone_functions.muted_deformers(master):
+            return _import_pair_visible(context, master, pair)
     finally:
         unreveal()
 
@@ -572,6 +771,7 @@ def _import_pair_visible(context, master, pair):
         baked_action.name = suffix
         baked_action.use_fake_user = True
         baked_action[ACTION_MARKER] = True
+        baked_action[PAIR_RECORD] = pair_record(pair)
         baked_action_completed = True
         return baked_action
     finally:
@@ -631,10 +831,13 @@ class STALKER2_OT_create_base_skeleton(bpy.types.Operator):
         settings = context.scene.stalker2_animation_importer
         root = bpy.path.abspath(settings.animation_root).strip()
         try:
-            armature = _create_base_skeleton(context, root, settings.weapon_name)
+            warnings = []
+            armature = _create_base_skeleton(context, root, settings.weapon_name, warnings)
         except Exception as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
+        for message in warnings:
+            self.report({"WARNING"}, message)
         self.report({"INFO"}, f"Created base skeleton with {len(armature.data.bones)} bones and camera")
         return {"FINISHED"}
 
@@ -693,13 +896,15 @@ class STALKER2_OT_import_animations(bpy.types.Operator):
 
         successes = 0
         failures = []
-        for pair in pairs:
-            try:
-                _import_pair(context, master, pair)
-                successes += 1
-            except Exception as error:
-                failures.append((pair[0], str(error)))
-                report(self, {"WARNING"}, f"Failed {pair[0]}: {error}")
+        with Progress(context, len(pairs), 'Importing') as progress:
+            for pair in pairs:
+                progress.step(pair[0])
+                try:
+                    _import_pair(context, master, pair)
+                    successes += 1
+                except Exception as error:
+                    failures.append((pair[0], str(error)))
+                    report(self, {"WARNING"}, f"Failed {pair[0]}: {error}")
 
         if failures:
             report(self, {"WARNING"}, f"Imported {successes}/{len(pairs)} pairs; {len(failures)} failed")
@@ -753,7 +958,10 @@ class STALKER2_OT_import_weapon(bpy.types.Operator):
                 report(self, {"WARNING"}, f'No bone for the part "{part}"; it was not imported')
 
             current = "Create base skeleton"
-            master = _create_base_skeleton(context, root, name)
+            warnings = []
+            master = _create_base_skeleton(context, root, name, warnings)
+            for message in warnings:
+                report(self, {"WARNING"}, message)
 
             current = "Import animations"
             step(current, bpy.ops.stalker2.import_animations)
@@ -812,11 +1020,13 @@ def import_new_animations(context, rig, backup, root, weapon_name):
 
     failures = []
     sources = []
-    for pair in wanted:
-        try:
-            sources.append(_import_pair(context, backup, pair))
-        except Exception as error:
-            failures.append((pair[0], str(error)))
+    with Progress(context, len(wanted), 'Importing') as progress:
+        for pair in wanted:
+            progress.step(pair[0])
+            try:
+                sources.append(_import_pair(context, backup, pair))
+            except Exception as error:
+                failures.append((pair[0], str(error)))
     if not sources:
         return [], failures
 

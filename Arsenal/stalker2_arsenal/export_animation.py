@@ -3,15 +3,16 @@ import math
 import os
 import re
 import traceback
+from contextlib import contextmanager
 
 import bpy
-from mathutils import Matrix, Quaternion, Vector
+from mathutils import Euler, Matrix, Quaternion, Vector
 
 from . import bone_functions as b_fun
 from . import export_skeleton
 from . import export_static_mesh as static_mesh
 from . import stalker2_animation_importer as importer
-from .notifications import completion, report
+from .notifications import Progress, completion, report
 from .retarget_animation import (
     action_slot_curves,
     find_retarget_backup,
@@ -43,11 +44,9 @@ def rig_action_slot(action, rig):
     for slot in action.slots:
         if slot.target_id_type != 'OBJECT':
             continue
-        count = len({
-            get_pose_bone_name(curve.data_path)
-            for curve in action_slot_curves(action, slot)
-            if get_pose_bone_name(curve.data_path) in rig.pose.bones
-        })
+        names = {get_pose_bone_name(curve.data_path) for curve in action_slot_curves(action, slot)}
+        # Object-level curves (e.g. a keyed rig location) have no bone name; Blender rejects `None in bones`.
+        count = len({name for name in names if name is not None and name in rig.pose.bones})
         if count and (best is None or count > best[1]):
             best = (slot, count)
     return best[0] if best else None
@@ -191,7 +190,79 @@ def rest_relatives(armature):
     return relatives
 
 
+TRANSFORM_PROPS = {'location', 'rotation_quaternion', 'rotation_euler', 'rotation_axis_angle', 'scale'}
+TEMPLATE_CURVE = re.compile(r'(?:pose\.bones\["((?:[^"\\]|\\.)*)"\]\.)?(\w+)$')
+
+
+def _channels(owner):
+    """Static transform values of an object or pose bone, as mutable lists."""
+    return {
+        'location': list(owner.location),
+        'rotation_quaternion': list(owner.rotation_quaternion),
+        'rotation_euler': list(owner.rotation_euler),
+        'rotation_axis_angle': list(owner.rotation_axis_angle),
+        'scale': list(owner.scale),
+    }
+
+
+def _channel_matrix(mode, values):
+    if mode == 'QUATERNION':
+        rotation = Quaternion(values['rotation_quaternion']).normalized()
+    elif mode == 'AXIS_ANGLE':
+        angle, *axis = values['rotation_axis_angle']
+        rotation = Quaternion(Vector(axis).normalized(), angle) if Vector(axis).length else Quaternion()
+    else:
+        rotation = Euler(values['rotation_euler'], mode)
+    return Matrix.LocRotScale(Vector(values['location']), rotation, Vector(values['scale']))
+
+
+def _template_curve_sampler(armature):
+    """Evaluate an imported template's own F-curves, without frame_set re-evaluating the whole scene.
+
+    Returns None when anything other than its plain action could move the template, so the caller
+    falls back to scene evaluation."""
+    animation_data = armature.animation_data
+    if (armature.parent or armature.constraints or animation_data is None or animation_data.action is None
+            or animation_data.action_slot is None
+            or animation_data.drivers or animation_data.nla_tracks
+            or any(bone.constraints for bone in armature.pose.bones)
+            or Vector(armature.delta_location).length or Vector(armature.delta_scale) != Vector((1, 1, 1))
+            or Vector(armature.delta_rotation_euler).length
+            or Quaternion(armature.delta_rotation_quaternion) != Quaternion()):
+        return None
+    bones = {bone.name: (bone.rotation_mode, _channels(bone)) for bone in armature.pose.bones}
+    obj_channels = (armature.rotation_mode, _channels(armature))
+    curves = []
+    for curve in action_slot_curves(animation_data.action, animation_data.action_slot):
+        match = TEMPLATE_CURVE.match(curve.data_path)
+        if match is None:
+            if curve.data_path.startswith('pose.bones['):
+                continue  # custom properties do not move bones
+            return None
+        bone_name, prop = match.groups()
+        if prop not in TRANSFORM_PROPS:
+            return None
+        owner = obj_channels if bone_name is None else bones.get(bone_name.replace('\\"', '"'))
+        if owner is None:
+            continue
+        if curve.mute or curve.is_empty:
+            continue
+        curves.append((curve, owner[1][prop], curve.array_index))
+
+    def sample(frame):
+        for curve, values, index in curves:
+            values[index] = curve.evaluate(frame)
+        return (
+            {name: _channel_matrix(mode, values) for name, (mode, values) in bones.items()},
+            _channel_matrix(*obj_channels),
+        )
+    return sample
+
+
 def sample_template(context, armature, frames):
+    sampler = _template_curve_sampler(armature)
+    if sampler is not None:
+        return {frame: sampler(frame) for frame in frames}
     samples = {}
     for frame in frames:
         context.scene.frame_set(math.floor(frame), subframe=frame - math.floor(frame))
@@ -354,14 +425,66 @@ def solve_armature(order, relatives, original_basis, reversed_world, types, base
     return worlds, basis
 
 
-def sample_rig(context, rig, backup, mapping, frames):
+@contextmanager
+def continuous_ik_twist(rig):
+    """Unwrap Rigify snap twists for subframe baking without editing the artist's action."""
+    animation = rig.animation_data
+    action = animation.action if animation else None
+    slot = animation.action_slot if action else None
+    paths = {
+        control.path_from_id('rotation_euler')
+        for _parent, name, _fk in IK_BASE_CONTROLS
+        if (control := rig.pose.bones.get(name)) is not None
+        and control.rotation_mode not in {'QUATERNION', 'AXIS_ANGLE'}
+    }
+    wrapped = {
+        curve.data_path for curve in action_slot_curves(action, slot)
+        if not curve.mute and curve.data_path in paths and curve.array_index == 1
+        and any(abs(b.co.y - a.co.y) > math.pi
+                for a, b in zip(curve.keyframe_points, list(curve.keyframe_points)[1:]))
+    } if action else set()
+    if not wrapped:
+        yield
+        return
+    temporary = action.copy()
+    try:
+        temporary_slot = temporary.slots[list(action.slots).index(slot)]
+        for curve in action_slot_curves(temporary, temporary_slot):
+            if curve.data_path not in wrapped or curve.array_index != 1:
+                continue
+            previous = None
+            for key in curve.keyframe_points:
+                value = key.co.y
+                angle = value if previous is None else previous + math.remainder(value - previous, math.tau)
+                offset = angle - value
+                left, right = key.handle_left.copy(), key.handle_right.copy()
+                key.co.y = angle
+                left.y += offset
+                right.y += offset
+                key.handle_left, key.handle_right = left, right
+                previous = angle
+            curve.update()
+        animation.action = temporary
+        animation.action_slot = temporary_slot
+        print(f'[Arsenal export] {action.name}: unwrapped IK twist for subframe sampling '
+              '(source keys unchanged)', flush=True)
+        yield
+    finally:
+        animation.action = action
+        animation.action_slot = slot
+        bpy.data.actions.remove(temporary)
+
+
+def sample_rig(context, rig, backup, mapping, frames, ik_bases=None):
     entries = deformation_entries(rig, backup, mapping)
     types = {source: kind for _target, source, kind in mapping}
     rows = []
-    for frame in frames:
-        context.scene.frame_set(math.floor(frame), subframe=frame - math.floor(frame))
-        context.view_layer.update()
-        rows.append(read_reversed_worlds(rig, backup, entries))
+    with continuous_ik_twist(rig):
+        for frame in frames:
+            context.scene.frame_set(math.floor(frame), subframe=frame - math.floor(frame))
+            apply_ik_bases(ik_bases, frame)
+            context.view_layer.update()
+            rows.append(read_reversed_worlds(rig, backup, entries))
     return rows, types
 
 
@@ -473,6 +596,8 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
     last = math.ceil(action.frame_range[1])
     frames_in = [first + step / BAKE_SUBSTEPS for step in range((last - first) * BAKE_SUBSTEPS + 1)]
     frames_out = [float(frame - first) for frame in frames_in]
+    ik_bases = solve_ik_bases(
+        context, rig, ik_base_fallbacks(rig, keyed_pose_channels(action, slot)), first, last)
 
     imported = []
     created = []
@@ -499,7 +624,7 @@ def export_action(context, rig, backup, mapping, action, slot, outputs):
         player_bone_names = {bone.name for bone in player.data.bones}
         weapon_only_names = {bone.name for bone in weapon.data.bones} - player_bone_names
 
-        reversed_rows, types = sample_rig(context, rig, backup, mapping, frames_in)
+        reversed_rows, types = sample_rig(context, rig, backup, mapping, frames_in, ik_bases)
 
         player_order, weapon_order = bone_order(player), bone_order(weapon)
         player_rel, weapon_rel = rest_relatives(player), rest_relatives(weapon)
@@ -608,6 +733,8 @@ def keyed_pose_channels(action, slot):
 
 def validate_ik_controls(context, rig, action, slot):
     keyed = keyed_pose_channels(action, slot)
+    derived = {(control.name, prop) for _parent, control, _fk, props in ik_base_fallbacks(rig, keyed)
+               for prop in props}
     controls = []
     for parent_name, control_names in IK_EXPORT_CONTROLS:
         parent = rig.pose.bones.get(parent_name)
@@ -638,9 +765,14 @@ def validate_ik_controls(context, rig, action, slot):
             if ('_ik_target.' in control.name
                     and 'pole_vector' in parent and not parent['pole_vector']):
                 continue
+            pole = parent.get('pole_vector')
+            # Rigify's IK->FK snap leaves tiny shoulder/hip offsets that export treats as rest.
+            tolerance = {'location': max(1e-5, 1e-4 * control.length)} if any(
+                control.name == name for _p, name, _f in IK_BASE_CONTROLS) else {}
             unkeyed = [
                 prop for prop, rest in missing
-                if any(abs(value - default) > 1e-5
+                if not ((control.name, prop) in derived and (prop == 'scale' or not pole))
+                and any(abs(value - default) > tolerance.get(prop, 1e-5)
                        for value, default in zip(getattr(control, prop), rest))
             ]
             if unkeyed:
@@ -657,7 +789,210 @@ def rest_unkeyed_channels(rig, action, slot):
     b_fun.rest_pose_channels(rig, keyed)
 
 
-def run_exports(context, rig, backup, plans):
+IK_BASE_CONTROLS = (
+    ('thigh_parent.L', 'thigh_ik.L', 'thigh_fk.L'),
+    ('thigh_parent.R', 'thigh_ik.R', 'thigh_fk.R'),
+    ('upper_arm_parent.L', 'upper_arm_ik.L', 'upper_arm_fk.L'),
+    ('upper_arm_parent.R', 'upper_arm_ik.R', 'upper_arm_fk.R'),
+)
+TWIST_TOLERANCE = 1e-3
+TWIST_ITERATIONS = 8
+
+
+def ik_base_fallbacks(rig, keyed):
+    """IK base controls whose unkeyed twist/scale export derives from the FK limb.
+
+    Artists key the IK hand but rarely the IK upper arm, whose leftover viewport value
+    is just whatever the last played action set. Export follows Rigify's IK->FK snap
+    instead, which is also what keyed clips contain after Snap IK->FK (Action)."""
+    result = []
+    for parent_name, control_name, fk_name in IK_BASE_CONTROLS:
+        parent = rig.pose.bones.get(parent_name)
+        control = rig.pose.bones.get(control_name)
+        fk = rig.pose.bones.get(fk_name)
+        if parent is None or control is None or fk is None or 'IK_FK' not in parent:
+            continue
+        if control.rotation_mode in {'QUATERNION', 'AXIS_ANGLE'}:
+            continue
+        props = tuple(prop for prop in ('rotation_euler', 'scale') if (control_name, prop) not in keyed)
+        if props:
+            result.append((parent, control, fk, props))
+    return result
+
+
+def _ik_chain_end(control):
+    for child in control.children:
+        if any(constraint.type == 'IK' and constraint.chain_count == 2 for constraint in child.constraints):
+            return child
+    return None
+
+
+def _twist_error(control, end, desired):
+    """Signed angle about the shoulder-to-wrist axis from the IK upper arm to the FK direction."""
+    axis = end.tail - control.head
+    if axis.length < 1e-6:
+        return 0.0
+    axis.normalize()
+    current = control.vector - axis * control.vector.dot(axis)
+    wanted = desired - axis * desired.dot(axis)
+    if current.length < 1e-6 or wanted.length < 1e-6:
+        return 0.0  # straight limb: every twist gives the same direction
+    return math.atan2(axis.dot(current.cross(wanted)), current.dot(wanted))
+
+
+def _solve_twist(view_layer, control, axis):
+    """Rigify's correct_rotation: twist about Y until the IK result points along the FK bone.
+
+    Slow search used when the secant solve in _solve_twists does not converge."""
+    def cost(angle):
+        control.rotation_euler[1] = angle
+        view_layer.update()
+        return -control.vector.normalized().dot(axis)
+
+    step = math.tau / 36
+    best = min(range(36), key=lambda index: cost(index * step)) * step
+    low, high = best - step, best + step
+    ratio = (math.sqrt(5) - 1) / 2
+    a, b = high - ratio * (high - low), low + ratio * (high - low)
+    cost_a, cost_b = cost(a), cost(b)
+    while high - low > TWIST_TOLERANCE:
+        if cost_a < cost_b:
+            high, b, cost_b = b, a, cost_a
+            a = high - ratio * (high - low)
+            cost_a = cost(a)
+        else:
+            low, a, cost_a = a, b, cost_b
+            b = low + ratio * (high - low)
+            cost_b = cost(b)
+    angle = (low + high) / 2
+    cost(angle)
+    return angle
+
+
+def _solve_twists(view_layer, limbs, starts):
+    """Secant solve of every limb's twist together, so each rig update serves all limbs.
+
+    limbs are (control, chain_end, fk); returns {control name: twist}."""
+    state = {}
+    stuck = []
+    for control, end, fk in limbs:
+        control.rotation_euler = (0.0, starts.get(control.name, 0.0), 0.0)
+        if end is None:
+            stuck.append((control, end, fk, None))
+        else:
+            state[control.name] = [control, end, fk, None]
+    view_layer.update()
+    results = {}
+    for _iteration in range(TWIST_ITERATIONS):
+        moved = False
+        for name, entry in list(state.items()):
+            control, end, fk, previous = entry
+            angle = control.rotation_euler[1]
+            error = _twist_error(control, end, fk.matrix.to_3x3().col[1].normalized())
+            if abs(error) <= TWIST_TOLERANCE:
+                results[name] = angle
+                del state[name]
+                continue
+            if previous is None:
+                axis = end.tail - control.head
+                step = error if control.y_axis.dot(axis) >= 0.0 else -error
+            else:
+                slope = (error - previous[1]) / (angle - previous[0]) if angle != previous[0] else 0.0
+                if abs(slope) < 1e-3:
+                    stuck.append(state.pop(name))
+                    continue
+                step = -error / slope
+            entry[3] = (angle, error)
+            control.rotation_euler[1] = angle + max(-math.pi, min(math.pi, step))
+            moved = True
+        if not moved:
+            break
+        view_layer.update()
+    for control, _end, fk, _previous in stuck + list(state.values()):
+        axis = fk.matrix.to_3x3().col[1].normalized()
+        results[control.name] = _solve_twist(view_layer, control, axis)
+    return results
+
+
+def _solve_scales(view_layer, limbs):
+    """Rigify's correct_scale for every limb together: match each IK base's pose scale to FK."""
+    for _attempt in range(4):
+        moved = False
+        for control, fk in limbs:
+            target = fk.matrix.to_scale()
+            current = control.matrix.to_scale()
+            if all(abs(c - t) <= 1e-5 * abs(t) for c, t in zip(current, target)):
+                continue
+            control.scale = [s * t / c for s, t, c in zip(control.scale, target, current)]
+            moved = True
+        if not moved:
+            break
+        view_layer.update()
+    return {control.name: tuple(control.scale) for control, _fk in limbs}
+
+
+def solve_ik_bases(context, rig, fallbacks, first, last):
+    """Per-frame twist/scale for each fallback limb that uses IK somewhere in [first, last]."""
+    scene, view_layer = context.scene, context.view_layer
+    if not fallbacks:
+        return {}
+    frames = range(first, last + 1)
+    used = set()
+    for frame in frames:
+        scene.frame_set(frame)
+        used.update(index for index, (parent, *_rest) in enumerate(fallbacks)
+                    if parent['IK_FK'] < 1.0 - 1e-5)
+    active = [fallback for index, fallback in enumerate(fallbacks) if index in used]
+    if not active:
+        return {}
+    values = {}
+    starts = {}
+    for frame in frames:
+        scene.frame_set(frame)
+        twists, scales = [], []
+        for parent, control, fk, props in active:
+            if 'scale' in props:
+                control.scale = (1.0, 1.0, 1.0)
+                scales.append((control, fk))
+            if 'rotation_euler' in props:
+                if parent.get('pole_vector'):
+                    control.rotation_euler = (0.0, 0.0, 0.0)
+                else:
+                    twists.append((control, _ik_chain_end(control), fk))
+        if twists:
+            starts.update(_solve_twists(view_layer, twists, starts))
+        else:
+            view_layer.update()
+        solved_scales = _solve_scales(view_layer, scales)
+        twisted = {control.name for control, _end, _fk in twists}
+        row = []
+        for _parent, control, _fk, props in active:
+            twist = scale = None
+            if 'rotation_euler' in props:
+                twist = starts[control.name] if control.name in twisted else 0.0
+            if 'scale' in props:
+                scale = solved_scales[control.name]
+            row.append((control, twist, scale))
+        values[frame] = row
+    return values
+
+
+def apply_ik_bases(values, frame):
+    if not values:
+        return
+    lower = math.floor(frame)
+    upper = min(math.ceil(frame), max(values))
+    weight = frame - lower
+    for (control, twist_a, scale_a), (_control, twist_b, scale_b) in zip(values[lower], values[upper]):
+        if twist_a is not None:
+            control.rotation_euler[1] = twist_a + (twist_b - twist_a) * weight
+        if scale_a is not None:
+            control.scale = [a + (b - a) * weight for a, b in zip(scale_a, scale_b)]
+
+
+def run_exports(context, rig, backup, plans, cache=None):
+    """Export each plan; with a cache, actions whose inputs and FBXs are unchanged are skipped
+    (their files are still returned, so the import manifest stays complete)."""
     if deformation_preview_issues(rig):
         raise RuntimeError(
             'Viewport uses unbound deform groups or Blender-only B-bones. '
@@ -679,14 +1014,26 @@ def run_exports(context, rig, backup, plans):
         raise RuntimeError('No animation bone mappings matched the source skeleton and Rigify rig.')
     try:
         scene.unit_settings.scale_length = 1.0
-        with b_fun.forced_pose_position(rig, backup):
+        with b_fun.forced_pose_position(rig, backup), Progress(context, len(plans), 'Exporting') as progress:
             for action, slot, outputs in plans:
+                progress.step(action.name)
                 try:
+                    fingerprint = None
+                    if cache is not None:
+                        fingerprint = cache.fingerprint(action, slot, outputs, keyed_pose_channels(action, slot))
+                        if cache.is_current(outputs, fingerprint):
+                            print(f'[Arsenal export] {action.name}: unchanged, kept the existing FBXs', flush=True)
+                            written.extend(target for _kind, _template, target in outputs if target is not None)
+                            cache.unchanged += 1
+                            continue
+                        cache.forget(outputs)
                     rig.animation_data.action = action
                     rig.animation_data.action_slot = slot
                     validate_ik_controls(context, rig, action, slot)
                     rest_unkeyed_channels(rig, action, slot)
                     written.extend(export_action(context, rig, backup, mapping, action, slot, outputs))
+                    if cache is not None:
+                        cache.record(action.name, outputs, fingerprint)
                 except Exception as error:
                     print(f'[Arsenal export] FAILED {action.name}: {error}', flush=True)
                     traceback.print_exc()
@@ -788,6 +1135,11 @@ class ARSENAL_ExportProps(bpy.types.PropertyGroup):
                     'It is also the Unreal mount path /<Mod Name> and the ModGameData/<Mod Name> folder',
         default='')
     active_index: bpy.props.IntProperty()
+    reexport_all: bpy.props.BoolProperty(
+        name='Re-export Unchanged Animations',
+        description='Bake every animation again, even those whose keys, rig, donor files and FBXs are '
+                    'unchanged since the last export. Leave off to export only what changed',
+        default=False)
     summary: bpy.props.StringProperty(default='Export checks and writes all matching rig animations automatically.')
 
 
@@ -813,11 +1165,19 @@ def _export_basics(context):
     return export, importer_settings, rig, backup, new_name, output_root, library_root
 
 
+SKIPPED_STATUS = 'Skipped'
+
+
+def skipped_actions(export):
+    return [item for item in getattr(export, 'actions', ()) if item.status.startswith(SKIPPED_STATUS)]
+
+
 def _build_plans(context):
     export, importer_settings, rig, backup, new_name, output_root, library_root = _export_basics(context)
     old_name = importer_settings.weapon_name.strip()
     pairs, _player_only, _weapon_only, ambiguous = importer._scan_library(library_root, old_name)
     keys = {pair[0].casefold() for pair in pairs}
+    pairs_by_key = {pair[0].casefold(): pair for pair in pairs}
 
     plans = []
     problems = 0
@@ -831,9 +1191,15 @@ def _build_plans(context):
             if action.name.casefold() in ambiguous:
                 raise ValueError(f'Ambiguous donor files for "{action.name}"; remove duplicate donor exports')
             if action.name.casefold() not in keys:
-                raise ValueError(
-                    f'"{action.name}" does not match an original animation. '
-                    'Use the original action name when replacing an animation; new weapon features are not supported')
+                item.status = (f'{SKIPPED_STATUS}: "{action.name}" does not match an original animation. '
+                               'Rename it to the original action name to export it')
+                continue
+            pair = pairs_by_key[action.name.casefold()]
+            if importer.is_variant_pair(pair) and action.get(importer.PAIR_RECORD) != importer.pair_record(pair):
+                # Older imports baked this clip against an idle stand-in for the other half.
+                item.status = (f'{SKIPPED_STATUS}: "{action.name}" now pairs {importer.pair_record(pair)}; '
+                               'delete this action, then import and retarget the animation again to export it')
+                continue
             outputs, status = plan_export(
                 item.name, '', '', pairs,
                 old_name, new_name, output_root, library_root)
@@ -869,15 +1235,31 @@ def _build_static_plan(context):
 
 
 def _run_animation_export(context):
+    from .animation_cache import AnimationCache
+
     rig, backup, plans, problems = _build_plans(context)
     if problems:
         details = '\n'.join(f'{item.name}: {item.status}' for item in context.scene.arsenal_export.actions
-                            if item.status and not item.status.startswith('Matches an original animation'))
+                            if item.status and not item.status.startswith(('Matches an original animation',
+                                                                            SKIPPED_STATUS)))
         raise RuntimeError(f'{problems} animation actions cannot be exported:\n{details}')
     if not plans:
+        skipped = skipped_actions(getattr(context.scene, 'arsenal_export', None))
+        if skipped:
+            raise RuntimeError('No rig animation matches an original animation name; skipped: '
+                               + ', '.join(item.name for item in skipped))
         raise RuntimeError('No editable rig animations found. Use Retarget Animation in panel 3 first.')
-    written, failures = run_exports(context, rig, backup, plans)
-    return written, failures, len(plans)
+    export = context.scene.arsenal_export
+    mapping, _missing = resolve_animation_mapping(backup, rig)
+    cache = AnimationCache(bpy.path.abspath(export.output_folder).strip(), context, rig, backup,
+                           mapping, BAKE_SUBSTEPS)
+    if export.reexport_all:
+        cache.entries.clear()
+    try:
+        written, failures = run_exports(context, rig, backup, plans, cache)
+    finally:
+        cache.save()
+    return written, failures, len(plans), cache.unchanged
 
 
 def _run_static_export(context):
@@ -916,20 +1298,30 @@ class ARSENAL_OT_ExportValidate(bpy.types.Operator):
                 self.report({'WARNING'}, problem)
         except Exception as error:
             self.report({'WARNING'}, f'Name check skipped: {error}')
+        skipped = skipped_actions(context.scene.arsenal_export)
+        for item in skipped:
+            self.report({'WARNING'}, f'{item.name}: {item.status}')
         context.scene.arsenal_export.summary = (
-            f'{len(plans)} animations ready, {problems} with problems; {len(static_plan)} static meshes planned.')
+            f'{len(plans)} animations ready, {len(skipped)} skipped, {problems} with problems; '
+            f'{len(static_plan)} static meshes planned.')
         self.report({'INFO'}, context.scene.arsenal_export.summary)
         return {'FINISHED'}
 
 
 def _report_animation(operator, context, result):
-    written, failures, count = result
+    written, failures, count, unchanged = result
     for name, message in failures:
         for item in context.scene.arsenal_export.actions:
             if item.name == name:
                 item.status = f'Export failed: {message}'
         report(operator, {'WARNING'}, f'{name}: {message}')
-    return f'{len(written)} animation files for {count - len(failures)} actions ({len(failures)} failed)', bool(failures)
+    skipped = skipped_actions(context.scene.arsenal_export)
+    for item in skipped:
+        report(operator, {'WARNING'}, f'{item.name}: {item.status}')
+    kept = f', {unchanged} unchanged and kept' if unchanged else ''
+    ignored = f', {len(skipped)} skipped' if skipped else ''
+    return (f'{len(written)} animation files for {count - len(failures)} actions '
+            f'({len(failures)} failed{kept}{ignored})', bool(failures))
 
 
 def _report_static(operator, result):
@@ -953,9 +1345,16 @@ class ARSENAL_OT_ExportAllRun(bpy.types.Operator):
         written = []
         context.window_manager.clipboard = ''
         try:
-            _build_static_plan(context)
-            from . import weapon_cfg, export_check
+            rig, backup, bone_joints, _plan = _build_static_plan(context)
+            from . import weapon_cfg, export_check, weapon_sockets
+            # Fail before writing anything: a late failure leaves new files beside an old import script.
+            weapon_sockets.check_markers(context.scene)
             cfg_info = weapon_cfg.build_context(context)
+            static_mesh.world_mesh_sockets(
+                context.scene, rig, backup, bone_joints, cfg_info['magazines'],
+                cfg_info['world_mesh'].split("'")[1].split('.')[0])
+            from . import scope_reticles
+            scope_reticles.check_reticles(cfg_info)
             for problem in export_check.name_warnings(cfg_info):
                 report(self, {'WARNING'}, problem)
                 warn = True
@@ -1012,7 +1411,8 @@ class ARSENAL_PT_ExportPanel(bpy.types.Panel):
         layout = self.layout
         export = context.scene.arsenal_export
         layout.prop(export, 'output_folder')
-        layout.label(text='All matching animations are exported.')
+        layout.label(text='All matching animations are exported; unchanged ones are kept.')
+        layout.prop(export, 'reexport_all')
         layout.label(text=export.summary)
         rig, _backup = find_export_rig(context)
         if rig and deformation_preview_issues(rig):

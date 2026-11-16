@@ -9,6 +9,7 @@ bone sockets, mod name, folders) is filled in automatically; the rest comes from
 import json
 import os
 import re
+import textwrap
 
 import bpy
 
@@ -21,6 +22,8 @@ from . import weapon_distribution
 
 PISTOL = PRESETS['TemplatePistol']
 SAFE_ID = re.compile(r'^[A-Za-z0-9_]+$')
+# Longer than any base-game FittingWeaponsSIDs list (EN_GoloScope_1 has 12 entries).
+FITTING_WEAPONS_OVERWRITE = 32
 GAME_ICONS = '/Game/GameLite/FPS_Game/UIRemaster/UITextures/Inventory/WeaponAndAttachments'
 SETUP_TEMPLATES = tuple(
     (key, preset['label'], f'Use the models, animations and settings of {preset["base_weapon"]}',
@@ -220,18 +223,45 @@ class ARSENAL_CfgMagazine(bpy.types.PropertyGroup):
         description='Multiplier on the reload time from an empty weapon. Below 1 is faster')
 
 
+ATTACHMENT_KINDS = (
+    ('silencer', 'Silencer', 'Silencer', 0),
+    ('laser', 'Laser', 'Lasersight', 1),
+    ('scope', 'Scope', 'Scope', 2),
+    ('grenade_launcher', 'Grenade Launcher', 'GrenadeLauncher', 3),
+    ('iron_sight', 'Iron Sights', 'IronSight', 4),
+    ('grip', 'Grip', 'Grip', 5),
+    ('muzzle', 'Muzzle', 'Muzzle', 6),
+    ('plank_scope', 'Scope Rail', 'PlankScope', 7),
+    ('shotgun', 'Underbarrel Shotgun', 'Shotgun', 8),
+    ('flashlight', 'Weapon Flashlight', 'WeaponFlashlight', 9),
+    ('magazine', 'Magazine', 'Magazine', 10),
+)
+
+
 def _attachment_kind_changed(self, context):
     if self.socket in ('SilencerMuzzleSocket', 'LaserSocket'):
-        self.socket = 'SilencerMuzzleSocket' if self.kind == 'silencer' else 'LaserSocket'
+        self.socket = {'silencer': 'SilencerMuzzleSocket', 'laser': 'LaserSocket'}.get(self.kind, '')
 
 
 class ARSENAL_CfgAttachment(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(name='ID', default='Silencer')
-    kind: bpy.props.EnumProperty(name='Type', items=[
-        ('silencer', 'Silencer', 'Inherits EN_Silen_2 behaviour'),
-        ('laser', 'Laser', 'Inherits EN_Laser_1 behaviour')], update=_attachment_kind_changed)
+    kind: bpy.props.EnumProperty(
+        name='Type', items=[(key, label, '', value) for key, label, _game, value in ATTACHMENT_KINDS],
+        update=_attachment_kind_changed)
+    use_existing: bpy.props.BoolProperty(
+        name='Reference Existing',
+        description='Use an attachment defined by the game or another mod. Export compatibility only, '
+                    'without copying its meshes, textures, behaviour or text', default=False)
+    existing_sid: bpy.props.StringProperty(name='Existing Attachment SID')
+    template_sid: bpy.props.StringProperty(
+        name='Base Attachment SID', description='Existing attachment whose behaviour this custom item inherits')
+    preinstalled: bpy.props.BoolProperty(name='Preinstalled', default=False)
+    donor_properties: bpy.props.StringProperty(options={'HIDDEN'})
     mesh_object: bpy.props.PointerProperty(
         name='Mesh', type=bpy.types.Object, poll=lambda self, obj: obj.type == 'MESH')
+    front_object: bpy.props.PointerProperty(
+        name='Front Sight Mesh', type=bpy.types.Object, poll=lambda self, obj: obj.type == 'MESH')
+    front_socket: bpy.props.StringProperty(name='Front Sight Socket', default='IronSightFront')
     socket: bpy.props.StringProperty(name='Socket', default='SilencerMuzzleSocket')
     cost: bpy.props.FloatProperty(name='Cost', default=2500, min=0)
     weight: bpy.props.FloatProperty(name='Weight', default=0.1, min=0)
@@ -244,13 +274,48 @@ class ARSENAL_CfgAttachment(bpy.types.PropertyGroup):
     inventory_image: bpy.props.PointerProperty(type=bpy.types.Image)
     upgrade_image: bpy.props.PointerProperty(type=bpy.types.Image)
     standalone_image: bpy.props.PointerProperty(type=bpy.types.Image)
+    reticle_image: bpy.props.PointerProperty(
+        name='Reticle Image', type=bpy.types.Image,
+        description='Custom scope reticle. Bright or opaque pixels form the mark; it is scaled to 256 x 256, '
+                    'centred like the image, and tinted by the game material')
+    # Defaults are EN_GoloScope_1's mark material values; colours are linear, as in the game.
+    reticle_custom_colours: bpy.props.BoolProperty(
+        name='Custom Reticle Colours',
+        description="Override the reticle's colour and brightness. Off keeps the values of the game scope "
+                    'this one is based on')
+    reticle_colour: bpy.props.FloatVectorProperty(
+        name='Reticle Colour', subtype='COLOR', size=3, min=0.0, soft_max=1.0,
+        default=(1.0, 0.036458, 0.036458), description='Colour of the sharp reticle (SightColor)')
+    reticle_colour_intensity: bpy.props.FloatProperty(
+        name='Intensity', min=0.0, soft_max=10.0, default=1.0,
+        description='Reticle colour intensity (SightColor alpha)')
+    reticle_glow_colour: bpy.props.FloatVectorProperty(
+        name='Glow Colour', subtype='COLOR', size=3, min=0.0, soft_max=1.0,
+        default=(0.333, 0.30525, 0.30525), description='Colour of the soft halo around the reticle (SighAddColor)')
+    reticle_glow_intensity: bpy.props.FloatProperty(
+        name='Intensity', min=0.0, soft_max=10.0, default=0.436,
+        description='Glow intensity (SighAddColor alpha)')
+    reticle_brightness: bpy.props.FloatProperty(
+        name='Brightness', min=0.0, soft_max=20.0, default=5.0,
+        description='Overall reticle brightness (SightBrightnes)')
+    reticle_nvg_brightness: bpy.props.FloatProperty(
+        name='Night Vision Brightness', min=0.0, soft_max=20.0, default=3.0,
+        description='Reticle brightness while night vision is on (NVGSightBrightnes)')
 
 
 class ARSENAL_CfgUpgradeEffect(bpy.types.PropertyGroup):
+    effect_type: bpy.props.EnumProperty(
+        name='Effect', items=weapon_upgrades.EFFECT_TYPE_ITEMS,
+        get=weapon_upgrades.get_effect_type, set=weapon_upgrades.set_effect_type,
+        description='Choose the affected stat or behaviour; numerical types use signed custom values')
     prototype: bpy.props.EnumProperty(
         name='Base Effect', items=weapon_upgrades.EFFECT_ITEMS, default='DamagePos20Effect',
         update=weapon_upgrades.effect_changed,
         description='Existing game effect to use, or inherit for a custom numerical effect')
+    behaviour: bpy.props.EnumProperty(
+        name='Base Behaviour', items=weapon_upgrades.behaviour_items,
+        get=weapon_upgrades.get_behaviour, set=weapon_upgrades.set_behaviour,
+        description='Game behaviour to inherit; lists only prototypes of the selected effect type')
     custom: bpy.props.BoolProperty(name='Custom Values', description='Export a mod-owned effect with the values below')
     percent: bpy.props.BoolProperty(name='Percentage', default=True,
                                    description='Write percentage modifiers rather than absolute values')
@@ -258,27 +323,54 @@ class ARSENAL_CfgUpgradeEffect(bpy.types.PropertyGroup):
                                        description='Signed game modifier; negative reduces the affected stat')
     value_max: bpy.props.FloatProperty(name='Maximum', default=20,
                                        description='Use the same minimum and maximum for a fixed modifier')
+    value: bpy.props.FloatProperty(
+        name='Value', get=weapon_upgrades.get_effect_value, set=weapon_upgrades.set_effect_value,
+        description='Signed modifier: for example -20 with Percentage reduces the stat by 20 percent')
+    use_range: bpy.props.BoolProperty(
+        name='Value Range', get=weapon_upgrades.get_effect_range, set=weapon_upgrades.set_effect_range,
+        description='Edit separate minimum and maximum modifiers instead of a fixed value')
+    advanced: bpy.props.BoolProperty(
+        name='Advanced: Base Effect',
+        description='Choose the exact game prototype to inherit; changing it resets the displayed values to its defaults')
     beneficial: bpy.props.EnumProperty(
         name='Benefit', items=[(v, v, '') for v in ('None', 'Positive', 'Negative')], default='Positive',
         description='Whether the game presents this effect as a benefit or penalty')
-    show_effect: bpy.props.BoolProperty(name='Show Effect in Upgrade Details', default=True)
+    show_effect: bpy.props.BoolProperty(
+        name='Show Effect in Upgrade Details', default=True,
+        description='Show this effect and its value in the technician upgrade details; does not enable or disable its gameplay effect')
 
 
 class ARSENAL_CfgUpgrade(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(name='ID', description='Unique ID within this tree; used by prerequisite lists')
     template_sid: bpy.props.StringProperty(options={'HIDDEN'})
-    image: bpy.props.PointerProperty(type=bpy.types.Image)
+    image: bpy.props.PointerProperty(
+        type=bpy.types.Image, description='Small upgrade-module illustration; blank keeps the base upgrade image')
     texts: bpy.props.CollectionProperty(type=ARSENAL_CfgText)
-    text_language: bpy.props.EnumProperty(name='Language', items=LANGUAGES, default='en')
-    text_name: bpy.props.StringProperty(name='Display Name', get=_get_text_name, set=_set_text_name)
-    text_description: bpy.props.StringProperty(name='Description', get=_get_text_description, set=_set_text_description)
-    base_cost: bpy.props.FloatProperty(name='Cost', default=1000, min=0)
-    horizontal: bpy.props.IntProperty(name='Column', default=0, min=0)
-    vertical: bpy.props.EnumProperty(name='Position', items=[(v, v, '') for v in ('None', 'Top', 'Down')])
+    text_language: bpy.props.EnumProperty(
+        name='Language', items=LANGUAGES, default='en', description='Language of the upgrade name and description below')
+    text_name: bpy.props.StringProperty(
+        name='Display Name', get=_get_text_name, set=_set_text_name,
+        description='Upgrade name in the selected language; blank inherits the base upgrade name')
+    text_description: bpy.props.StringProperty(
+        name='Description', get=_get_text_description, set=_set_text_description,
+        description='Upgrade tooltip in the selected language; blank inherits the base upgrade description')
+    base_cost: bpy.props.FloatProperty(
+        name='Cost', default=1000, min=0, description='Base technician installation cost before game discounts and modifiers')
+    horizontal: bpy.props.IntProperty(
+        name='Column', default=0, min=0, description='Horizontal column in this weapon part of the technician upgrade screen')
+    vertical: bpy.props.EnumProperty(
+        name='Position', items=[(v, v, '') for v in ('None', 'Top', 'Down')],
+        description='Vertical branch position in the technician layout; None uses the unbranched position')
     target_part: bpy.props.EnumProperty(
-        name='Weapon Part', items=[(v, v, '') for v in ('Barrel', 'Body', 'PistolGrip', 'Stock', 'Handguard')])
-    modification: bpy.props.BoolProperty(name='Modification')
-    hidden_without_item: bpy.props.BoolProperty(name='Hide Without Required Item')
+        name='Weapon Part', items=[(v, v, '') for v in ('Barrel', 'Body', 'PistolGrip', 'Stock', 'Handguard')],
+        description='Section of the technician upgrade tree that contains this upgrade')
+    modification: bpy.props.BoolProperty(
+        name='Modification',
+        description='Game IsModification classification: used by hardware/feature conversions such as rails, '
+                    'lasers and canted aim. Leave off for ordinary stat upgrades; this does not create hardware or effects')
+    hidden_without_item: bpy.props.BoolProperty(
+        name='Hide Without Required Item',
+        description='Hide this upgrade until its required item is available, rather than only showing it as locked')
     keep_restrictions: bpy.props.BoolProperty(
         name='Keep Base Global-variable Restrictions', default=True,
         description='Retain the donor blueprint/quest variable restrictions; item and skill requirements below remain editable')
@@ -692,18 +784,72 @@ def collect_attachments(cfg, others):
         if not SAFE_ID.fullmatch(item.name) or item.name.casefold() in names:
             raise RuntimeError('Custom attachment IDs must be unique and contain only letters, digits and underscores.')
         names.add(item.name.casefold())
-        if item.mesh_object not in meshes:
+        if item.use_existing and not SAFE_ID.fullmatch(item.existing_sid.strip()):
+            raise RuntimeError(f'Attachment "{item.name}" needs a valid existing attachment SID.')
+        if not item.use_existing and item.mesh_object not in meshes:
             raise RuntimeError(f'Attachment "{item.name}" needs a separate mesh weighted to a mapped weapon bone.')
         if not SAFE_ID.fullmatch(item.socket):
             raise RuntimeError(f'Attachment "{item.name}" needs a valid socket name.')
+        template = item.template_sid.strip() or (
+            'EN_Silen_2' if item.kind == 'silencer' else 'EN_Laser_1' if item.kind == 'laser' else '')
+        if not item.use_existing and not SAFE_ID.fullmatch(template):
+            raise RuntimeError(f'Attachment "{item.name}" needs a valid base attachment SID for its behaviour.')
+        if not item.use_existing and item.kind == 'magazine':
+            raise RuntimeError('Define custom magazines in the Magazines panel, including full and empty meshes.')
+        if not item.use_existing and item.kind in ('grenade_launcher', 'shotgun'):
+            raise RuntimeError('Animated underbarrel weapons currently require Reference Existing; '
+                               'custom skeletal attachment export is not supported.')
+        if not item.use_existing and item.kind == 'iron_sight' and (
+                item.front_object not in meshes or not SAFE_ID.fullmatch(item.front_socket)):
+            raise RuntimeError(f'Iron sights "{item.name}" need a front mesh and valid front socket.')
         result.append({'name': item.name, 'kind': item.kind, 'settings': item,
+                       'existing_sid': item.existing_sid.strip() if item.use_existing else '',
+                       'preinstalled': item.preinstalled,
                        'object': item.mesh_object, 'socket': item.socket,
-                       'template': 'EN_Silen_2' if item.kind == 'silencer' else 'EN_Laser_1'})
+                       'template': template})
+    sids = [item['existing_sid'] for item in result if item['existing_sid']]
+    if len(set(sids)) != len(sids):
+        raise RuntimeError('Existing attachment SIDs must be unique.')
     return result
 
 
+def fill_attachment_list(cfg, rig, objects):
+    if cfg.attachments:
+        return
+    preset = next(value for value in PRESETS.values()
+                  if value['mesh'] == rig.get('arsenal_donor_mesh_name'))
+    by_name = {re.sub(r'\.\d{3}$', '', obj.name).casefold(): obj for obj in objects}
+    kinds = {game: key for key, _label, game, _value in ATTACHMENT_KINDS}
+    for option in preset['attachment_options']:
+        item = cfg.attachments.add()
+        item.name = option['sid']
+        item.kind = kinds[option['kind']]
+        item.use_existing = option['kind'] != 'IronSight'
+        item.existing_sid = item.template_sid = option['sid']
+        item.preinstalled = option['preinstalled']
+        item.socket = option['socket']
+        item.donor_properties = json.dumps(option['properties'])
+        mounts = option['mounts']
+        if item.kind == 'iron_sight':
+            mounts = sorted(mounts, key=lambda mount: 'front' in mount['socket'].casefold())
+        for index, mount in enumerate(mounts):
+            obj = by_name.get(mount['mesh'].rsplit('/', 1)[-1].casefold())
+            if index == 0:
+                item.mesh_object = obj
+                item.socket = mount['socket']
+            elif index == 1 and item.kind == 'iron_sight':
+                item.front_object = obj
+                item.front_socket = mount['socket']
+            if obj:
+                obj.hide_set(not item.preinstalled)
+        # A single-mesh sight is valid too; export it only once.
+        if item.kind == 'iron_sight' and item.front_object is None:
+            item.front_object = item.mesh_object
+            item.front_socket = item.socket
+
+
 def compatible_attachment_sids(info):
-    """[{'sid', 'kind'}] for the silencer/laser entries written to CompatibleAttachments."""
+    """Animation SID replacements for the configured compatible attachments."""
     cfg = info['cfg']
     custom = info.get('attachments', [])
     kinds = {item['kind'] for item in custom}
@@ -712,7 +858,11 @@ def compatible_attachment_sids(info):
         result.append({'sid': 'EN_Silen_2', 'kind': 'silencer'})
     if cfg.allow_laser and 'laser' not in kinds:
         result.append({'sid': 'EN_Laser_1', 'kind': 'laser'})
-    result.extend({'sid': item['sid'], 'kind': item['kind']} for item in custom)
+    for item in custom:
+        entry = {'sid': item['sid'], 'kind': item['kind']}
+        if item.get('template'):
+            entry['source_sid'] = item['template']
+        result.append(entry)
     return result
 
 
@@ -758,9 +908,15 @@ def build_context(context):
         bones = static_mesh.weighted_bones(magazine['full'], bone_joints)
         magazine['socket'] = bone_joints[max(bones, key=bones.get)] if bones else 'jnt_magazine'
     for item in attachments:
-        item['sid'] = f'Gun{weapon_id}_Attach{item["name"]}'
+        item['sid'] = item['existing_sid'] or f'Gun{weapon_id}_Attach{item["name"]}'
+        if item['existing_sid']:
+            continue
         stem = static_mesh.attachment_stem(mesh_name, item['object'].name, template)
         item['mesh_path'] = mesh_path(f'{mesh_folder}/AnimMesh', stem)
+        if item['kind'] == 'iron_sight':
+            obj = item['settings'].front_object
+            stem = static_mesh.attachment_stem(mesh_name, obj.name, template)
+            item['front_path'] = mesh_path(f'{mesh_folder}/AnimMesh', stem)
 
     animation_dir = animation_folder(context.scene, export, output_root, mount)
     anim_name = animation_export.weapon_name(context.scene)
@@ -859,11 +1015,26 @@ def attach_prototypes(info):
         writer.end()
         writer.line()
     for item in info.get('attachments', []):
+        if item.get('existing_sid'):
+            continue
         settings = item['settings']
         writer.begin(item['sid'], '{refurl=@BaseGame/ItemPrototypes/AttachPrototypes.cfg;'
                      f'refkey={item["template"]}}}')
         writer.line(f'SID = {item["sid"]}')
         writer.line(f'MeshPrototypeSID = {item["sid"]}')
+        if item['kind'] == 'iron_sight':
+            writer.begin('IronSight')
+            writer.begin('MeshArray', '{bskipref}')
+            mounts = [(item['sid'], item['socket'])]
+            if settings.front_object != settings.mesh_object:
+                mounts.append((item['sid'] + 'Front', settings.front_socket))
+            for index, (mesh_sid, socket) in enumerate(mounts):
+                writer.begin(f'[{index}]')
+                writer.line(f'MeshPrototypeSID = {mesh_sid}')
+                writer.line(f'Socket = {socket}')
+                writer.end()
+            writer.end()
+            writer.end()
         writer.line(f'Cost = {number(settings.cost)}')
         writer.line(f'Weight = {number(settings.weight)}')
         if settings.localization_sid.strip():
@@ -871,8 +1042,12 @@ def attach_prototypes(info):
         image = image_reference(info, settings, 'standalone', f'Attach{item["name"]}')
         if image:
             writer.line(f'Icon = {image}')
+        # In game, {bskipref} did not clear this inherited list: a copy of EN_GoloScope_1 listed
+        # the donor's weapons from index 1 on. Overwrite every inherited index explicitly.
         writer.begin('FittingWeaponsSIDs', '{bskipref}')
         writer.line(f'[0] = {info["sid"]}')
+        for index in range(1, FITTING_WEAPONS_OVERWRITE):
+            writer.line(f'[{index}] = empty')
         writer.end()
         writer.end()
         writer.line()
@@ -895,7 +1070,11 @@ def mesh_prototypes(info):
         entry(f'{mag_sid}Empty', magazine['empty_path'])
         entry(f'{mag_sid}Full', magazine['full_path'])
     for item in info.get('attachments', []):
+        if item.get('existing_sid'):
+            continue
         entry(item['sid'], item['mesh_path'])
+        if item['kind'] == 'iron_sight' and item['settings'].front_object != item['object']:
+            entry(item['sid'] + 'Front', item['front_path'])
     entry(f'Gun{info["weapon_id"]}_StaticMesh', info['world_mesh'])
     skeletal = f'Gun{info["weapon_id"]}_Skeletal'
     writer.begin(skeletal, '{refurl=@BaseGame/MeshPrototypes.cfg;refkey=[0]}')
@@ -1053,7 +1232,7 @@ def general_setup(info):
     writer.line(f'MaxDeadNPCLoadedAmmoCount = {max(cfg.dead_ammo_min, cfg.dead_ammo_max)}')
     writer.line()
     writer.line('//Static data')
-    writer.begin('WeaponStaticMeshParts')
+    writer.begin('WeaponStaticMeshParts', '{bskipref}')
     for index, (path, socket) in enumerate(info['parts']):
         writer.begin(f'[{index}]')
         writer.line(f'MeshPath = {path}')
@@ -1111,25 +1290,58 @@ def general_setup(info):
     for item in info.get('attachments', []):
         writer.begin(f'[{index}]')
         writer.line(f'AttachPrototypeSID = {item["sid"]}')
-        writer.line(f'MeshPrototypeSID = {item["sid"]}')
+        if not item.get('existing_sid'):
+            writer.line(f'MeshPrototypeSID = {item["sid"]}')
         writer.line(f'Socket = {item["socket"]}')
-        if item['kind'] == 'silencer':
+        settings = item['settings']
+        properties = json.loads(settings.donor_properties) if settings.donor_properties else {}
+        def property_value(key, value):
+            if isinstance(value, dict):
+                writer.begin(key)
+                for child, field in value.items():
+                    property_value(child, field)
+                writer.end()
+            else:
+                writer.line(f'{key} = {value}')
+
+        for key, value in properties.items():
+            if key in ('AttachPrototypeSID', 'Socket', 'IconPosX', 'IconPosY',
+                       'WeaponSpecificIcon', 'RequiredUpgradeIDs', 'BlockingUpgradeIds'):
+                continue
+            if key == 'MeshPrototypeSID' and not item.get('existing_sid'):
+                continue
+            property_value(key, value)
+        if item['kind'] == 'silencer' and 'Muzzle' not in properties:
             writer.line('Muzzle = SilencerMuzzle')
         writer.line('IconPosX = 0')
         writer.line('IconPosY = 0')
-        image = image_reference(info, item['settings'], 'inventory', f'Attach{item["name"]}')
+        # Donor overlays depict a different weapon; only layers rendered for this weapon are used.
+        image = image_reference(info, item.get('settings'), 'inventory', f'Attach{item["name"]}')
         writer.line(f'WeaponSpecificIcon = {image or ""}')
+        if cfg.keep_upgrades:
+            for key in ('RequiredUpgradeIDs', 'BlockingUpgradeIds'):
+                if properties.get(key):
+                    property_value(key, properties[key])
         writer.end()
         index += 1
     writer.end()
     preinstalled = [m for m in magazines if m['preinstalled']]
-    if preinstalled:
+    installed_attachments = [item for item in info.get('attachments', []) if item.get('preinstalled')]
+    if preinstalled or installed_attachments:
         writer.begin('PreinstalledAttachmentsItemPrototypeSIDs', '{bskipref}')
         for index, magazine in enumerate(preinstalled):
             writer.begin(f'[{index}]')
             writer.line(f'AttachSID = {magazine_sid(info, magazine)}')
             writer.line('bHiddenInInventory = true')
             writer.end()
+        for index, item in enumerate(installed_attachments, start=len(preinstalled)):
+            writer.begin(f'[{index}]')
+            writer.line(f'AttachSID = {item["sid"]}')
+            writer.line('bHiddenInInventory = true')
+            writer.end()
+        writer.end()
+    else:
+        writer.begin('PreinstalledAttachmentsItemPrototypeSIDs', '{bskipref}')
         writer.end()
     writer.line('//Upgrades')
     writer.begin('UpgradePrototypeSIDs', '{bskipref}')
@@ -1170,7 +1382,8 @@ def localization_entries(info):
     targets += [(item['settings'], f'Gun{info["weapon_id"]}_Mag{item["name"]}')
                 for item in info.get('magazines', [])
                 if item.get('settings') and not item['preinstalled'] and not item.get('existing_sid')]
-    targets += [(item['settings'], item['sid']) for item in info.get('attachments', [])]
+    targets += [(item['settings'], item['sid']) for item in info.get('attachments', [])
+                if not item.get('existing_sid')]
     for settings, sid in targets:
         sid = settings.localization_sid.strip() or sid
         if not SAFE_ID.fullmatch(sid):
@@ -1214,6 +1427,16 @@ def cfg_files(info):
     }
     files.update(weapon_upgrades.files(info))
     files.update(weapon_distribution.files(info))
+    references = [item for item in info.get('attachments', []) if item.get('existing_sid')]
+    writer = Writer()
+    for item in references:
+        writer.begin(item['sid'], '{bpatch}')
+        writer.begin('FittingWeaponsSIDs', '{bpatch}')
+        writer.line(f'[*] = {info["sid"]}')
+        writer.end()
+        writer.end()
+    files[os.path.join('GameLite', 'GameData', 'ItemPrototypes',
+                       f'{info["mod"]}_{name}AttachmentCompatibility.cfg')] = writer.text()
     localization = localization_json(info)
     if localization:
         files[os.path.join('Localization', f'{info["mod"]}-{name}-localization.json')] = localization
@@ -1249,6 +1472,10 @@ def export_cfg_files(operator, context):
         if cfg.inventory_image and not settings.inventory_image:
             report(operator, {'WARNING'}, f'Stock {kind} has no aligned inventory layer; the donor overlay '
                    'and offsets can change the whole weapon icon scale. Render or select its image layer.')
+    for item in info.get('attachments', []):
+        if cfg.inventory_image and item.get('existing_sid') and not item['settings'].inventory_image:
+            report(operator, {'WARNING'}, f'Referenced attachment "{item["name"]}" has no inventory layer, so it '
+                   'will not appear on the weapon icon. Render or select its image layer.')
     if not info['magazines']:
         report(operator, {'WARNING'}, 'No separate magazine meshes found; magazine entries were skipped.')
     if not localization_entries(info):
@@ -1408,7 +1635,7 @@ def draw_localization(layout, settings, magazine_index=-1, attachment_index=-1, 
 class ARSENAL_OT_CfgAttachmentEdit(bpy.types.Operator):
     bl_idname = 'object.arsenal_cfg_attachment_edit'
     bl_label = 'Edit Custom Attachment'
-    bl_description = 'Add or remove a custom silencer/laser configuration without deleting its mesh objects'
+    bl_description = 'Add or remove an attachment configuration without deleting its mesh objects'
     bl_options = {'REGISTER', 'UNDO'}
     remove: bpy.props.BoolProperty()
 
@@ -1416,7 +1643,7 @@ class ARSENAL_OT_CfgAttachmentEdit(bpy.types.Operator):
     def description(cls, context, properties):
         if properties.remove:
             return 'Remove the selected custom attachment settings, not its mesh or exported files'
-        return 'Add a custom silencer or laser; assign its weighted mesh, socket, price, text and render images'
+        return 'Add an attachment: reference an existing game item or assign a custom mesh and base behaviour'
 
     def execute(self, context):
         cfg = context.scene.arsenal_cfg
@@ -1496,6 +1723,7 @@ class ARSENAL_OT_CfgUpgradeEdit(bpy.types.Operator):
             if self.action == 'ADD_EFFECT':
                 effect = item.effects.add()
                 weapon_upgrades.effect_changed(effect, context)
+                effect.custom = True
                 item.active_effect = len(item.effects) - 1
             elif self.action == 'REMOVE_EFFECT':
                 if not 0 <= item.active_effect < len(item.effects):
@@ -1511,7 +1739,15 @@ class ARSENAL_OT_CfgUpgradeEdit(bpy.types.Operator):
 
 class ARSENAL_UL_CfgUpgradeEffects(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        layout.label(text=item.prototype + (' (custom)' if item.custom else ''))
+        kind = weapon_upgrades.effect_type(item)
+        label = weapon_upgrades.EFFECT_HELP[kind][0]
+        if item.custom:
+            suffix = '%' if item.percent else ''
+            value = (f'{item.value_min:g} to {item.value_max:g}' if item.use_range else f'{item.value:g}')
+            label += f': {value}{suffix}'
+        else:
+            label += f' ({item.prototype})'
+        layout.label(text=label)
 
 
 def draw_upgrades(layout, context):
@@ -1559,12 +1795,28 @@ def draw_upgrades(layout, context):
         buttons.operator('object.arsenal_cfg_upgrade_edit', text='', icon=icon).action = action
     if 0 <= item.active_effect < len(item.effects):
         effect = item.effects[item.active_effect]
-        box.prop(effect, 'prototype')
-        box.prop(effect, 'custom')
-        if effect.custom:
-            for name in ('percent', 'value_min', 'value_max', 'beneficial', 'show_effect'):
-                box.prop(effect, name)
-            box.label(text='Signed game values: negative reduces the affected stat.')
+        kind = weapon_upgrades.effect_type(effect)
+        box.prop(effect, 'effect_type')
+        for line in textwrap.wrap(weapon_upgrades.EFFECT_HELP[kind][1], width=55):
+            box.label(text=line)
+        if kind in weapon_upgrades.NON_NUMERIC:
+            box.prop(effect, 'behaviour')
+            box.label(text='Uses the selected game behaviour; no numerical override.')
+        else:
+            box.prop(effect, 'custom')
+            if effect.custom:
+                box.prop(effect, 'percent')
+                box.prop(effect, 'use_range')
+                if effect.use_range:
+                    box.prop(effect, 'value_min')
+                    box.prop(effect, 'value_max')
+                else:
+                    box.prop(effect, 'value')
+                for name in ('beneficial', 'show_effect'):
+                    box.prop(effect, name)
+            box.prop(effect, 'advanced')
+            if effect.advanced:
+                box.prop(effect, 'prototype')
 
 
 class ARSENAL_PT_CfgText(_CfgSubPanel, bpy.types.Panel):
@@ -1738,8 +1990,11 @@ class ARSENAL_PT_CfgAttachments(_CfgSubPanel, bpy.types.Panel):
     bl_order = 5
 
     def draw(self, context):
-        self.props(context, ('allow_silencer', 'allow_laser', 'keep_upgrades'))
         cfg = context.scene.arsenal_cfg
+        kinds = {item.kind for item in cfg.attachments}
+        self.props(context, tuple(name for name, kind in (
+            ('allow_silencer', 'silencer'), ('allow_laser', 'laser')) if kind not in kinds)
+                   + ('keep_upgrades',))
         layout = self.layout
         if not cfg.keep_upgrades:
             draw_upgrades(layout.box(), context)
@@ -1750,20 +2005,49 @@ class ARSENAL_PT_CfgAttachments(_CfgSubPanel, bpy.types.Panel):
             box.prop(settings, 'mesh_object', text='Preview Mesh')
             box.label(text='Preview only: does not replace the game attachment mesh.')
             inventory_images.draw_images(box, context, stock_attachment=kind)
-        layout.label(text='Custom attachments replace the matching base-game option.')
+        layout.label(text='Reference existing items, or supply your own meshes.')
         row = layout.row()
         row.template_list('ARSENAL_UL_CfgMagazines', 'attachments', cfg, 'attachments',
                           cfg, 'active_attachment', rows=2)
         buttons = row.column(align=True)
         buttons.operator('object.arsenal_cfg_attachment_edit', text='', icon='ADD').remove = False
         buttons.operator('object.arsenal_cfg_attachment_edit', text='', icon='REMOVE').remove = True
+        if len(cfg.attachments):
+            layout.operator('arsenal.inventory_render_attachments', icon='RENDER_STILL')
         if 0 <= cfg.active_attachment < len(cfg.attachments):
             item = cfg.attachments[cfg.active_attachment]
-            for name in ('name', 'kind', 'mesh_object', 'socket', 'cost', 'weight'):
+            for name in ('name', 'kind', 'use_existing'):
                 layout.prop(item, name)
-            layout.label(text='Mesh must be weighted to a mapped weapon bone.')
-            layout.label(text='Laser socket: LaserSocket; silencer: SilencerMuzzleSocket.')
-            draw_localization(layout.box(), item, attachment_index=cfg.active_attachment)
+            if item.use_existing:
+                layout.prop(item, 'existing_sid')
+            else:
+                layout.prop(item, 'template_sid')
+            layout.prop(item, 'mesh_object', text='Preview Mesh' if item.use_existing else 'Mesh')
+            layout.prop(item, 'socket')
+            layout.prop(item, 'preinstalled')
+            if not item.use_existing:
+                if item.kind == 'iron_sight':
+                    layout.prop(item, 'front_object')
+                    layout.prop(item, 'front_socket')
+                if item.kind == 'scope':
+                    box = layout.box()
+                    box.label(text='Reticle Image (optional)')
+                    box.template_ID(item, 'reticle_image', open='image.open')
+                    box.label(text='White on black, 256 x 256; the glow is generated.')
+                    box.prop(item, 'reticle_custom_colours')
+                    if item.reticle_custom_colours:
+                        for colour, intensity in (('reticle_colour', 'reticle_colour_intensity'),
+                                                  ('reticle_glow_colour', 'reticle_glow_intensity')):
+                            row = box.row(align=True)
+                            row.prop(item, colour)
+                            row.prop(item, intensity)
+                        box.prop(item, 'reticle_brightness')
+                        box.prop(item, 'reticle_nvg_brightness')
+                    box.label(text='Replaces the reticle on the *_mark material slot.')
+                for name in ('cost', 'weight'):
+                    layout.prop(item, name)
+                layout.label(text='Mesh must be weighted to a mapped weapon bone.')
+                draw_localization(layout.box(), item, attachment_index=cfg.active_attachment)
             inventory_images.draw_images(layout, context, attachment_index=cfg.active_attachment)
 
 

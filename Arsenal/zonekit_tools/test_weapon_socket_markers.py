@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import bpy
-from mathutils import Euler, Matrix
+from mathutils import Euler, Matrix, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import stalker2_arsenal as addon
@@ -95,6 +95,7 @@ class MarkerTests(unittest.TestCase):
             self.assertTrue(sockets.socket_transforms_equal(exported['transform'], BASELINE))
             self.assertFalse(exported['enabled'])
             self.assertEqual(entry.marker.type, 'EMPTY')
+            self.assertTrue(entry.marker.show_name)
 
     def test_axis_and_rotation_roundtrips(self):
         for entry in self.scene.arsenal_sockets.entries:
@@ -142,6 +143,163 @@ class MarkerTests(unittest.TestCase):
                     @ entry.marker.matrix_basis)
         self.assertMatrixClose(entry.marker.matrix_world, expected)
 
+    def test_custom_attachments_export_in_configured_socket_space_without_preview_parent(self):
+        from stalker2_arsenal import export_static_mesh as meshes
+        self.rig.matrix_world = (Matrix.Translation((18, -6, 148))
+                                @ Euler((0.2, -0.3, 0.4)).to_matrix().to_4x4()
+                                @ Matrix.Scale(1.7, 4))
+        main_data = bpy.data.meshes.new('Main')
+        main_data.from_pydata([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)], [],
+                             [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)])
+        main = bpy.data.objects.new('custom', main_data)
+        self.scene.collection.objects.link(main)
+        main.parent = self.rig
+        main.vertex_groups.new(name='Weapon').add([0, 1, 2, 3], 1, 'REPLACE')
+        item = self.scene.arsenal_cfg.attachments.add()
+        item.name, item.kind = 'Sights', 'iron_sight'
+        expected = {}
+        for index, entry in enumerate(self.scene.arsenal_sockets.entries):
+            data = bpy.data.meshes.new('Sight')
+            local = [Vector((0, 0, 0)), Vector((1, 0, 0)), Vector((0, 1, 0))]
+            rest = sockets.marker_rest_matrix(entry.marker)
+            data.from_pydata([rest @ v for v in local], [], [(0, 1, 2)])
+            obj = bpy.data.objects.new('Sight' + str(index), data)
+            self.scene.collection.objects.link(obj)
+            obj.parent = self.rig
+            obj.matrix_world = Matrix.Identity(4)
+            obj.vertex_groups.new(name='Weapon').add([0, 1, 2], 1, 'REPLACE')
+            if index == 0:
+                item.mesh_object, item.socket = obj, entry.socket_name
+            else:
+                item.front_object, item.front_socket = obj, entry.socket_name
+            expected[meshes.attachment_stem('custom', obj.name)] = local
+        self.rig.pose.bones['jnt_child'].rotation_euler = (0.5, 0.2, -0.3)
+        bpy.context.view_layer.update()
+
+        def verify(_context, obj, _path):
+            if obj.name in expected:
+                for vertex, wanted in zip(obj.data.vertices, expected.pop(obj.name)):
+                    self.assertLess((vertex.co - wanted).length, 0.0001)
+
+        with patch.object(meshes, 'write_static_mesh', side_effect=verify):
+            written, skipped = meshes.export_static_meshes(
+                bpy.context, self.rig, self.rig, {'Weapon': 'jnt_offset'},
+                'rifle', self.folder.name)
+        self.assertFalse(expected)
+        self.assertFalse(skipped)
+        self.assertEqual(len(written), 6)
+
+    def test_socket_parented_custom_geometry_is_not_offset_twice(self):
+        from stalker2_arsenal import export_static_mesh as meshes
+        entry = self.scene.arsenal_sockets.entries[1]
+        data = bpy.data.meshes.new('Attachment')
+        points = [Vector((0, 0, 0)), Vector((1, 0, 0)), Vector((0, 1, 0))]
+        data.from_pydata(points, [], [(0, 1, 2)])
+        obj = bpy.data.objects.new('Attachment', data)
+        self.scene.collection.objects.link(obj)
+        bpy.context.view_layer.update()
+        obj.matrix_world = sockets.marker_rest_matrix(entry.marker)
+        sockets.parent_preview(obj, entry.marker, self.rig)
+        self.rig.pose.bones['jnt_child'].rotation_euler = (0.5, 0.2, -0.3)
+        bpy.context.view_layer.update()
+        part, _ = meshes.extract_whole(self.rig, self.rig, obj, 'Weapon', socket=entry.marker)
+        try:
+            for vertex, wanted in zip(part.verts, points):
+                self.assertLess((vertex.co - wanted).length, 0.0001)
+        finally:
+            part.free()
+
+    def test_custom_attachment_missing_configured_marker_blocks_export(self):
+        from stalker2_arsenal import export_static_mesh as meshes
+        item = self.scene.arsenal_cfg.attachments.add()
+        item.name, item.socket = 'Muzzle', 'MissingSocket'
+        with self.assertRaisesRegex(RuntimeError, 'MissingSocket.*Refresh weapon sockets'):
+            meshes.attachment_socket_markers(self.scene, self.rig)
+
+    def test_world_mounts_reconstruct_custom_and_existing_attachments_at_rest(self):
+        from stalker2_arsenal import export_static_mesh as meshes
+        cfg = self.scene.arsenal_cfg
+        for kind, name, existing in [('scope', 'Muzzle', False),
+                                     ('silencer', 'SilencerMuzzleSocket', True),
+                                     ('scope', 'Muzzle', True)]:
+            item = cfg.attachments.add()
+            item.kind, item.socket, item.use_existing = kind, name, existing
+        entries = self.scene.arsenal_sockets.entries
+        entries[0].marker.location.x += 3
+        entries[1].marker.rotation_euler.z += 0.3
+        self.rig.matrix_world = (Matrix.Translation((3, -5, 8))
+                                 @ Euler((0.2, 0.3, -0.1)).to_matrix().to_4x4()
+                                 @ Matrix.Scale(0.01, 4))
+        backup = SimpleNamespace(matrix_world=Matrix.Scale(0.01, 4))
+        self.rig.pose.bones['jnt_child'].rotation_euler = (0.5, 0.2, -0.3)
+        bpy.context.view_layer.update()
+        mapping = {'Weapon': 'jnt_offset', 'jnt_child': 'jnt_child'}
+        magazines = [{'socket': 'jnt_child'}]
+        payload = meshes.world_mesh_sockets(
+            self.scene, self.rig, backup, mapping, magazines, '/SocketTest/SM_weapon')
+        magazine_payload = meshes.world_magazine_sockets(
+            self.rig, backup, mapping, magazines, '/SocketTest/SM_weapon')
+        self.assertEqual(payload['entries'][0], magazine_payload['entries'][0])
+        mounts = {entry['name']: entry for entry in payload['entries']}
+        self.assertEqual(set(mounts), {'jnt_child', 'Muzzle', 'SilencerMuzzleSocket'})
+        for entry in entries:
+            data = bpy.data.meshes.new('World attachment')
+            points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            data.from_pydata(points, [], [(0, 1, 2)])
+            obj = bpy.data.objects.new('World attachment', data)
+            self.scene.collection.objects.link(obj)
+            obj.matrix_world = sockets.marker_rest_matrix(entry.marker)
+            sockets.parent_preview(obj, entry.marker, self.rig)
+            local, _ = meshes.extract_whole(self.rig, backup, obj, 'Weapon', socket=entry.marker)
+            world, _ = meshes.extract_whole(self.rig, backup, obj, 'Weapon', mapping)
+            try:
+                mount = sockets.socket_matrix(mounts[entry.socket_name])
+                for vertex, expected in zip(local.verts, world.verts):
+                    self.assertLess((mount @ vertex.co - expected.co).length, 0.0001)
+            finally:
+                local.free()
+                world.free()
+
+    def test_world_mount_uses_baseline_when_socket_edits_are_disabled(self):
+        from stalker2_arsenal import export_static_mesh as meshes
+        item = self.scene.arsenal_cfg.attachments.add()
+        item.kind, item.socket, item.use_existing = 'scope', 'Muzzle', True
+        def payload():
+            return meshes.world_mesh_sockets(
+                self.scene, self.rig, self.rig, {'Weapon': 'jnt_offset'}, [],
+                '/SocketTest/SM_weapon')
+        before = payload()
+        entry = self.scene.arsenal_sockets.entries[0]
+        entry.marker.location.x += 12
+        self.assertNotEqual(payload(), before)
+        entry.enabled = False
+        self.assertTrue(sockets.socket_transforms_equal(
+            payload()['entries'][0], before['entries'][0]))
+        item.socket = 'MissingSocket'
+        with self.assertRaisesRegex(RuntimeError, 'MissingSocket.*Refresh weapon sockets'):
+            payload()
+
+    def test_world_mounts_include_front_iron_and_stock_silencer(self):
+        from stalker2_arsenal import export_static_mesh as meshes
+        cfg = self.scene.arsenal_cfg
+        item = cfg.attachments.add()
+        item.kind, item.socket, item.front_socket = 'iron_sight', 'Muzzle', 'SilencerMuzzleSocket'
+        item.use_existing = True
+        def names():
+            payload = meshes.world_mesh_sockets(
+                self.scene, self.rig, self.rig, {'Weapon': 'jnt_offset'}, [],
+                '/SocketTest/SM_weapon')
+            return {entry['name'] for entry in payload['entries']}
+        self.assertEqual(names(), {'Muzzle', 'SilencerMuzzleSocket'})
+        item.use_existing = False
+        self.assertEqual(names(), {'Muzzle'})
+        cfg.attachments.clear()
+        cfg.allow_silencer = True
+        self.assertEqual(names(), {'SilencerMuzzleSocket'})
+        cfg.allow_laser = True
+        with self.assertRaisesRegex(RuntimeError, 'LaserSocket.*Refresh weapon sockets'):
+            names()
+
     def test_refresh_and_template_changes_preserve_edits(self):
         entry = self.scene.arsenal_sockets.entries[0]
         entry.marker.location.x += 1
@@ -152,6 +310,66 @@ class MarkerTests(unittest.TestCase):
         self.assertEqual([e.marker for e in self.scene.arsenal_sockets.entries], pointers)
         self.assertEqual(self.payload(), before)
 
+    def add_scope(self, name, mount, lift=0.0, **fields):
+        data = bpy.data.meshes.new(name)
+        data.from_pydata([(0, -1, lift - 1), (0, 1, lift - 1), (0, 1, lift + 1), (0, -1, lift + 1)],
+                         [], [(0, 1, 2, 3)])
+        data.materials.append(bpy.data.materials.get('MI_scope_mark') or bpy.data.materials.new('MI_scope_mark'))
+        obj = bpy.data.objects.new(name, data)
+        self.scene.collection.objects.link(obj)
+        bpy.context.view_layer.update()
+        obj.matrix_world = sockets.marker_rest_matrix(mount.marker)
+        sockets.parent_preview(obj, mount.marker, self.rig)
+        item = self.scene.arsenal_cfg.attachments.add()
+        item.name, item.kind, item.mesh_object, item.socket = name, 'scope', obj, mount.socket_name
+        for key, value in fields.items():
+            setattr(item, key, value)
+        bpy.context.view_layer.update()
+        return item
+
+    def test_align_sights_moves_eye_points_across_the_line_of_sight_only(self):
+        mount, eye = self.scene.arsenal_sockets.entries
+        self.add_scope('Donor', mount, use_existing=True, existing_sid=eye.socket_name)
+        before = eye.marker.matrix_world.copy()
+        moved, custom, missing = sockets.align_eye_points(bpy.context)
+        self.assertEqual((custom, missing), ([], []))
+        self.assertEqual(moved[0][0], eye.socket_name)
+        self.assertLess(moved[0][1], 0.0001)
+        bpy.context.view_layer.update()
+        self.assertMatrixClose(eye.marker.matrix_world, before)
+
+        shift = Vector((1.0, -2.0, 3.0))
+        mount.marker.matrix_world = Matrix.Translation(shift) @ mount.marker.matrix_world
+        bpy.context.view_layer.update()
+        sockets.align_eye_points(bpy.context)
+        bpy.context.view_layer.update()
+        forward = sockets.marker_baseline_matrix(eye).col[0].xyz.normalized()
+        delta = eye.marker.matrix_world.translation - before.translation
+        self.assertLess((delta - (shift - forward * shift.dot(forward))).length, 0.0001)
+        self.assertLess(abs(delta.dot(forward)), 0.0001)
+        self.assertMatrixClose(eye.marker.matrix_world.to_3x3(), before.to_3x3())
+
+    def test_custom_scope_eye_point_is_reported_from_an_unreferenced_donor_copy(self):
+        mount, eye = self.scene.arsenal_sockets.entries
+        self.add_scope(eye.socket_name, mount, template_sid=eye.socket_name)
+        self.add_scope('Custom', mount, lift=0.5, template_sid=eye.socket_name)
+        before = eye.marker.matrix_basis.copy()
+        moved, custom, missing = sockets.align_eye_points(bpy.context)
+        self.assertEqual((moved, missing), ([], []))
+        self.assertEqual([entry[:3] for entry in custom],
+                         [(eye.socket_name, eye.socket_name, eye.game_bone),
+                          ('Custom', eye.socket_name, eye.game_bone)])
+        self.assertMatrixClose(eye.marker.matrix_basis, before)
+        donor, lifted = (sockets.frame_matrix(eye) @ sockets.socket_matrix(entry[3]) for entry in custom)
+        self.assertMatrixClose(donor, before)
+        bpy.context.view_layer.update()
+        world_lift = (mount.marker.matrix_world.to_3x3() @ Vector((0, 0, 0.5)))
+        parent = sockets.marker_rest_matrix(eye.marker) @ eye.marker.matrix_basis.inverted()
+        forward = sockets.marker_baseline_matrix(eye).col[0].xyz.normalized()
+        expected = world_lift - forward * world_lift.dot(forward)
+        actual = parent.to_3x3() @ (lifted.translation - donor.translation)
+        self.assertLess((actual - expected).length, 0.0001)
+
     def test_multi_mesh_catalogue_selects_the_imported_donor(self):
         self.data['meshes'].append(dict(self.data['meshes'][0], mesh='/Game/SK_other'))
         self.write_catalogue()
@@ -160,18 +378,20 @@ class MarkerTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'exactly one'):
             sockets.catalogue_mesh(str(self.path))
 
-    def test_attachment_offset_keeps_legacy_behavior_and_selects_donor(self):
+    def test_attachment_offset_uses_reference_frame_and_preserves_legacy_catalogues(self):
         self.rig['arsenal_donor_mesh_name'] = 'weapon'
         wrong = dict(self.records[1], location=[100, 100, 100])
         self.data['meshes'].insert(0, dict(self.data['meshes'][0], mesh='/Game/SK_other', sockets=[wrong]))
         self.write_catalogue()
+        expected = (sockets.reference_matrix(self.records[1])
+                    @ sockets.socket_matrix(self.records[1])).translation
+        offset = sockets.import_weapon._socket_offset(self.rig, self.folder.name, 'silen.FBX')
+        self.assertLess((offset - expected).length, 0.00001)
+        self.path.write_text(json.dumps(self.records), encoding='utf-8')
         expected = self.rig.data.bones['jnt_child'].head_local.copy()
         expected.x += 3
         expected.y += 2
         expected.z += 1
-        offset = sockets.import_weapon._socket_offset(self.rig, self.folder.name, 'silen.FBX')
-        self.assertLess((offset - expected).length, 0.00001)
-        self.path.write_text(json.dumps(self.records), encoding='utf-8')
         legacy = sockets.import_weapon._socket_offset(self.rig, self.folder.name, 'silen.FBX')
         self.assertLess((legacy - expected).length, 0.00001)
 
@@ -184,7 +404,7 @@ class MarkerTests(unittest.TestCase):
         bpy.ops.arsenal.socket_reset()
         self.assertFalse(self.payload()['entries'][0]['enabled'])
         bpy.data.objects.remove(entry.marker, do_unlink=True)
-        with self.assertRaisesRegex(RuntimeError, 'restore'):
+        with self.assertRaisesRegex(RuntimeError, 'marker is missing'):
             self.payload()
         bpy.ops.arsenal.socket_reset()
         self.assertIsNotNone(entry.marker)
@@ -202,7 +422,65 @@ class MarkerTests(unittest.TestCase):
             self.payload()
         bpy.ops.arsenal.socket_reset()
         entry.marker.parent_bone = 'jnt_child'
-        with self.assertRaisesRegex(RuntimeError, 'original parent'):
+        with self.assertRaisesRegex(RuntimeError, 'original bone'):
+            self.payload()
+
+    def test_reset_clears_keyframes_and_constraints(self):
+        entry = self.scene.arsenal_sockets.entries[0]
+        entry.marker.location.x += 1
+        entry.marker.keyframe_insert('location')
+        entry.marker.constraints.new('COPY_LOCATION')
+        with self.assertRaisesRegex(RuntimeError, 'constraints'):
+            self.payload()
+        entry.marker.constraints.clear()
+        with self.assertRaisesRegex(RuntimeError, 'keyframes or drivers'):
+            self.payload()
+        entry.marker.constraints.new('COPY_LOCATION')
+        bpy.ops.arsenal.socket_reset()
+        self.assertIsNone(entry.marker.animation_data)
+        self.assertEqual(len(entry.marker.constraints), 0)
+        bpy.context.scene.frame_set(bpy.context.scene.frame_current)
+        self.assertFalse(self.payload()['entries'][0]['enabled'])
+
+    def test_auto_keyed_markers_are_all_reported_and_clearing_keys_keeps_edits(self):
+        markers = [entry.marker for entry in self.scene.arsenal_sockets.entries]
+        for marker in markers:
+            marker.location.x += 1
+            marker.keyframe_insert('location')
+        with self.assertRaises(RuntimeError) as raised:
+            sockets.check_markers(self.scene)
+        message = str(raised.exception)
+        self.assertIn('Muzzle, SilencerMuzzleSocket', message)
+        self.assertIn('Clear Keyframes', message)
+        self.assertNotIn('Press Reset Socket', message)
+        for marker in markers:
+            marker.animation_data_clear()
+        self.assertTrue(all(entry['enabled'] for entry in self.payload()['entries']))
+
+    def test_backup_copies_do_not_duplicate_socket_markers(self):
+        from stalker2_arsenal import convert_to_rigify as conversion
+        entry = self.scene.arsenal_sockets.entries[0]
+        before = self.payload()
+        backup_id = conversion.create_retarget_backup(bpy.context, self.rig)
+        backup = next(obj for obj in bpy.data.objects
+                      if obj.get(conversion.RETARGET_BACKUP_MARKER)
+                      and obj.get(conversion.RETARGET_BACKUP_ID) == backup_id)
+        clone = next(child for child in backup.children if child.name.startswith(entry.socket_name))
+        self.assertEqual(clone.arsenal_socket_id, '')
+        self.rig[conversion.RETARGET_WEAPON_BACKUP_ID] = backup_id
+        clone.arsenal_socket_id = entry.identity
+        self.assertEqual(self.payload(), before)
+        duplicate = entry.marker.copy()
+        self.scene.collection.objects.link(duplicate)
+        with self.assertRaisesRegex(RuntimeError, 'duplicate'):
+            self.payload()
+        bpy.data.objects.remove(duplicate, do_unlink=True)
+        self.rig[conversion.RETARGET_WEAPON_BACKUP_ID] = 'different-backup'
+        with self.assertRaisesRegex(RuntimeError, 'duplicate'):
+            self.payload()
+        self.rig[conversion.RETARGET_WEAPON_BACKUP_ID] = backup_id
+        self.scene.collection.objects.link(clone)
+        with self.assertRaisesRegex(RuntimeError, 'duplicate'):
             self.payload()
 
     def test_donor_changes_are_rejected_without_discarding_edits(self):
@@ -220,6 +498,17 @@ class MarkerTests(unittest.TestCase):
         sockets.refresh_markers(self.scene, self.rig, str(self.path))
         before = self.payload()
         bpy.context.view_layer.update()
+        preview = bpy.data.objects.new('Existing attachment preview', bpy.data.meshes.new('Preview'))
+        self.scene.collection.objects.link(preview)
+        preview.location = (7, 8, 9)
+        preview.modifiers.new('Armature', 'ARMATURE').object = self.rig
+        item = self.scene.arsenal_cfg.attachments.add()
+        item.mesh_object, item.socket = preview, self.scene.arsenal_sockets.entries[0].socket_name
+        bpy.context.view_layer.update()
+        preview_world = preview.matrix_world.copy()
+        sockets.bind_attachment_previews(self.scene)
+        bpy.context.view_layer.update()
+        self.assertMatrixClose(preview.matrix_world, preview_world)
         worlds = [entry.marker.matrix_world.copy() for entry in self.scene.arsenal_sockets.entries]
         target = make_rig('Generated')
         target['arsenal_component_root'] = self.rig['arsenal_component_root']
@@ -231,11 +520,14 @@ class MarkerTests(unittest.TestCase):
             bone.transform(inverse)
         bpy.ops.object.mode_set(mode='OBJECT')
         sockets.rebind_markers(self.scene, self.rig, target, target.matrix_world.inverted() @ self.rig.matrix_world)
+        preview.modifiers[0].object = target
         bpy.data.objects.remove(self.rig, do_unlink=True)
         self.rig = target
         bpy.context.view_layer.update()
         for entry, world in zip(self.scene.arsenal_sockets.entries, worlds):
             self.assertMatrixClose(entry.marker.matrix_world, world)
+        self.assertMatrixClose(preview.matrix_world, preview_world)
+        self.assertFalse(preview.modifiers[0].show_viewport)
         after = self.payload()
         for old, new in zip(before['entries'], after['entries']):
             self.assertTrue(sockets.socket_transforms_equal(old['transform'], new['transform']))

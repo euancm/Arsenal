@@ -6,18 +6,45 @@ The **5. Export** panel turns the actions on the Rigify rig back into STALKER 2 
 
 1. Select the generated rig (the one with the hidden retarget backup).
 2. Enter the weapon's English **Name** (4. Create Your Custom Weapon > Name & Description); file names use its lowercase letters and digits, e.g. "Cool Pistol" becomes `coolpistol`. Enter **Mod Name** in **1. Set Up**. The working folder supplies the default **Output Folder**, which can still be changed in Export.
-3. Keep each edited or replacement action's original name. Every editable rig action must match a donor animation; unknown names, duplicate destinations and ambiguous donor files block export. New weapon features are outside this workflow.
+3. Keep each edited or replacement action's original name. Actions whose names match no donor animation are skipped with a warning (and listed as skipped in the summary); duplicate destinations and ambiguous donor files block export. New weapon features are outside this workflow.
 4. Press **Export All**. Checks run automatically; there is no Refresh, All/None list, Template/Folder override or separate Validate step. Old saved action selections/overrides are ignored.
 
 The template supplies the weapon category and original animation folders. All matching rig
 actions export, even unedited ones. An animation absent from the blend stays as the setup copied
 it in ZoneKit. At least one retargeted rig action is required. The import manifest includes only
-animation files written by this successful export, not stale FBXs left in the output folder.
+animation files from this successful export, not stale FBXs left in the output folder.
 CFG or animation failures block generation of the new import script and clear the clipboard.
 
-**Export All** shows one completion popup. Its title distinguishes success, warnings and failure;
-details remain in Blender's report log and system console. Imports and retargeting use the same
-notifications. Background Blender runs print completion instead of opening a popup.
+**Unchanged animations are kept.** Export remembers what each action was baked from, in
+`arsenal_animation_cache.json` in the output folder. It skips an action when nothing has changed
+since its last successful export, and keeps its FBXs and their place in the import manifest. The
+check covers:
+
+- the action's keys;
+- the rig and its settings;
+- the bone mapping;
+- the donor animation files;
+- the frame rate;
+- the add-on version.
+
+A deleted or replaced FBX is exported again. The summary reports how many were kept, e.g.
+`120 animation files for 64 actions (0 failed, 63 unchanged and kept)`. Tick **Re-export
+Unchanged Animations** to bake everything again. Deleting the cache file does the same.
+
+**Export All** shows one completion message. Successes and warnings open an Arsenal popup.
+Failures use Blender's own error popup, so the same error is not shown twice. Details remain in
+Blender's report log and system console. Imports and retargeting use the same notifications.
+Background Blender runs print completion instead of opening a popup.
+
+Long steps can take many minutes, and Blender may look frozen while they run. Open
+**Window > Toggle System Console** to watch progress. Animation import, retargeting and export
+print a line per clip, such as `Importing: 65% (42/64 idle, elapsed 3:10, about 1:42 left)`. The mouse
+cursor also shows the percentage, but Blender always formats it as a bare number (`65.00`) and
+cannot label it. In ZoneKit, the setup script shows a
+progress dialog while it exports files, and you can cancel it there; nothing has been copied into
+the mod at that point. The import script shows a progress dialog for each stage. Both scripts log
+the Arsenal version that generated them. The setup script exports the textured player body last,
+after your mod's assets are saved.
 
 ## Keeping edited animations correct on export
 
@@ -37,12 +64,33 @@ character's left and right, not the left and right of the screen.
 | Purpose | Left arm | Right arm | What to key |
 | --- | --- | --- | --- |
 | Hand position and orientation | `hand_ik.L` | `hand_ik.R` | Location, Rotation and Scale |
-| Upper-arm IK orientation and scale; affects the elbow bend | `upper_arm_ik.L` | `upper_arm_ik.R` | Location, Rotation and Scale |
+| Upper-arm IK orientation and scale; affects the elbow bend | `upper_arm_ik.L` | `upper_arm_ik.R` | Optional: see below |
 | Elbow pole target, when used | `upper_arm_ik_target.L` | `upper_arm_ik_target.R` | Location, Rotation and Scale |
 | Selects FK or IK | `upper_arm_parent.L` | `upper_arm_parent.R` | The **IK/FK** custom property |
 
 On this Rigify rig, **IK/FK = 0 is IK; 1 is FK**. Intermediate values blend them.
 Keying that switch does **not** key the hand, upper-arm or pole-target transforms.
+
+**Unkeyed upper-arm IK twist.** You do not need to key `upper_arm_ik.L/R` (or `thigh_ik.L/R`).
+If the action leaves its rotation or scale unkeyed while the limb uses IK with the pole off,
+export calculates them on every frame from the FK arm. It turns the IK upper arm about its own
+axis until it points the same way as the FK upper arm, and matches the FK arm's scale. That
+is the result Rigify's **Snap IK->FK** gives, but the hand stays where you keyed it. The
+viewport may still show a leftover twist from another action. To see exactly what will be
+exported, use Snap IK->FK and key the control.
+
+Key the control yourself to choose a different elbow direction. Keyed poses are preserved.
+Its location is still reset to rest when unkeyed.
+
+**Brief arm flips visible only in game.** Rigify's **Snap IK->FK (Action)** can key equivalent
+upper-arm or thigh IK twist angles a full turn apart, for example 0.1 and 6.4 radians.
+Whole-frame poses look correct, but interpolating between them spins the limb. Export samples
+four times per frame, so those intermediate poses also reach the game.
+Export unwraps these Euler Y twist jumps along the shortest angular path on a temporary action,
+including the curve handles. Your saved keys and keyed poses are unchanged; hand controls,
+IK/FK switches and constraint influences are not rewritten. Reload the updated add-on and
+**Export All** again, run its fresh ZoneKit importer, then repackage. The export-code change
+invalidates the old animation cache automatically.
 
 If you edit a leg using IK, the equivalent controls are `foot_ik.L/R`, `thigh_ik.L/R` and
 `thigh_ik_target.L/R`, with the IK/FK switch on `thigh_parent.L/R`.
@@ -89,9 +137,10 @@ repairing keys.
 The exporter checks every integer frame and rejects active IK-chain controls with non-rest
 transform properties that are not keyed in the action. Pole targets are checked only while
 Rigify's **Toggle Pole** is on; disabled pole targets do not block export. If the toggle is
-animated, the check follows its value at each frame. Hand and upper-arm IK controls are still
-checked while IK is active, regardless of the pole toggle. The error names the control,
-action, frame and missing properties.
+animated, the check follows its value at each frame. Hand IK controls are still checked while
+IK is active, regardless of the pole toggle. Unkeyed upper-arm IK rotation and scale are
+calculated from the FK arm instead (see above), unless the pole is on. The error names the
+control, action, frame and missing properties.
 
 Select that action and control, restore the intended pose, and key **Location, Rotation and
 Scale**. For example, an error naming `upper_arm_ik.R` needs keys on that control, not just
@@ -103,7 +152,7 @@ in the output folder; do not run an old import script or package those files as 
 Fix every reported action, then export again.
 
 Failed actions show **Export failed** and the reason in their export-list status instead of
-the earlier template-validation status. The completion popup includes each failed action's
+the earlier template-validation status. The error popup includes each failed action's
 reason, and the system console prints the error and traceback when the failure occurs.
 
 Hip-fire recovery (`shoot_end`) and aimed-fire recovery (`shoot_aim_end`) are separate actions.
@@ -133,7 +182,8 @@ the part names. The weapon category is inferred from the selected template, not 
   becomes `SM_wpn_e9_SM_pt_e9_mag_full`, not a doubled-prefix or donor-named asset.
 - Object names must be unique after naming; collisions block Export All.
 - Meshes are taken from the rest pose, so the current pose does not matter.
-- Each object's origin is its bone head, with vertices stored relative to it (translation only, no rotation).
+- Bone-mounted parts use their bone head as origin (translation only). Custom socket-mounted
+  attachments use the socket's full local frame, including rotation.
 
 ### World model
 
@@ -148,6 +198,15 @@ the mapped bone heads relative to the world model's root, in the same rest-pose 
 space as the static exports. No trial-and-error magazine offset is needed. A missing world
 mount previously left the magazine at the weapon origin, making it protrude above the body.
 This fix changes neither first-person animation nor shared magazine geometry.
+
+Scopes, silencers and other configured attachments also need mounts on the world static mesh,
+including **Reference Existing** items. Export now includes these sockets, with their full
+rest-pose position and rotation converted into the world model's root-relative space.
+They follow the same socket-marker edits and **Use Edits** setting as the first-person model.
+Missing markers block Export All before writing files; use **Refresh Weapon Sockets** to restore
+them. Do not offset the attachment geometry to compensate for a missing world mount: that would
+break its first-person placement. The importer changes only the mod-owned world mesh, not shared
+attachment assets or base-game skeletons.
 
 After updating the add-on, **Export All**, run the newly generated importer and repackage.
 Previously generated import scripts do not contain the world-socket fix. Repeat for each
@@ -169,9 +228,10 @@ After **Export All**, paste the clipboard (the script's path, e.g.
 `D:\WeaponWork\Blender Export\import_monkeygun.py`) into the ZoneKit editor's Python bar and
 press Enter. The mod must already exist. Fresh scripts first recover missing donor copies and
 repair their references, then import the skeletal carrier and apply socket edits, followed by
-textures, materials, static meshes and animations. Generated manifests replace existing exported skeletal meshes, static meshes
-and animations automatically. UI images are also refreshed; existing material/texture assets
-otherwise require `--overwrite` to re-import. The mount point is the **Mod Name** (e.g.
+textures, materials, static meshes and animations. Generated manifests replace existing exported skeletal meshes, static meshes,
+material textures and animations automatically, and refresh the mod's generated material instances with the
+current texture assignments. UI images are also refreshed. A texture that cannot be reimported stops the
+import instead of leaving the old one in place. The mount point is the **Mod Name** (e.g.
 `/MonkeyMod`). Player/weapon skeletons come from the export settings; the standard material
 defaults are `MI_PBR_Weapons` and `PM_MetalSolid`. See [setup recovery](cfg_export.md#recovering-missing-zonekit-setup).
 
@@ -225,7 +285,31 @@ transitions. The setup script exports all of them except the `*_add` idles, so t
 exported like any other clip, edited or not. An exported overlay keeps its additive mode and the mod's
 reference (for most, the mod's exported idle), so the game shows the pose you see in Blender. The
 weapon-only clips (`idle_boltlock`, `break_bullet_idle`) and the character-only offset aim clips write
-just their own half.
+just their own half. Character and weapon clips whose names differ only by a trailing number, such as
+the M16's `sight_holographic_attach_BuckGrenLaunch2` and `..._BuckGrenLaunch`, import as one action and
+export both halves. Delete actions imported before this pairing, then import and retarget them again.
+Until then, export skips them with a warning.
+
+The donor's offset (canted) aim clips have no weapon half and still hold the donor's FK arms, so the left hand
+slides along the weapon and ends at the donor's grip, not yours. To fix this, select the rig in Pose Mode, make
+`IdleToOffsetAim_01`, `OffsetAim-Idle_01` and `OffsetAimToIdle_01` active in turn, and run **Animation Tools >
+Copy Hand Grip** with `idle_aim` as the source. This replaces the arm's IK channels with constant keys copied from
+the source's first frame. The IK hand follows the weapon, so the hand stays at your aimed grip while the weapon
+cants. Then export again.
+
+**Copy** selects **Arm IK** (the original behaviour), **Fingers Only**, or **Arm IK and Fingers**.
+Use **Fingers Only** to match a transition's grip to `idle_aim` without replacing its arm motion.
+Run it for each hand that needs matching, then re-export. This copies palm and finger controls,
+including the master curls, and explicitly keys unkeyed masters at rest so another action's curl
+cannot leak into the preview. It holds that grip for the whole target action; do not use it on
+reloads or other clips with intentional finger movement.
+
+Check `idle_to_aim`, `aim_to_idle` and the three canted-aim clips against the idles they join.
+Smooth playback of each individual action does not guarantee a smooth in-game blend: a transition
+can still have the donor's finger pose while an edited idle has your new grip. Export resets
+unkeyed controls, so switch actions after resetting the pose when checking these joins in Blender.
+If you change the source grip later, reapply the copy to the affected transitions; the copies
+are keyed snapshots, not live links to the source action.
 
 Clips absent from the blend stay as the setup copied them, as described next.
 
@@ -275,6 +359,19 @@ is removed. This also cleans up duplicates created by earlier importer versions.
 Unrelated entries remain unchanged. Ambiguous same-kind attachment replacements
 produce a warning rather than choosing a target arbitrarily.
 
+A custom attachment copied from a donor that is **still configured** (for example
+a custom red dot copied from `EN_GoloScope_1` while `EN_GoloScope_1` stays
+compatible) cannot take over the donor key. Instead it gets its own
+`AttachingBySID` entry copied from the donor's. Mod-owned attach/detach montages
+whose `AnimNotify_AttachItem` notifies spawn the donor are duplicated as
+`<montage>_<your SID>`, and the copies' notifies are rebound to your SID. The
+donor entry and montages are unchanged. Without this entry the game has no attach
+animation for the item and the weapon stays in the attach state: the scope is
+invisible, and the weapon cannot fire or sprint. Check
+`collection attaching_by_sid: <your SID> copied from <donor SID>` in the log.
+Donor montages outside the mod cannot be copied; a warning asks you to add the entry
+by hand.
+
 Check `collection <map>: <donor SID> -> <your SID> (replaced)` in the log.
 The exact resulting keys and values are checked before saving; failed readback
 or save restores the original collection. If the template has no silencer attach
@@ -309,7 +406,7 @@ Running the script with a normal Python prints the import plan without needing U
 
 ## Output
 
-Files mirror the library: `<output>/_STALKER2/Animations/Player/AnimSequences/pt/<new>/<Category>/AS_fp_<new>_<action>.fbx` and `<output>/_STALKER2/Animations/Weapons/pt/<new>/AnimSequences/fp/<Category>/AS_<new>_fp_<action>.fbx`. The action name is the file suffix. The export refuses to write inside the library folder.
+Files mirror the library: `<output>/_STALKER2/Animations/Player/AnimSequences/pt/<new>/<Category>/AS_fp_<new>_<action>.fbx` and `<output>/_STALKER2/Animations/Weapons/pt/<new>/AnimSequences/fp/<Category>/AS_<new>_fp_<action>.fbx`. The action name is the file suffix. The export refuses to write inside the library folder. `<output>/arsenal_animation_cache.json` records what each action was last baked from; it is not imported into ZoneKit.
 
 ## Debug output
 

@@ -84,7 +84,11 @@ Edit or replace the weapon model, add your textures and adjust the animations.
 Panel **4. Create Your Custom Weapon** contains the game settings: stats, names,
 magazines, attachments, upgrades, inventory images and trader/NPC availability.
 
-Custom magazines, silencers and lasers can automatically appear at the weapon's
+Existing scopes and grenade launchers can be reused with **Reference Existing**;
+there is no need to copy their game assets. Imported attachment previews follow
+their socket markers as you adjust the fit.
+
+Purchasable custom magazines and attachments can automatically appear at the weapon's
 traders at half its stock chance. For example, a 50% effective weapon chance gives
 each custom attachment a 25% chance.
 
@@ -105,9 +109,8 @@ script's path to your clipboard. Resolve any errors or warnings before continuin
 In ZoneKit, select your mod and run the new script from the **Python bar**.
 Check the completion message and Output Log for warnings.
 
-Before packaging, open your mod's **Mod Editor options** and set its
-**AnimCollection** to your weapon's first-person collection. Save the options,
-package the mod, install it and test in game.
+Then package the mod, install it and test in game. No manual AnimCollection or
+localisation step is needed.
 
 For later changes, repeat **Export All**, run the newly generated import script,
 and package again. Always use the latest script.

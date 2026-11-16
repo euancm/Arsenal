@@ -107,6 +107,8 @@ def create_retarget_backup(context, source_armature):
         if source_object in copies:
             return copies[source_object]
         backup_object = source_object.copy()
+        if backup_object.arsenal_socket_id:
+            backup_object.arsenal_socket_id = ''
         if source_object.data:
             backup_object.data = source_object.data.copy()
         backup_object.parent = parent_copy

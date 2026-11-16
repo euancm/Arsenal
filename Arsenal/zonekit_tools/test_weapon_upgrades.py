@@ -139,6 +139,35 @@ class UpgradeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'numerical'):
             weapon_upgrades.collect(self.info)
 
+    def test_grouped_effect_editor_exports_fixed_signed_value_and_preserves_legacy_range(self):
+        effect = self.custom()[0].effects.add()
+        effect.prototype = 'RecoilDown15Effect'
+        self.assertEqual(effect.effect_type, 'Recoil')
+        self.assertFalse(effect.custom)
+        effect.effect_type = 'Recoil'
+        self.assertTrue(effect.custom)
+        effect.value = -23
+        self.assertEqual((effect.value_min, effect.value_max), (-23, -23))
+        text = '\n'.join(weapon_upgrades.files(self.info).values())
+        self.assertIn('ValueMin = -23.0%', text)
+        self.assertIn('ValueMax = -23.0%', text)
+        effect.value_max = -20
+        self.assertTrue(effect.use_range)
+        effect.use_range = False
+        self.assertEqual(effect.value_max, -23)
+        effect.effect_type = 'ChangeFireTypes'
+        self.assertFalse(effect.custom)
+        effect.custom = True
+        with self.assertRaisesRegex(RuntimeError, 'numerical'):
+            weapon_upgrades.collect(self.info)
+        effect.effect_type = 'ChangeAmmoTypes'
+        effect.behaviour = 'ChangeAmmoTypes545Effect'
+        self.assertEqual(effect.prototype, 'ChangeAmmoTypes545Effect')
+        self.assertFalse(effect.custom)
+        self.assertTrue(all(weapon_upgrades.DEFAULTS['effects'][row[0]]['Type'] ==
+                            'EEffectType::ChangeAmmoTypes'
+                            for row in weapon_upgrades.behaviour_items(effect, None)))
+
     def test_rename_or_remove_referenced_upgrade_requires_repair(self):
         items = self.custom()
         items[1].name = items[0].name

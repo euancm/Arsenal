@@ -20,6 +20,7 @@ BAKED_MANIFEST = None
 SETUP_SOURCE = None
 DISTRIBUTION_SOURCE = None
 DISTRIBUTION_DEFAULTS = None
+ARSENAL_VERSION = None
 
 try:
     import unreal
@@ -48,7 +49,7 @@ def socket_mod_path(path, root):
     root = root.rstrip('/')
     if (not re.fullmatch(r'/[A-Za-z0-9_]+', root) or root.casefold() in ('/game', '/engine')
             or not isinstance(path, str) or not path.startswith(root + '/')
-            or not re.fullmatch(r'/[A-Za-z0-9_/]+', path)
+            or not re.fullmatch(r'/[A-Za-z0-9_/-]+', path)
             or '//' in path):
         raise RuntimeError(f'Sockets require a mod-owned asset path, not {path!r}.')
     return path
@@ -185,6 +186,8 @@ def build_plan(manifest, base_dir):
         materials.append((material['name'], entries))
     return {
         'ui_images': files([entry['file'] for entry in manifest.get('ui_images', [])]),
+        'reticles': [(*(files([entry['file']])[0] if entry.get('file') else (None, None, None)), entry)
+                     for entry in manifest.get('reticles', [])],
         'textures': textures,
         'materials': materials,
         'static_meshes': files(manifest['static_meshes']),
@@ -222,17 +225,44 @@ def warn(message):
         unreal.log_warning(message)
 
 
+class Progress:
+    """ZoneKit progress dialog without Cancel (a half-finished import is worse than waiting)."""
+
+    def __init__(self, total, label):
+        self.total, self.label, self.task = total, label, None
+
+    def __enter__(self):
+        if unreal is not None and self.total:
+            try:
+                self.task = unreal.ScopedSlowTask(self.total, self.label)
+                self.task.__enter__()
+            except Exception:
+                self.task = None
+            else:
+                try:
+                    self.task.make_dialog(False)
+                except Exception:
+                    pass
+        return self
+
+    def step(self, text):
+        log(f'[{text}]')
+        if self.task is not None:
+            self.task.enter_progress_frame(1, text)
+
+    def __exit__(self, *error):
+        if self.task is not None:
+            self.task.__exit__(*error)
+        return False
+
+
 def notify_completion(error=None):
     status = 'failed' if error is not None else 'finished with warnings' if WARNINGS else 'complete'
     message = str(error) if error is not None else (
         f'{len(WARNINGS)} warnings. See the Output Log for details.' if WARNINGS
         else 'Import finished.')
     if error is None:
-        message += (
-            '\n\nBefore packaging: open your mod in the Mod Editor and update the AnimCollection '
-            'options to use your weapon\'s first-person collection. Localisation SIDs and translations '
-            'are imported automatically; resolve any localisation warnings in the Output Log. '
-            'Save the AnimCollection options, then package and test the mod.')
+        message += '\n\nPackage the mod in the Mod Editor, then test it in game.'
     if unreal is not None:
         category = (unreal.AppMsgCategory.ERROR if error is not None else
                     unreal.AppMsgCategory.WARNING if WARNINGS else unreal.AppMsgCategory.INFO)
@@ -350,6 +380,12 @@ def new_attachment_sid(sid, attachments):
     """Resolve a donor attachment SID to the configured attachment of the same kind."""
     if any(item['sid'] == sid for item in attachments):
         return None
+    targets = {item['sid'] for item in attachments if item.get('source_sid') == sid}
+    if len(targets) > 1:
+        # Several custom items share this donor: each gets its own copied entry (planned_attachment_aliases).
+        return None
+    if targets:
+        return next(iter(targets))
     for kind, prefix in TEMPLATE_ATTACHMENT_PREFIXES.items():
         if sid.startswith(prefix):
             targets = {item['sid'] for item in attachments if item.get('kind') == kind}
@@ -370,6 +406,27 @@ def planned_collection_sids(keys, magazines, attachments=None):
     return plan
 
 
+def planned_attachment_aliases(keys, attachments, replacements):
+    """{custom SID: donor SID} for custom attachments whose donor entry must stay (still configured
+    or shared), so the custom SID needs its own copy of the donor's attach animations."""
+    keys = {str(key) for key in keys}
+    present = keys | set(replacements.values())
+    aliases = {}
+    for item in attachments or []:
+        sid, source = item.get('sid'), item.get('source_sid')
+        if source and sid != source and sid not in present and source in keys and source not in replacements:
+            aliases[sid] = source
+    return aliases
+
+
+ATTACH_ANIMATION_SLOTS = ('attach_animation', 'detach_animation', 'detach_twin_magazine_shifted')
+ATTACH_ANIMATION_ROLES = ('character', 'character_left_hand', 'weapon')
+
+
+def export_value_text(value):
+    return value.export_text() if hasattr(value, 'export_text') else repr(value)
+
+
 class Importer:
     PARAMETER_DEFAULTS = {'D': 'Diffuse_VT', 'N': 'Normal_VT', 'RMA': 'RMAE_VT'}
     ADDITIVE_SETTINGS = ('ref_pose_seq', 'ref_pose_type', 'ref_frame_index', 'additive_anim_type')
@@ -382,6 +439,7 @@ class Importer:
         self.library = unreal.EditorAssetLibrary
         self.tools = unreal.AssetToolsHelpers.get_asset_tools()
         self.managed = {}
+        self.slot_overrides = {}
         self.game_materials = None
         self.counts = {}
 
@@ -465,9 +523,15 @@ class Importer:
             'N': (False, unreal.TextureCompressionSettings.TC_NORMALMAP),
             'RMA': (False, unreal.TextureCompressionSettings.TC_MASKS),
         }
-        tasks = [self.task(path, folder, name) for path, folder, name, _kind in self.plan['textures']
-                 if self.wanted(folder, name)]
-        self.import_tasks(tasks)
+        planned = [(path, folder, name) for path, folder, name, _kind in self.plan['textures']
+                   if self.wanted(folder, name, replace=True)]
+        imported = {str(path).split('.', 1)[0].casefold()
+                    for path in self.import_tasks([self.task(path, folder, name) for path, folder, name in planned])}
+        missing = [f'{folder}/{name}' for _path, folder, name in planned
+                   if f'{folder}/{name}'.casefold() not in imported]
+        if missing:
+            raise RuntimeError('Texture import failed; existing textures were not refreshed: '
+                               + ', '.join(sorted(missing)))
         for _path, folder, name, kind in self.plan['textures']:
             texture = self.library.load_asset(f'{folder}/{name}')
             if texture is None:
@@ -491,8 +555,10 @@ class Importer:
         planned = [(path, folder, name) for path, folder, name in self.plan['ui_images']
                    if self.wanted(folder, name, replace=True)]
         tasks = [self.task(path, folder, name) for path, folder, name in planned]
-        imported = {str(path).split('.', 1)[0] for path in self.import_tasks(tasks)}
-        missing = {f'{folder}/{name}' for _path, folder, name in planned} - imported
+        # Unreal package names ignore case and report the mount's own spelling (e.g. /TRS301Mod).
+        imported = {str(path).split('.', 1)[0].casefold() for path in self.import_tasks(tasks)}
+        missing = [f'{folder}/{name}' for _path, folder, name in planned
+                   if f'{folder}/{name}'.casefold() not in imported]
         if missing:
             raise RuntimeError('UI texture import failed; existing images were not refreshed: '
                                + ', '.join(sorted(missing)))
@@ -522,7 +588,7 @@ class Importer:
         for name, textures in self.plan['materials']:
             path = f'{folder}/{name}'
             existed = self.library.does_asset_exist(path)
-            if existed and not self.overwrite:
+            if existed and not (self.overwrite or self.manifest.get('replace_existing_assets', False)):
                 self.managed[norm(name)] = self.library.load_asset(path)
                 self.count('skipped (exists)')
                 continue
@@ -564,11 +630,70 @@ class Importer:
         package = self.game_materials.get(key)
         return self.library.load_asset(package) if package else None
 
+    def import_reticles(self):
+        """Mod-owned reticle atlas and a child of the scope's game mark material that uses it."""
+        planned = self.plan.get('reticles', [])
+        if not planned:
+            return
+        root = self.manifest['game_root'].rstrip('/')
+        if not re.fullmatch(r'/[A-Za-z0-9_]+', root) or root.lower() in ('/game', '/engine'):
+            raise RuntimeError(f'Reticles require a mod-owned content mount, not {root!r}')
+        tasks = [self.task(path, folder, name) for path, folder, name, _entry in planned if path]
+        imported = {str(path).split('.', 1)[0].casefold() for path in self.import_tasks(tasks)} if tasks else set()
+        editing = unreal.MaterialEditingLibrary
+        folder = self.manifest['material_folder']
+        for file_path, texture_folder, name, entry in planned:
+            parent = self.find_game_material(norm(entry['slot']))
+            if parent is None:
+                raise RuntimeError(f'Reticle parent material "{entry["slot"]}" was not found in the game.')
+            texture = None
+            if file_path:
+                texture_path = f'{texture_folder}/{name}'
+                texture = self.library.load_asset(texture_path)
+                if texture_path.casefold() not in imported or texture is None:
+                    raise RuntimeError(f'Reticle texture import failed: {texture_path}')
+                texture.set_editor_property('srgb', True)
+                texture.set_editor_property('compression_settings', unreal.TextureCompressionSettings.TC_DEFAULT)
+                original_mask = editing.get_material_instance_texture_parameter_value(parent, 'SightMask')
+                if original_mask is None:
+                    raise RuntimeError(f'Reticle parent material "{entry["slot"]}" has no SightMask texture.')
+                # The game's VirtualColor sampler cannot read an ordinary texture.
+                texture.set_editor_property(
+                    'virtual_texture_streaming', original_mask.get_editor_property('virtual_texture_streaming'))
+                if not self.library.save_loaded_asset(texture):
+                    raise RuntimeError(f'Could not save reticle texture: {texture_path}')
+            path = f'{folder}/{entry["material"]}'
+            instance = self.library.load_asset(path) if self.library.does_asset_exist(path) else \
+                self.tools.create_asset(entry['material'], folder, unreal.MaterialInstanceConstant,
+                                        unreal.MaterialInstanceConstantFactoryNew())
+            if instance is None or not instance.get_path_name().casefold().startswith(root.casefold() + '/'):
+                raise RuntimeError(f'Could not create mod-owned reticle material: {path}')
+            editing.set_material_instance_parent(instance, parent)
+            # Start from the game values each run, so removed overrides do not linger.
+            editing.clear_all_material_instance_parameters(instance)
+            if texture is not None:
+                editing.set_material_instance_texture_parameter_value(instance, 'SightMask', texture)
+                if editing.get_material_instance_texture_parameter_value(instance, 'SightMask') != texture:
+                    raise RuntimeError(f'Could not assign SightMask on reticle material: {path}')
+            parameters = entry.get('parameters', {})
+            for parameter, value in parameters.get('scalars', {}).items():
+                editing.set_material_instance_scalar_parameter_value(instance, parameter, float(value))
+            for parameter, value in parameters.get('vectors', {}).items():
+                editing.set_material_instance_vector_parameter_value(
+                    instance, parameter, unreal.LinearColor(*[float(channel) for channel in value]))
+            editing.update_material_instance(instance)
+            if not self.library.save_loaded_asset(instance):
+                raise RuntimeError(f'Could not save reticle material: {path}')
+            for mesh in entry['meshes']:
+                self.slot_overrides.setdefault(norm(mesh), {})[norm(entry['slot'])] = instance
+            self.count('reticles')
+
     def assign_materials(self, mesh):
+        overrides = getattr(self, 'slot_overrides', {}).get(norm(mesh.get_name()), {})
         for index, slot in enumerate(mesh.get_editor_property('static_materials')):
             slot_name = str(slot.get_editor_property('material_slot_name'))
             key = norm(slot_name)
-            material = self.managed.get(key) or self.find_game_material(key)
+            material = overrides.get(key) or self.managed.get(key) or self.find_game_material(key)
             if material is None:
                 warn(f'{mesh.get_name()}: no material found for slot "{slot_name}".')
                 continue
@@ -630,7 +755,7 @@ class Importer:
             if before is None or not socket_transforms_equal(before, entry):
                 changes.append((entry, socket, before))
         if not changes:
-            log('  world magazine sockets unchanged; no save needed')
+            log('  world mesh sockets unchanged; no save needed')
             return
         changed = []
         mesh.modify()
@@ -647,7 +772,7 @@ class Importer:
                         or not socket_transforms_equal(socket_transform(socket), entry)):
                     raise RuntimeError(f'World socket readback failed: {entry["name"]}')
             if not self.library.save_loaded_asset(mesh):
-                raise RuntimeError(f'Could not save world magazine sockets on {payload["mesh"]}')
+                raise RuntimeError(f'Could not save world mesh sockets on {payload["mesh"]}')
         except Exception as error:
             rollback_errors = []
             for socket, before in reversed(changed):
@@ -661,14 +786,14 @@ class Importer:
             if changed:
                 try:
                     if not self.library.save_loaded_asset(mesh):
-                        rollback_errors.append('could not save restored world magazine sockets')
+                        rollback_errors.append('could not save restored world mesh sockets')
                 except Exception as rollback_error:
                     rollback_errors.append(str(rollback_error))
             if rollback_errors:
                 raise RuntimeError(f'{error}; world socket rollback failed: {rollback_errors}') from error
             raise
-        self.counts['world magazine sockets'] = len(changes)
-        log(f'  saved {len(changes)} world magazine sockets on {payload["mesh"]}')
+        self.counts['world mesh sockets'] = len(changes)
+        log(f'  saved {len(changes)} world mesh sockets on {payload["mesh"]}')
 
     def import_animations(self, files, skeleton_path):
         pending = [(path, folder, name) for path, folder, name in files if self.wanted(folder, name, replace=True)]
@@ -741,6 +866,25 @@ class Importer:
         options.set_editor_property('import_textures', False)
         options.set_editor_property('create_physics_asset', False)
         self.import_tasks([self.task(path, folder, name, options) for path, folder, name in pending])
+
+    def check_custom_scope_sockets(self):
+        """Warn when a custom scope lacks the SID-named eye socket its donor scope has on the weapon.
+        Creating one would rename a socket on the shared base-game skeleton, so it is a manual step."""
+        payload = self.manifest.get('weapon_sockets') or {}
+        scopes = [item for item in self.manifest.get('attachments') or []
+                  if item.get('kind') == 'scope' and item.get('source_sid')
+                  and item.get('source_sid') != item.get('sid')]
+        if not scopes or not payload.get('mesh'):
+            return
+        mesh = self.library.load_asset(payload['mesh'])
+        if not isinstance(mesh, unreal.SkeletalMesh):
+            return
+        for item in scopes:
+            source, sid = item['source_sid'], item['sid']
+            if mesh.find_socket(source) is not None and mesh.find_socket(sid) is None:
+                warn(f'{mesh.get_name()} has a {source} eye socket but none named {sid}; in the skeletal '
+                     f'mesh editor add a mesh socket {sid} on the same bone with the {source} transform '
+                     'so the scope aims correctly.')
 
     def apply_weapon_sockets(self):
         payload = validate_weapon_sockets(self.manifest)
@@ -1311,6 +1455,8 @@ class Importer:
         """Swap every template montage/sequence path in exported struct text for the mod's replacement."""
         def swap(match):
             package, name = match.group(1), match.group(2)
+            if name.lower().startswith(('curve', 'animcollection')):
+                return match.group(0)
             kind = 'montage' if name.lower().startswith('mg_') else 'sequence'
             mount = self.manifest['game_root'].rstrip('/')
             new = find_replacement(package, self.manifest['weapon'], mount, assets[kind])
@@ -1419,6 +1565,9 @@ class Importer:
             warn(f'{name}: cannot read internal_animations ({error}); add magazine/attachment SIDs by hand.')
             return False
         replaced = {}
+        added = {}
+        alias_lines = []
+        created = []
         for field in COLLECTION_SID_MAPS:
             try:
                 entries = dict(internal.get_editor_property(field))
@@ -1431,16 +1580,28 @@ class Importer:
                     keys, magazines, attachments if field == 'attaching_by_sid' else None)
             except ValueError as error:
                 warn(f'{name}: cannot replace {field} SIDs ({error}); set them by hand.')
+                self.delete_created(created)
                 return False
+            aliases = planned_attachment_aliases(keys, attachments, plan) if field == 'attaching_by_sid' else {}
             if field == 'attaching_by_sid':
-                present = {str(key) for key in keys} | set(plan.values())
+                present = {str(key) for key in keys} | set(plan.values()) | set(aliases)
                 for item in attachments:
                     if item.get('kind') == 'silencer' and item.get('sid') not in present:
                         warn(f'{name}: the template has no silencer attach animation to copy for {item["sid"]}; '
                              'attaching it from the quick menu will not animate.')
-            if not plan:
+            if not plan and not aliases:
                 continue
             by_name = {str(key): key for key in keys}
+            copies = {}
+            for sid, source in aliases.items():
+                pending = []
+                try:
+                    copies[sid] = self.alias_attach_entry(entries[by_name[source]], source, sid, pending)
+                except Exception as error:
+                    self.delete_created(pending)
+                    warn(f'{name}: cannot copy the {source} attach animations for {sid} ({error}); '
+                         f'add an AttachingBySID entry for {sid} by hand.')
+                created.extend(pending)
             try:
                 for source, sid in plan.items():
                     key = by_name[source]
@@ -1448,49 +1609,124 @@ class Importer:
                     if target not in entries:
                         entries[target] = entries[key]
                     del entries[key]
+                for sid, value in copies.items():
+                    entries[type(by_name[aliases[sid]])(sid)] = value
                 internal.set_editor_property(field, entries)
             except Exception as error:
                 warn(f'{name}: cannot replace {field} SID keys ({error}); changes were not applied.')
+                self.delete_created(created)
                 return False
-            replaced[field] = plan
-        if not replaced:
+            if plan:
+                replaced[field] = plan
+            if copies:
+                added[field] = {sid: export_value_text(value) for sid, value in copies.items()}
+                alias_lines.extend(f'collection {field}: {sid} copied from {aliases[sid]}' for sid in copies)
+        if not replaced and not added:
             return False
         try:
             collection.modify()
             collection.set_editor_property('internal_animations', internal)
-            if not self.collection_sids_match(collection, original, replaced):
+            if not self.collection_sids_match(collection, original, replaced, added):
                 raise RuntimeError('magazine/attachment SID entries did not read back correctly')
             if not self.library.save_loaded_asset(collection):
                 raise RuntimeError('could not save the replaced magazine/attachment SID entries')
         except Exception as error:
             collection.set_editor_property('internal_animations', original)
+            self.delete_created(created)
             warn(f'{name}: magazine/attachment SID changes were restored ({error}); set them by hand.')
             return False
         for field, plan in replaced.items():
             for source, sid in plan.items():
                 report['lines'].append(f'collection {field}: {source} -> {sid} (replaced)')
+        report['lines'].extend(alias_lines)
         return True
 
-    @staticmethod
-    def collection_sids_match(collection, original, replaced):
-        """Check exact replacement keys/values, including preservation of existing targets."""
-        def text(value):
-            return value.export_text() if hasattr(value, 'export_text') else repr(value)
+    def alias_attach_entry(self, value, source, sid, created):
+        """Copy a donor AttachDetachAnimations value, pointing montages that spawn the donor at copies."""
+        value = value.copy()
+        copies = {}
+        for slot in ATTACH_ANIMATION_SLOTS:
+            animation = value.get_editor_property(slot).copy()
+            changed = False
+            for role in ATTACH_ANIMATION_ROLES:
+                montage = animation.get_editor_property(role)
+                if montage is None:
+                    continue
+                package = self.package_of(montage)
+                if package not in copies:
+                    copies[package] = self.alias_attach_montage(montage, source, sid, created)
+                if self.package_of(copies[package]) != package:
+                    animation.set_editor_property(role, copies[package])
+                    changed = True
+            if changed:
+                value.set_editor_property(slot, animation)
+        return value
 
+    def attach_notifies(self, montage, sid):
+        result = []
+        for event in unreal.AnimationLibrary.get_animation_notify_events(montage):
+            notify = event.get_editor_property('notify')
+            if (notify is not None and notify.get_class().get_name() == 'AnimNotify_AttachItem'
+                    and str(notify.get_editor_property('binded_attach_sid')) == sid):
+                if self.package_of(notify) != self.package_of(montage):
+                    raise RuntimeError('Attachment notify is not owned by its montage.')
+                result.append(notify)
+        return result
+
+    def alias_attach_montage(self, montage, source, sid, created):
+        """The montage itself, or a mod-owned copy whose AttachItem notifies spawn sid instead of source."""
+        if not self.attach_notifies(montage, source):
+            return montage
+        package = self.package_of(montage)
+        mount = self.manifest['game_root'].rstrip('/')
+        if not re.fullmatch(r'/[A-Za-z0-9_]+', mount) or mount.lower() in ('/game', '/engine') or not (
+                package.lower().startswith(mount.lower() + '/')):
+            raise RuntimeError(f'{package} is not a mod-owned montage')
+        target = f'{package}_{sid}'
+        if self.library.does_asset_exist(target):
+            copy = self.library.load_asset(target)
+        else:
+            copy = self.library.duplicate_asset(package, target)
+            if copy is not None:
+                created.append(target)
+        if copy is None or self.package_of(copy) != target:
+            raise RuntimeError(f'cannot copy {package}')
+        for notify in self.attach_notifies(copy, source):
+            old = notify.get_editor_property('binded_attach_sid')
+            notify.set_editor_property('binded_attach_sid', type(old)(sid))
+        if self.attach_notifies(copy, source) or not self.attach_notifies(copy, sid):
+            raise RuntimeError(f'{target} notifies did not read back as {sid}')
+        if not self.library.save_loaded_asset(copy):
+            raise RuntimeError(f'could not save {target}')
+        return copy
+
+    def delete_created(self, created):
+        while created:
+            path = created.pop()
+            if not self.library.delete_asset(path):
+                warn(f'Could not delete {path}; delete it by hand.')
+
+    @staticmethod
+    def collection_sids_match(collection, original, replaced, added=None):
+        """Check exact replacement keys/values, including preservation of existing targets."""
         internal = collection.get_editor_property('internal_animations')
         for field in COLLECTION_SID_MAPS:
             try:
                 old_map = original.get_editor_property(field)
             except Exception:
-                if field in replaced:
+                if field in replaced or field in (added or {}):
                     return False
                 continue
-            before = {str(key): text(value) for key, value in old_map.items()}
-            after = {str(key): text(value) for key, value in internal.get_editor_property(field).items()}
+            before = {str(key): export_value_text(value) for key, value in old_map.items()}
+            after = {str(key): export_value_text(value) for key, value in internal.get_editor_property(field).items()}
             expected = dict(before)
             for source, sid in replaced.get(field, {}).items():
                 value = expected.pop(source)
                 expected.setdefault(sid, value)
+            for sid, value in (added or {}).get(field, {}).items():
+                if sid in expected:
+                    return False
+                expected[sid] = value
             if after != expected:
                 return False
         return True
@@ -1762,7 +1998,8 @@ class Importer:
         for folder, dirs, files in os.walk(source):
             if os.path.normcase(folder) == os.path.normcase(mod_data):
                 for name in list(dirs):
-                    if name != mod:
+                    # Windows keeps an existing folder's spelling when the Mod Name only changes case.
+                    if name.casefold() != mod.casefold():
                         dirs.remove(name)
                         warn(f'Skipped CFG folder for another mod: {os.path.join(folder, name)}. '
                              f'Only ModGameData/{mod} belongs to this import; old exports must not '
@@ -1773,9 +2010,10 @@ class Importer:
                 if distribution is not None:
                     relative = os.path.relpath(os.path.join(folder, name), source).replace('\\', '/')
                     if re.fullmatch(r'GameData/ItemGeneratorPrototypes/' + re.escape(mod)
-                                    + r'_\w+Distribution\.cfg', relative) or re.fullmatch(
+                                    + r'_\w+Distribution\.cfg', relative, re.IGNORECASE) or re.fullmatch(
                                         r'ModGameData/' + re.escape(mod)
-                                        + r'/ItemGeneratorPrototypes/\w+Distribution\.cfg', relative):
+                                        + r'/ItemGeneratorPrototypes/\w+Distribution\.cfg', relative,
+                                        re.IGNORECASE):
                         with open(os.path.join(folder, name), encoding='utf-8-sig') as handle:
                             if not handle.read().startswith('// Generated by Arsenal.'):
                                 raise RuntimeError(f'Unexpected non-Arsenal distribution export: {relative}')
@@ -1803,23 +2041,34 @@ class Importer:
             log(f'  removed {removed} empty folders')
 
     def run(self):
-        log(f'Arsenal import for "{self.manifest["weapon"]}"')
+        log(f'Arsenal import for "{self.manifest["weapon"]}" (script version {ARSENAL_VERSION or "unknown"})')
         validate_weapon_sockets(self.manifest)
         validate_world_mesh_sockets(self.manifest)
-        self.ensure_setup()
-        self.copy_game_data()
-        self.import_skeletal_mesh()
-        self.apply_weapon_sockets()
-        self.import_textures()
-        self.import_ui_images()
-        self.import_materials()
-        self.import_static_meshes()
-        self.import_animations(self.plan['player_animations'], self.manifest['player_skeleton'])
-        self.import_animations(self.plan['weapon_animations'], self.manifest['weapon_skeleton'])
-        self.update_additive_playback()
-        self.update_montages()
-        self.import_localization()
-        self.tidy_empty_folders()
+        players, weapons = self.manifest['player_skeleton'], self.manifest['weapon_skeleton']
+        steps = [
+            ('Checking mod assets', self.ensure_setup),
+            ('Copying CFG files', self.copy_game_data),
+            ('Importing weapon mesh', self.import_skeletal_mesh),
+            ('Applying weapon sockets', self.apply_weapon_sockets),
+            ('Checking custom scope sockets', self.check_custom_scope_sockets),
+            ('Importing textures', self.import_textures),
+            ('Importing inventory images', self.import_ui_images),
+            ('Creating materials', self.import_materials),
+            ('Creating scope reticles', self.import_reticles),
+            ('Importing attachment meshes', self.import_static_meshes),
+            ('Importing character animations',
+             lambda: self.import_animations(self.plan['player_animations'], players)),
+            ('Importing weapon animations',
+             lambda: self.import_animations(self.plan['weapon_animations'], weapons)),
+            ('Updating additive playback', self.update_additive_playback),
+            ('Updating montages', self.update_montages),
+            ('Writing localisation', self.import_localization),
+            ('Tidying empty folders', self.tidy_empty_folders),
+        ]
+        with Progress(len(steps), f'Arsenal import: {self.manifest["weapon"]}') as progress:
+            for index, (label, step) in enumerate(steps):
+                progress.step(f'{label} ({index + 1}/{len(steps)})')
+                step()
         log('Arsenal import finished: ' + ', '.join(f'{count} {label}' for label, count in self.counts.items()))
 
     def ensure_setup(self):
@@ -1854,7 +2103,7 @@ def print_plan(manifest, base_dir):
         print(f'weapon sockets: {len(sockets["entries"])} on {sockets["mesh"]}')
     world_sockets = validate_world_mesh_sockets(manifest)
     if world_sockets is not None:
-        print(f'world magazine sockets: {len(world_sockets["entries"])} on {world_sockets["mesh"]}')
+        print(f'world mesh sockets: {len(world_sockets["entries"])} on {world_sockets["mesh"]}')
 
 
 def _main(argv=None):
